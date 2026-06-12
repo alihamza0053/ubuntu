@@ -1,0 +1,15 @@
+# ServerHub panel — restricted sudo rules.
+# Installed to /etc/sudoers.d/serverhub by deploy/install.sh.
+#
+# Phase 1 only needs supervisorctl. Later phases will add the
+# commented rules below (uncomment when those features ship).
+
+serverhub ALL=(root) NOPASSWD: /usr/bin/supervisorctl *
+
+# Phase 3 — nginx + certbot:
+# serverhub ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx
+# serverhub ALL=(root) NOPASSWD: /usr/bin/certbot *
+
+# Phase 4 — apt package management:
+# serverhub ALL=(root) NOPASSWD: /usr/bin/apt-get update, /usr/bin/apt-get upgrade -y, \
+#     /usr/bin/apt-get install -y *, /usr/bin/apt-get remove -y *
