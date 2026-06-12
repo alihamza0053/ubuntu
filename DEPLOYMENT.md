@@ -265,8 +265,8 @@ php -v
 > ```bash
 > sudo add-apt-repository -y ppa:ondrej/php
 > sudo apt update
-> sudo apt install -y php8.1-fpm
-> sudo systemctl enable --now php8.1-fpm
+> sudo apt install -y php8.3-fpm
+> sudo systemctl enable --now php8.3-fpm
 > ```
 >
 > **Option 2:** after you assign a domain to a PHP site in the panel, open
@@ -283,24 +283,50 @@ sudo apt install -y certbot python3-certbot-nginx
 certbot --version
 ```
 
-### 2.8 — Chromium + ChromeDriver (headless Selenium for project scripts)
+### 2.8 — Google Chrome (headless Selenium for project scripts)
 
-So your Python project scripts can run Selenium headlessly:
+If your project scripts use Selenium, install a **real browser + driver**. Skip
+this section entirely if none of your scripts do browser automation.
+
+> ⚠️ **Use Google Chrome (.deb), NOT apt/snap `chromium`.** On Ubuntu 22.04 and
+> 24.04 the apt `chromium-browser` / `chromium-chromedriver` are **snap wrappers**.
+> The snap chromedriver **crashes when launched by the unprivileged `serverhub`
+> service user** — you get:
+> ```
+> selenium...WebDriverException: Message: Service /usr/bin/chromedriver
+> unexpectedly exited. Status code was: 1
+> ```
+> Snap Chromium also **cannot write downloads to `/srv/...`** (it's sandboxed),
+> so download scripts silently fail. The Google Chrome `.deb` avoids both.
+
+**Recommended — Google Chrome `.deb`:**
 
 ```bash
-# Ubuntu 24.04 / 22.04 (snap-based chromium also fine):
-sudo apt install -y chromium-browser chromium-chromedriver \
-  || sudo apt install -y chromium chromium-driver
+# Remove any snap chromium first (ignore errors if not present)
+sudo snap remove chromium 2>/dev/null
+sudo apt remove -y chromium-browser chromium-chromedriver 2>/dev/null
+
+# Install real Google Chrome
+wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+sudo apt install -y ./google-chrome-stable_current_amd64.deb
 
 # Verify
-chromium-browser --version 2>/dev/null || chromium --version
-chromedriver --version 2>/dev/null || chromium.chromedriver --version 2>/dev/null || true
+google-chrome --version       # e.g. "Google Chrome 1xx.x.x.x"
+which google-chrome           # /usr/bin/google-chrome
 ```
 
-> ServerHub's example Selenium helper uses `webdriver-manager`, which can also
-> auto-download the driver. Installing `chromium-chromedriver` via apt is the
-> most reliable on a headless server. Your scripts should use the headless flags
-> shown in `MASTER_BUILD_PROMPT.md` (`--headless --no-sandbox --disable-dev-shm-usage`).
+You do **not** need to install a chromedriver: Selenium 4.6+ ("Selenium Manager",
+bundled with the `selenium` pip package) auto-downloads the matching driver on
+first run. Make sure the panel user can write its cache:
+
+```bash
+sudo mkdir -p /home/serverhub/.cache && sudo chown -R serverhub:serverhub /home/serverhub
+```
+
+> Your scripts should use the headless flags from `SCRIPTS_GUIDE.md`
+> (`--headless=new --no-sandbox --disable-dev-shm-usage`) and set
+> `options.binary_location = "/usr/bin/google-chrome"`. The included
+> `P2P Custom.py` is a working template.
 
 ### 2.9 — Misc tools (zip handling, git, curl, rsync)
 
@@ -318,7 +344,7 @@ Pick one.
 
 ```bash
 cd /opt
-sudo git clone <YOUR_REPO_URL> serverhub-src
+sudo git clone https://github.com/alihamza0053/ubuntu.git serverhub-src
 ```
 
 **Option 2 — SCP from your Windows/Mac machine.** Run **locally** from the folder
@@ -468,7 +494,7 @@ Generate a secret and edit:
 python3 -c "import secrets; print(secrets.token_hex(32))"   # copy the output
 sudo nano .env
 ```
-
+455070ea33cfdee75676cf8885b5d85416bd712ed07996c1c693b489a54fcc11
 Set at least:
 
 ```ini

@@ -20,12 +20,23 @@ apt-get update
 #   mysql-server          databases manager
 #   php-fpm               PHP website hosting
 #   certbot               Let's Encrypt SSL
-#   chromium-browser      headless Selenium for project scripts
-apt-get install -y python3 python3-venv python3-pip nginx supervisor curl rsync \
-  mysql-server php-fpm certbot python3-certbot-nginx unzip \
-  chromium-browser chromium-chromedriver || \
-apt-get install -y python3 python3-venv python3-pip nginx supervisor curl rsync \
-  mysql-server php-fpm certbot python3-certbot-nginx unzip chromium chromium-driver
+apt-get install -y python3 python3-venv python3-pip nginx supervisor curl rsync wget \
+  mysql-server php-fpm certbot python3-certbot-nginx unzip
+
+# Headless browser for project Selenium scripts: install REAL Google Chrome
+# (.deb), NOT snap chromium — the snap chromedriver crashes under the serverhub
+# service user and can't write downloads to /srv. Selenium Manager (bundled with
+# the selenium pip package) auto-downloads the matching driver at runtime.
+echo "==> Installing Google Chrome (for Selenium)"
+if ! command -v google-chrome >/dev/null; then
+  snap remove chromium 2>/dev/null || true
+  apt-get remove -y chromium-browser chromium-chromedriver 2>/dev/null || true
+  TMP_DEB="$(mktemp --suffix=.deb)"
+  wget -qO "$TMP_DEB" https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+  apt-get install -y "$TMP_DEB"
+  rm -f "$TMP_DEB"
+fi
+google-chrome --version || true
 
 # Node 18+ for building the frontend (skipped if node >= 18 already present)
 if ! command -v node >/dev/null || [ "$(node -e 'console.log(process.versions.node.split(".")[0])')" -lt 18 ]; then
@@ -71,6 +82,9 @@ echo "==> Permissions"
 chown -R "$PANEL_USER:$PANEL_USER" "$PANEL_ROOT" /srv/projects /srv/websites /srv/nginx-configs
 # Panel user must be able to write supervisor program logs
 chown "$PANEL_USER:$PANEL_USER" /var/log/supervisor || true
+# Selenium Manager caches its driver under the panel user's home
+mkdir -p "/home/$PANEL_USER/.cache"
+chown -R "$PANEL_USER:$PANEL_USER" "/home/$PANEL_USER"
 
 echo "==> Sudoers rule (supervisorctl only)"
 install -m 0440 "$REPO_DIR/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub
