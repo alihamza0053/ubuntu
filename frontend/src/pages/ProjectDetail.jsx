@@ -83,7 +83,7 @@ export default function ProjectDetail() {
       )}
       {tab === 'scripts' && <ScriptsTab project={project} onChanged={refresh} />}
       {tab === 'dashboard' && <DashboardTab project={project} onChanged={refresh} />}
-      {tab === 'scheduler' && <SchedulerTab />}
+      {tab === 'scheduler' && <SchedulerTab project={project} />}
       {tab === 'data' && <DataFilesTab project={project} files={files} onChanged={refresh} />}
     </div>
   )

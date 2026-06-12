@@ -6,6 +6,8 @@ Run in development:
 In production this runs under Supervisor (see deploy/serverhub.conf) and
 serves the built React frontend from backend/static/.
 """
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -13,19 +15,33 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import Base, engine
-from .routers import auth, dashboard, files, logs, projects, scripts, server
+from .routers import (auth, dashboard, databases, files, logs, nginx, projects,
+                      schedules, scripts, server, settings_router, terminal,
+                      websites)
+from .services import scheduler_service
 
 # Create any missing tables on startup (idempotent)
 Base.metadata.create_all(bind=engine)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start APScheduler and load active schedules from the DB
+    scheduler_service.start()
+    yield
+    if scheduler_service.scheduler.running:
+        scheduler_service.scheduler.shutdown(wait=False)
+
+
 app = FastAPI(
     title="ServerHub",
     description="Self-hosted Ubuntu VPS management panel",
-    version="0.1.0 (Phase 1)",
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
-# CORS is only needed for the Vite dev server; in production the frontend
-# is served from this same origin.
+# CORS is only needed for the Vite dev server; in production the frontend is
+# served from this same origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -34,14 +50,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API + WebSocket routers
+# --- API + WebSocket routers ---
 app.include_router(auth.router)
 app.include_router(projects.router)
 app.include_router(scripts.router)
 app.include_router(dashboard.router)
+app.include_router(schedules.router)
+app.include_router(websites.router)
+app.include_router(databases.router)
+app.include_router(nginx.router)
 app.include_router(files.router)
 app.include_router(logs.router)
+app.include_router(terminal.router)
 app.include_router(server.router)
+app.include_router(server.ws_router)          # apt live-stream WebSocket
+app.include_router(settings_router.router)
 
 
 @app.get("/api/health", tags=["meta"])
@@ -50,8 +73,8 @@ def health():
 
 
 # ---------- Frontend (production build) ----------
-# `npm run build` outputs to backend/static/. Serve it with an SPA
-# fallback so React Router deep links (e.g. /projects/3) work on refresh.
+# `npm run build` outputs to backend/static/. Serve it with an SPA fallback so
+# React Router deep links (e.g. /projects/3) work on refresh.
 if settings.STATIC_DIR.is_dir():
     app.mount(
         "/assets",

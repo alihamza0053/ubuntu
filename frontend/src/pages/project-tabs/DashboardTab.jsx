@@ -9,6 +9,8 @@ export default function DashboardTab({ project, onChanged }) {
   const [raw, setRaw] = useState('')
   const [busy, setBusy] = useState(false)
   const [logStream, setLogStream] = useState(null) // 'out' | 'err' | null
+  const [domain, setDomain] = useState(project.domain || '')
+  const [domainMsg, setDomainMsg] = useState('')
 
   async function refreshStatus() {
     try {
@@ -42,6 +44,27 @@ export default function DashboardTab({ project, onChanged }) {
     setLogStream((prev) => (prev === stream ? null : stream))
   }
 
+  async function assignDomain() {
+    setDomainMsg('')
+    try {
+      const res = await api.post(`/projects/${project.id}/assign-domain`, { domain })
+      setDomainMsg(res.data.detail)
+      onChanged?.()
+    } catch (err) {
+      setDomainMsg(errorMessage(err))
+    }
+  }
+
+  async function requestSsl() {
+    setDomainMsg('')
+    try {
+      const res = await api.post(`/projects/${project.id}/ssl`)
+      setDomainMsg(res.data.detail)
+    } catch (err) {
+      setDomainMsg(errorMessage(err))
+    }
+  }
+
   const liveUrl = project.domain
     ? `http://${project.domain}`
     : `http://${window.location.hostname}:${project.dashboard_port}`
@@ -73,15 +96,20 @@ export default function DashboardTab({ project, onChanged }) {
         </p>
       </div>
 
-      {/* Domain / SSL — Phase 3 */}
+      {/* Domain / SSL */}
       <div className="card">
         <h3 className="font-semibold mb-2">Domain & SSL</h3>
         <div className="flex gap-2 items-center flex-wrap">
-          <input className="input max-w-xs" placeholder="dashboard.example.com" disabled />
-          <button className="btn-secondary" disabled title="Coming in Phase 3">Assign domain</button>
-          <button className="btn-secondary" disabled title="Coming in Phase 3">🔒 Request SSL</button>
-          <span className="text-xs text-slate-600">Nginx + Certbot integration arrives in Phase 3</span>
+          <input className="input max-w-xs" placeholder="dashboard.example.com" value={domain}
+            onChange={(e) => setDomain(e.target.value)} />
+          <button className="btn-primary" onClick={assignDomain} disabled={!domain}>Assign domain</button>
+          <button className="btn-secondary" onClick={requestSsl} disabled={!project.domain}>🔒 Request SSL</button>
         </div>
+        <p className="text-xs text-slate-500 mt-2">
+          Writes an nginx proxy block to the dashboard's port and reloads nginx. SSL runs certbot
+          (DNS must already point at this server).
+        </p>
+        {domainMsg && <p className="text-sm text-slate-300 mt-2 break-words">{domainMsg}</p>}
       </div>
 
       {/* Live process logs */}

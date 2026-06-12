@@ -17,9 +17,16 @@ from ..config import settings
 from ..database import get_db
 from ..deps import get_current_user
 from ..models import Project, Script
+from pydantic import BaseModel
+
 from ..schemas import (DetailResponse, FileInfo, ProjectCreate, ProjectFilesOut,
                        ProjectOut, ScriptOut)
-from ..services import supervisor_service
+
+
+class DomainRequest(BaseModel):
+    domain: str
+from ..models import NginxConfig
+from ..services import nginx_service, supervisor_service
 from ..services.paths import safe_join, validate_extension, validate_filename
 
 router = APIRouter(
@@ -282,3 +289,46 @@ def delete_file(
     path.unlink()
     sync_scripts(project, db)  # drop the script row if a .py was removed
     return DetailResponse(detail=f"Deleted {folder}/{filename}")
+
+
+# ---------- Domain & SSL ----------
+
+def _upsert_nginx_config(db: Session, entity_type: str, entity_id: int,
+                         config_path: str, domain: str) -> None:
+    """Record (or update) the NginxConfig row for an entity."""
+    row = (
+        db.query(NginxConfig)
+        .filter(NginxConfig.entity_type == entity_type, NginxConfig.entity_id == entity_id)
+        .first()
+    )
+    if row:
+        row.config_path, row.domain = config_path, domain
+    else:
+        db.add(NginxConfig(entity_type=entity_type, entity_id=entity_id,
+                           config_path=config_path, domain=domain))
+    db.commit()
+
+
+@router.post("/{project_id}/assign-domain", response_model=DetailResponse)
+def assign_domain(project_id: int, body: DomainRequest, db: Session = Depends(get_db)):
+    """Generate the Streamlit nginx proxy block for this project's dashboard."""
+    project = get_project_or_404(project_id, db)
+    slug = f"project-{project.name}"
+    content = nginx_service.build_block(
+        "streamlit", domain=body.domain, port=project.dashboard_port
+    )
+    config_path = nginx_service.write_site(slug, content)
+    project.domain = body.domain
+    _upsert_nginx_config(db, "project", project.id, str(config_path), body.domain)
+    db.commit()
+    return DetailResponse(detail=f"Domain {body.domain} assigned and nginx reloaded")
+
+
+@router.post("/{project_id}/ssl", response_model=DetailResponse)
+def project_ssl(project_id: int, db: Session = Depends(get_db)):
+    """Request a Let's Encrypt certificate for the project's domain."""
+    project = get_project_or_404(project_id, db)
+    if not project.domain:
+        raise HTTPException(status_code=400, detail="Assign a domain first")
+    nginx_service.request_ssl(project.domain)
+    return DetailResponse(detail=f"SSL issued for {project.domain}")

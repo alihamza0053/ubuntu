@@ -10,9 +10,16 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..database import get_db
 from ..deps import get_current_user
+from pydantic import BaseModel
+
 from ..models import User
-from ..schemas import LoginRequest, TokenResponse, UserOut
-from ..security import create_access_token, verify_password
+from ..schemas import DetailResponse, LoginRequest, TokenResponse, UserOut
+from ..security import create_access_token, hash_password, verify_password
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -51,3 +58,17 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
 def me(current_user: User = Depends(get_current_user)):
     """Return the authenticated user (used by the frontend on app load)."""
     return current_user
+
+
+@router.post("/change-password", response_model=DetailResponse)
+def change_password(body: PasswordChange,
+                    current_user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    """Change the admin password after verifying the current one."""
+    if not verify_password(body.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    current_user.hashed_password = hash_password(body.new_password)
+    db.commit()
+    return DetailResponse(detail="Password changed")

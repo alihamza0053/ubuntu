@@ -4,9 +4,15 @@ Self-hosted web panel to manage an Ubuntu VPS from the browser: Python project
 workspaces, Streamlit dashboards, script running/scheduling, websites, MySQL,
 nginx, terminal, logs, file manager and a built-in code editor.
 
-**Current status: Phase 1** — auth, projects, file uploads, Monaco editor,
-script runner with live WebSocket output, Streamlit dashboards via Supervisor,
-dashboard cards + server stats.
+**Status: complete (all phases).** Auth, project workspaces, file uploads,
+Monaco editor, script runner with live WebSocket output, Streamlit dashboards
+via Supervisor, dashboard cards + server stats, **plus**: in-browser PTY
+terminal (xterm.js), full live log viewer, APScheduler cron scheduling with a
+visual builder, website deploys (zip + React build), nginx config generation
+with domain assignment + Certbot SSL, global file manager, MySQL manager
+(create/drop/query/import/export), APT package manager with live install
+output, live CPU/RAM/disk graphs, supervisor process control, and a settings
+page (password / config / DB backup).
 
 ## Stack
 
@@ -81,9 +87,16 @@ Configs live in `/srv/serverhub/supervisor.d/` (included from
   (`backend/app/services/paths.py`).
 - Sudo restricted to specific commands via `/etc/sudoers.d/serverhub`.
 
-## Roadmap
+## Implemented (all phases)
 
-- **Phase 2** — browser terminal (xterm.js), full log viewer, APScheduler + cron builder
-- **Phase 3** — website deploys, nginx config generation, domains + SSL, global file manager
-- **Phase 4** — MySQL manager, APT package manager, server stats graphs, supervisor process list
-- **Phase 5** — settings page, mobile layout, polish
+- **Phase 1** — auth/JWT, project CRUD + folders, uploads, Monaco editor, script
+  runner with live logs, Streamlit dashboards via Supervisor, dashboard cards.
+- **Phase 2** — browser PTY terminal (xterm.js), full live log viewer with
+  search/download, APScheduler scheduling + visual cron builder.
+- **Phase 3** — website deploys (zip + React build), nginx config generation,
+  domain assignment + Certbot SSL, global file manager.
+- **Phase 4** — MySQL manager, APT package manager with live output, live server
+  graphs, supervisor process control.
+- **Phase 5** — settings page (password / config / DB backup), responsive layout.
+
+See `MASTER_BUILD_PROMPT.md` for the full feature specification.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# ServerHub — Ubuntu VPS installation script (Phase 1)
+# ServerHub — Ubuntu VPS installation script (all phases)
 # Run as root (or with sudo) on Ubuntu 22.04+.
 # Re-runnable: every step is idempotent.
 # ============================================================
@@ -9,10 +9,23 @@ set -euo pipefail
 PANEL_USER="serverhub"
 PANEL_ROOT="/srv/serverhub"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Interpreter used to build the venv. On Ubuntu 22.04 run the installer with
+# PYTHON3=python3.11 so the panel gets Python 3.11 (the deadsnakes package).
+PYTHON3="${PYTHON3:-python3}"
 
 echo "==> Installing system packages"
 apt-get update
-apt-get install -y python3 python3-venv python3-pip nginx supervisor curl
+# Core panel + all feature dependencies:
+#   nginx/supervisor      reverse proxy + process manager
+#   mysql-server          databases manager
+#   php-fpm               PHP website hosting
+#   certbot               Let's Encrypt SSL
+#   chromium-browser      headless Selenium for project scripts
+apt-get install -y python3 python3-venv python3-pip nginx supervisor curl rsync \
+  mysql-server php-fpm certbot python3-certbot-nginx unzip \
+  chromium-browser chromium-chromedriver || \
+apt-get install -y python3 python3-venv python3-pip nginx supervisor curl rsync \
+  mysql-server php-fpm certbot python3-certbot-nginx unzip chromium chromium-driver
 
 # Node 18+ for building the frontend (skipped if node >= 18 already present)
 if ! command -v node >/dev/null || [ "$(node -e 'console.log(process.versions.node.split(".")[0])')" -lt 18 ]; then
@@ -30,12 +43,13 @@ echo "==> Copying application code"
 cp -r "$REPO_DIR/backend" "$PANEL_ROOT/"
 cp -r "$REPO_DIR/frontend" "$PANEL_ROOT/"
 
-echo "==> Python virtualenv + dependencies"
-python3 -m venv "$PANEL_ROOT/venv"
+echo "==> Python virtualenv + dependencies (using $PYTHON3)"
+"$PYTHON3" -m venv "$PANEL_ROOT/venv"
 "$PANEL_ROOT/venv/bin/pip" install --upgrade pip
 "$PANEL_ROOT/venv/bin/pip" install -r "$PANEL_ROOT/backend/requirements.txt"
-# Streamlit is needed to run project dashboards
-"$PANEL_ROOT/venv/bin/pip" install streamlit
+# Streamlit runs project dashboards; selenium + webdriver-manager + openpyxl
+# are commonly needed by project scripts (headless Chromium, Excel data).
+"$PANEL_ROOT/venv/bin/pip" install streamlit selenium webdriver-manager openpyxl pandas
 
 echo "==> Building frontend"
 cd "$PANEL_ROOT/frontend"

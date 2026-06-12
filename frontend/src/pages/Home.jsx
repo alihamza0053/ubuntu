@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../api/client'
 import ProjectCard from '../components/ProjectCard'
+import WebsiteCard from '../components/WebsiteCard'
 
 /** Small stat widget (CPU / RAM / Disk / Uptime). */
 function StatWidget({ label, value, sub, percent }) {
@@ -24,6 +25,7 @@ function StatWidget({ label, value, sub, percent }) {
 export default function Home() {
   const [stats, setStats] = useState(null)
   const [projects, setProjects] = useState([])
+  const [websites, setWebsites] = useState([])
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(() => {
@@ -35,6 +37,7 @@ export default function Home() {
   useEffect(() => {
     Promise.allSettled([
       api.get('/projects', { params: { with_status: true } }).then((res) => setProjects(res.data)),
+      api.get('/websites').then((res) => setWebsites(res.data)),
       api.get('/server/stats').then((res) => setStats(res.data)),
     ]).finally(() => setLoading(false))
 
@@ -96,12 +99,21 @@ export default function Home() {
         )}
       </div>
 
-      {/* Website cards placeholder (Phase 3) */}
+      {/* Website cards */}
       <div>
-        <h3 className="text-lg font-semibold mb-3">Websites</h3>
-        <div className="card text-center py-8 text-slate-600">
-          Website deployments arrive in Phase 3
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold">Websites</h3>
+          <Link to="/websites" className="text-sm text-sky-400 hover:underline">Manage websites →</Link>
         </div>
+        {websites.length === 0 ? (
+          <div className="card text-center py-8 text-slate-600">
+            No websites yet. <Link to="/websites" className="text-sky-400 hover:underline">Create one</Link>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {websites.map((s) => <WebsiteCard key={s.id} site={s} />)}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -101,3 +101,12 @@ class TerminalHistory(Base):
     command: Mapped[str] = mapped_column(Text)
     output: Mapped[str | None] = mapped_column(Text, nullable=True)
     executed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Setting(Base):
+    """Key/value panel settings (Phase 5): panel port, subdomain, etc."""
+    __tablename__ = "settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    value: Mapped[str] = mapped_column(Text)

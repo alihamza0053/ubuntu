@@ -1,19 +1,18 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-// Sidebar entries. Later-phase pages are listed but disabled so the final
-// information architecture is visible from day one.
+// All panel sections (every feature is now implemented).
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: '🏠' },
   { to: '/projects', label: 'Projects', icon: '🐍' },
-  { to: '/websites', label: 'Websites', icon: '🌐', phase: 3 },
-  { to: '/terminal', label: 'Terminal', icon: '💻', phase: 2 },
-  { to: '/logs', label: 'Logs', icon: '📜', phase: 2 },
-  { to: '/files', label: 'Files', icon: '📁', phase: 3 },
-  { to: '/databases', label: 'Databases', icon: '🗄️', phase: 4 },
-  { to: '/nginx', label: 'Nginx', icon: '⚙️', phase: 3 },
-  { to: '/server', label: 'Server', icon: '🖥️', phase: 4 },
-  { to: '/settings', label: 'Settings', icon: '🔧', phase: 5 },
+  { to: '/websites', label: 'Websites', icon: '🌐' },
+  { to: '/terminal', label: 'Terminal', icon: '💻' },
+  { to: '/logs', label: 'Logs', icon: '📜' },
+  { to: '/files', label: 'Files', icon: '📁' },
+  { to: '/databases', label: 'Databases', icon: '🗄️' },
+  { to: '/nginx', label: 'Nginx', icon: '⚙️' },
+  { to: '/server', label: 'Server', icon: '🖥️' },
+  { to: '/settings', label: 'Settings', icon: '🔧' },
 ]
 
 export default function Layout() {
@@ -29,36 +28,20 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-          {NAV.map((item) =>
-            item.phase ? (
-              <div
-                key={item.to}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-600 cursor-not-allowed"
-                title={`Coming in Phase ${item.phase}`}
-              >
-                <span>{item.icon}</span>
-                {item.label}
-                <span className="ml-auto text-[10px] text-slate-600 border border-slate-700 rounded px-1">
-                  P{item.phase}
-                </span>
-              </div>
-            ) : (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  `flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    isActive
-                      ? 'bg-sky-600/20 text-sky-300'
-                      : 'text-slate-300 hover:bg-slate-700/50'
-                  }`
-                }
-              >
-                <span>{item.icon}</span>
-                {item.label}
-              </NavLink>
-            ),
-          )}
+          {NAV.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                `flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  isActive ? 'bg-sky-600/20 text-sky-300' : 'text-slate-300 hover:bg-slate-700/50'
+                }`
+              }
+            >
+              <span>{item.icon}</span>
+              {item.label}
+            </NavLink>
+          ))}
         </nav>
 
         <div className="px-4 py-3 border-t border-panel-border flex items-center justify-between">
