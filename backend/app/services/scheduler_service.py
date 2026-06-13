@@ -10,7 +10,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from ..database import SessionLocal
-from ..models import Schedule, Script
+from ..models import PipelineSchedule, Schedule, Script
+from .pipeline_service import run_pipeline
 from .script_runner import run_script
 
 scheduler = AsyncIOScheduler()
@@ -18,6 +19,10 @@ scheduler = AsyncIOScheduler()
 
 def _job_id(schedule_id: int) -> str:
     return f"schedule-{schedule_id}"
+
+
+def _pipeline_job_id(project_id: int) -> str:
+    return f"pipeline-{project_id}"
 
 
 async def _run_scheduled(script_id: int) -> None:
@@ -57,6 +62,35 @@ def next_run_time(schedule_id: int):
     return job.next_run_time if job else None
 
 
+# ---------- Project pipeline jobs ----------
+
+async def _run_pipeline_job(project_id: int) -> None:
+    await run_pipeline(project_id)
+
+
+def add_or_update_pipeline_job(pipe: PipelineSchedule) -> None:
+    """Register (or replace) the cron job that runs a project's full pipeline."""
+    trigger = CronTrigger.from_crontab(pipe.cron_expression)
+    scheduler.add_job(
+        _run_pipeline_job,
+        trigger=trigger,
+        args=[pipe.project_id],
+        id=_pipeline_job_id(pipe.project_id),
+        replace_existing=True,
+    )
+
+
+def remove_pipeline_job(project_id: int) -> None:
+    job = scheduler.get_job(_pipeline_job_id(project_id))
+    if job:
+        job.remove()
+
+
+def pipeline_next_run(project_id: int):
+    job = scheduler.get_job(_pipeline_job_id(project_id))
+    return job.next_run_time if job else None
+
+
 def start() -> None:
     """Start the scheduler and load all active schedules (called on app startup)."""
     if not scheduler.running:
@@ -67,7 +101,11 @@ def start() -> None:
             try:
                 add_or_update_job(schedule)
             except ValueError:
-                # Skip malformed cron expressions rather than crash startup
+                continue  # skip malformed cron rather than crash startup
+        for pipe in db.query(PipelineSchedule).filter(PipelineSchedule.is_active.is_(True)).all():
+            try:
+                add_or_update_pipeline_job(pipe)
+            except ValueError:
                 continue
     finally:
         db.close()

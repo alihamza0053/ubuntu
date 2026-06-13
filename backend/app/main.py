@@ -15,9 +15,9 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import Base, engine
-from .routers import (auth, dashboard, databases, files, logs, nginx, projects,
-                      schedules, scripts, server, settings_router, terminal,
-                      websites)
+from .routers import (auth, dashboard, databases, files, logs, nginx, pipeline,
+                      projects, schedules, scripts, server, settings_router,
+                      terminal, websites)
 from .services import scheduler_service
 
 # Create any missing tables on startup (idempotent)
@@ -56,6 +56,8 @@ app.include_router(projects.router)
 app.include_router(scripts.router)
 app.include_router(dashboard.router)
 app.include_router(schedules.router)
+app.include_router(pipeline.router)
+app.include_router(pipeline.ws_router)        # pipeline live-stream WebSocket
 app.include_router(websites.router)
 app.include_router(databases.router)
 app.include_router(nginx.router)

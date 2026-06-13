@@ -1,6 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { wsUrl } from '../api/ws'
 
+// Colour log lines: failures red, successes green, pipeline markers brighter.
+function lineColor(line) {
+  const l = line.toLowerCase()
+  if (line.includes('✗') || l.includes('failed') || l.includes('error') || l.includes('traceback')) {
+    return 'text-red-400'
+  }
+  if (line.includes('✓') || l.includes('status=success') || l.includes(' ok')) {
+    return 'text-green-400'
+  }
+  if (line.includes('[pipeline]') || line.includes('[serverhub]')) {
+    return 'text-sky-300'
+  }
+  return 'text-slate-300'
+}
+
 /**
  * Terminal-style live log panel fed by a WebSocket.
  *
@@ -48,12 +63,16 @@ export default function LiveLog({ path, onClose }) {
           clear
         </button>
       </div>
-      <pre
+      <div
         ref={boxRef}
         className="bg-black text-green-300 text-xs font-mono p-3 h-64 overflow-y-auto whitespace-pre-wrap"
       >
-        {lines.length ? lines.join('\n') : 'Waiting for output…'}
-      </pre>
+        {lines.length
+          ? lines.map((line, i) => (
+              <div key={i} className={lineColor(line)}>{line || ' '}</div>
+            ))
+          : 'Waiting for output…'}
+      </div>
     </div>
   )
 }

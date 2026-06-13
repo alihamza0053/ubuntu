@@ -110,3 +110,31 @@ class Setting(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     value: Mapped[str] = mapped_column(Text)
+
+
+class PipelineSchedule(Base):
+    """
+    Project-level pipeline schedule: run ALL of a project's code/ scripts in
+    sequence on a cron, then restart its dashboard. One row per project.
+    """
+    __tablename__ = "pipeline_schedules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), unique=True)
+    cron_expression: Mapped[str] = mapped_column(String(64))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class PipelineRun(Base):
+    """One execution of a project's pipeline (manual or scheduled)."""
+    __tablename__ = "pipeline_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # RUNNING / SUCCESS / FAILED
+    status: Mapped[str] = mapped_column(String(16), default="RUNNING")
+    # JSON list of per-script results: [{filename, folder, status, exit_code, finished}]
+    results: Mapped[str] = mapped_column(Text, default="[]")
+    dashboard_restarted: Mapped[bool] = mapped_column(Boolean, default=False)
