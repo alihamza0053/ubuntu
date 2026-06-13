@@ -12,6 +12,7 @@ export default function Databases() {
   const [error, setError] = useState('')
   const importRef = useRef(null)
   const [importTarget, setImportTarget] = useState(null)
+  const [browseDb, setBrowseDb] = useState('')
 
   const refresh = useCallback(() => {
     api.get('/databases').then((res) => setDatabases(res.data)).catch((err) => setError(errorMessage(err)))
@@ -106,6 +107,7 @@ export default function Databases() {
                 <td className="py-2 font-mono">🗄 {d.name}</td>
                 <td className="text-slate-400">{d.linked_website || '—'}</td>
                 <td className="text-right space-x-2 whitespace-nowrap">
+                  <button onClick={() => setBrowseDb(d.name)} className="text-sky-400 hover:underline">Browse</button>
                   <button onClick={() => { setQueryDb(d.name); }} className="text-sky-400 hover:underline">Query</button>
                   <button onClick={() => exportDb(d.name)} className="text-sky-400 hover:underline">Export</button>
                   <button
@@ -131,6 +133,9 @@ export default function Databases() {
           onChange={(e) => { importDb(e.target.files[0]); e.target.value = '' }}
         />
       </div>
+
+      {/* Database browser */}
+      <DbBrowser databases={databases} db={browseDb} setDb={setBrowseDb} />
 
       {/* Query runner */}
       <div className="card">
@@ -188,6 +193,167 @@ export default function Databases() {
               <button type="submit" className="btn-primary">Create</button>
             </div>
           </form>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Visual database browser: pick a database → see its tables → click a table to
+ * see its columns and a preview of its rows.
+ */
+function DbBrowser({ databases, db, setDb }) {
+  const [tables, setTables] = useState([])
+  const [table, setTable] = useState(null)
+  const [info, setInfo] = useState(null)
+  const [view, setView] = useState('columns') // 'columns' | 'data'
+  const [error, setError] = useState('')
+
+  // Load tables when the selected database changes
+  useEffect(() => {
+    setTable(null)
+    setInfo(null)
+    if (!db) {
+      setTables([])
+      return
+    }
+    setError('')
+    api.get(`/databases/${db}/tables`)
+      .then((res) => setTables(res.data))
+      .catch((err) => setError(errorMessage(err)))
+  }, [db])
+
+  function openTable(name) {
+    setTable(name)
+    setInfo(null)
+    api.get(`/databases/${db}/tables/${name}`, { params: { limit: 100 } })
+      .then((res) => setInfo(res.data))
+      .catch((err) => setError(errorMessage(err)))
+  }
+
+  return (
+    <div className="card">
+      <div className="flex items-center gap-3 flex-wrap mb-3">
+        <h3 className="font-semibold">Database Browser</h3>
+        <select className="input max-w-xs" value={db} onChange={(e) => setDb(e.target.value)}>
+          <option value="">— select database —</option>
+          {databases.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+        </select>
+        {error && <span className="text-red-400 text-sm">{error}</span>}
+      </div>
+
+      {!db ? (
+        <p className="text-slate-600 text-sm">Pick a database (or click “Browse” above) to explore its tables.</p>
+      ) : (
+        <div className="flex gap-4" style={{ minHeight: '40vh' }}>
+          {/* Tables list */}
+          <aside className="w-60 shrink-0 border-r border-panel-border pr-3 overflow-y-auto" style={{ maxHeight: '60vh' }}>
+            <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
+              Tables ({tables.length})
+            </p>
+            <ul className="space-y-0.5">
+              {tables.map((t) => (
+                <li key={t.name}>
+                  <button
+                    onClick={() => openTable(t.name)}
+                    className={`w-full text-left px-2 py-1.5 rounded text-sm flex justify-between gap-2 ${
+                      table === t.name ? 'bg-sky-600/20 text-sky-300' : 'text-slate-300 hover:bg-slate-700/50'
+                    }`}
+                  >
+                    <span className="truncate font-mono">📋 {t.name}</span>
+                    <span className="text-xs text-slate-500 shrink-0">{t.rows ?? '?'}</span>
+                  </button>
+                </li>
+              ))}
+              {tables.length === 0 && <li className="text-xs text-slate-600 px-2">No tables</li>}
+            </ul>
+          </aside>
+
+          {/* Table detail */}
+          <div className="flex-1 min-w-0">
+            {!table ? (
+              <p className="text-slate-600 text-sm">Select a table on the left.</p>
+            ) : !info ? (
+              <p className="text-slate-500 text-sm">Loading {table}…</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 mb-3 flex-wrap">
+                  <span className="font-mono text-sky-300">{table}</span>
+                  <span className="text-xs text-slate-500">
+                    {info.columns.length} columns · {info.row_count} rows
+                  </span>
+                  <div className="ml-auto flex gap-1">
+                    <button className={view === 'columns' ? 'btn-primary' : 'btn-secondary'} onClick={() => setView('columns')}>
+                      Columns
+                    </button>
+                    <button className={view === 'data' ? 'btn-primary' : 'btn-secondary'} onClick={() => setView('data')}>
+                      Data
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-auto" style={{ maxHeight: '55vh' }}>
+                  {view === 'columns' ? (
+                    <table className="w-full text-xs border border-panel-border">
+                      <thead>
+                        <tr className="bg-slate-800 text-left">
+                          {['Column', 'Type', 'Null', 'Key', 'Default', 'Extra'].map((h) => (
+                            <th key={h} className="px-2 py-1 border border-panel-border">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {info.columns.map((c) => (
+                          <tr key={c.name}>
+                            <td className="px-2 py-1 border border-panel-border font-mono text-sky-300">{c.name}</td>
+                            <td className="px-2 py-1 border border-panel-border font-mono">{c.type}</td>
+                            <td className="px-2 py-1 border border-panel-border">{c.null}</td>
+                            <td className="px-2 py-1 border border-panel-border">
+                              {c.key === 'PRI' ? <span className="text-yellow-400">🔑 PRI</span> : c.key}
+                            </td>
+                            <td className="px-2 py-1 border border-panel-border text-slate-400">{c.default}</td>
+                            <td className="px-2 py-1 border border-panel-border text-slate-400">{c.extra}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <table className="w-full text-xs border border-panel-border">
+                      <thead>
+                        <tr className="bg-slate-800 text-left">
+                          {info.preview.columns.map((c) => (
+                            <th key={c} className="px-2 py-1 border border-panel-border font-mono">{c}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {info.preview.rows.map((row, i) => (
+                          <tr key={i}>
+                            {row.map((cell, j) => (
+                              <td key={j} className="px-2 py-1 border border-panel-border font-mono whitespace-nowrap">
+                                {cell === 'NULL' ? <span className="text-slate-600 italic">NULL</span> : cell}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                        {info.preview.rows.length === 0 && (
+                          <tr><td className="px-2 py-3 text-center text-slate-600" colSpan={info.preview.columns.length || 1}>
+                            (no rows)
+                          </td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+                {view === 'data' && info.row_count > info.preview.rows.length && (
+                  <p className="text-xs text-slate-500 mt-2">
+                    Showing first {info.preview.rows.length} of {info.row_count} rows. Use the Query Runner for more.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

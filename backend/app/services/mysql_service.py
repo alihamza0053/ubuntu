@@ -69,6 +69,72 @@ def drop_database(name: str) -> None:
     _exec_sql(f"DROP DATABASE IF EXISTS `{_ident(name)}`;")
 
 
+# ---------- Schema browsing ----------
+
+def list_tables(database: str) -> list[dict]:
+    """Tables in a database, each with its row count."""
+    out = _exec_sql("SHOW TABLES;", database=database)
+    lines = out.splitlines()
+    names = lines[1:] if len(lines) > 1 else []   # first line is the header
+    tables = []
+    for t in names:
+        if not t:
+            continue
+        try:
+            cnt_out = _exec_sql(f"SELECT COUNT(*) FROM `{_ident(t)}`;", database=database)
+            cnt_lines = cnt_out.splitlines()
+            rows = int(cnt_lines[1]) if len(cnt_lines) > 1 else 0
+        except Exception:
+            rows = None
+        tables.append({"name": t, "rows": rows})
+    return tables
+
+
+def describe_table(database: str, table: str) -> dict:
+    """Column definitions + row count for one table."""
+    t = _ident(table)
+    out = _exec_sql(f"SHOW FULL COLUMNS FROM `{t}`;", database=database)
+    lines = out.splitlines()
+    columns = []
+    if len(lines) > 1:
+        header = lines[0].split("\t")
+        idx = {h: i for i, h in enumerate(header)}
+
+        def field(parts, key):
+            i = idx.get(key)
+            return parts[i] if i is not None and i < len(parts) else ""
+
+        for line in lines[1:]:
+            parts = line.split("\t")
+            columns.append({
+                "name": field(parts, "Field"),
+                "type": field(parts, "Type"),
+                "null": field(parts, "Null"),
+                "key": field(parts, "Key"),
+                "default": field(parts, "Default"),
+                "extra": field(parts, "Extra"),
+                "comment": field(parts, "Comment"),
+            })
+
+    cnt = _exec_sql(f"SELECT COUNT(*) FROM `{t}`;", database=database).splitlines()
+    try:
+        row_count = int(cnt[1]) if len(cnt) > 1 else 0
+    except ValueError:
+        row_count = 0
+    return {"table": table, "columns": columns, "row_count": row_count}
+
+
+def preview_table(database: str, table: str, limit: int = 50) -> dict:
+    """First `limit` rows of a table as columns + rows."""
+    t = _ident(table)
+    limit = max(1, min(int(limit), 500))
+    out = _exec_sql(f"SELECT * FROM `{t}` LIMIT {limit};", database=database)
+    lines = out.splitlines()
+    columns = lines[0].split("\t") if lines else []
+    rows = [line.split("\t") for line in lines[1:]] if len(lines) > 1 else []
+    return {"columns": columns, "rows": rows}
+
+
 def run_query(database: str, sql: str) -> dict:
     """Run arbitrary SQL against a database; return columns + rows (tab-parsed)."""
     out = _exec_sql(sql, database=database)

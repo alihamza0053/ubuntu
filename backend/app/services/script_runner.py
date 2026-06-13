@@ -9,6 +9,8 @@ and records the result on the Script row.
 Subprocesses are spawned with an argument list — never a shell string.
 """
 import asyncio
+import os
+import signal
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +18,34 @@ from ..config import settings
 from ..database import SessionLocal
 from ..models import Script
 from .activity import log_activity
+
+# Currently-running script processes, keyed by script id, so they can be
+# stopped. Scripts run in their own process group (start_new_session=True) so
+# stopping also kills any child processes they spawned (e.g. headless Chrome).
+_running: dict[int, asyncio.subprocess.Process] = {}
+_stopped: set[int] = set()
+
+
+def is_running(script_id: int) -> bool:
+    proc = _running.get(script_id)
+    return proc is not None and proc.returncode is None
+
+
+def stop_script(script_id: int) -> bool:
+    """Kill a running script (and its child processes). Returns True if it was running."""
+    proc = _running.get(script_id)
+    if proc is None or proc.returncode is not None:
+        return False
+    _stopped.add(script_id)
+    try:
+        # Kill the whole process group (script + Chrome/chromedriver children)
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError, AttributeError, OSError):
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    return True
 
 
 def log_path_for(project_name: str, filename: str) -> Path:
@@ -54,6 +84,7 @@ async def run_script(
             cwd=str(script_dir),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,  # merge stderr into stdout
+            start_new_session=True,            # own process group (kill children on stop)
         )
     except FileNotFoundError as exc:
         # Interpreter or working directory missing
@@ -68,6 +99,7 @@ async def run_script(
                 pass
         return "FAILED", -1
 
+    _running[script_id] = process
     assert process.stdout is not None
     while True:
         raw = await process.stdout.readline()
@@ -83,7 +115,12 @@ async def run_script(
                 on_line = None
 
     exit_code = await process.wait()
-    status = "SUCCESS" if exit_code == 0 else "FAILED"
+    _running.pop(script_id, None)
+    if script_id in _stopped:
+        _stopped.discard(script_id)
+        status = "STOPPED"
+    else:
+        status = "SUCCESS" if exit_code == 0 else "FAILED"
 
     footer = (
         f"\n[serverhub] started {started.isoformat()}Z"
@@ -92,7 +129,7 @@ async def run_script(
     )
     log_path.write_text("\n".join(lines) + footer, encoding="utf-8")
     _update_script(script_id, status=status, log=str(log_path), ran_at=started)
-    mark = "✓" if status == "SUCCESS" else "✗"
+    mark = {"SUCCESS": "✓", "STOPPED": "⏹"}.get(status, "✗")
     log_activity(f"{mark} script {project_name}/{folder}/{filename} {status} (exit {exit_code})")
     return status, exit_code
 

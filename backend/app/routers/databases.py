@@ -58,6 +58,20 @@ def run_query(body: QueryRequest):
     return mysql_service.run_query(body.database, body.sql)
 
 
+@router.get("/{name}/tables")
+def list_tables(name: str):
+    """All tables in a database, each with a row count."""
+    return mysql_service.list_tables(name)
+
+
+@router.get("/{name}/tables/{table}")
+def describe_table(name: str, table: str, limit: int = 50):
+    """A table's columns, row count, and a preview of its rows."""
+    info = mysql_service.describe_table(name, table)
+    preview = mysql_service.preview_table(name, table, limit)
+    return {**info, "preview": preview}
+
+
 @router.get("/{name}/export")
 def export_database(name: str):
     """Download a .sql dump of the database."""

@@ -13,10 +13,19 @@ from ..database import SessionLocal, get_db
 from ..deps import authenticate_websocket, get_current_user
 from ..models import Script
 from ..schemas import DetailResponse
-from ..services.script_runner import log_path_for, run_script
+from ..services.script_runner import log_path_for, run_script, stop_script
 from .projects import get_project_or_404, sync_scripts
 
 router = APIRouter(tags=["scripts"])
+
+
+@router.post("/api/scripts/{script_id}/stop", response_model=DetailResponse,
+             dependencies=[Depends(get_current_user)])
+def stop_script_endpoint(script_id: int):
+    """Stop a running script (and its child processes, e.g. headless Chrome)."""
+    if stop_script(script_id):
+        return DetailResponse(detail="Stopping script…")
+    raise HTTPException(status_code=409, detail="Script is not running")
 
 
 def _find_script(db: Session, project_id: int, filename: str, folder: str) -> Script:

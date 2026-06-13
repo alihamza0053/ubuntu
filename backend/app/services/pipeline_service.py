@@ -15,7 +15,25 @@ from ..database import SessionLocal
 from ..models import PipelineRun, Project, Script
 from . import supervisor_service
 from .activity import log_activity
-from .script_runner import run_script
+from .script_runner import run_script, stop_script
+
+# Stop requests + the script currently running, keyed by project id, so a
+# running pipeline can be cancelled from the UI.
+_stop_requested: set[int] = set()
+_current_script: dict[int, int] = {}
+
+
+def request_stop(project_id: int) -> bool:
+    """Ask a running pipeline to stop and kill its in-progress script."""
+    _stop_requested.add(project_id)
+    sid = _current_script.get(project_id)
+    if sid is not None:
+        stop_script(sid)
+    return True
+
+
+def is_pipeline_running(project_id: int) -> bool:
+    return project_id in _current_script
 
 
 def pipeline_log_path(project_name: str):
@@ -97,6 +115,7 @@ async def run_pipeline(project_id: int, on_line=None) -> tuple[str, list]:
 
     results: list = []
     overall = "SUCCESS"
+    _stop_requested.discard(project_id)   # clear any stale stop flag
     try:
         log_activity(f"▶ pipeline {name} started ({len(scripts)} script(s))")
         await emit(f"===== pipeline run started: {name} — {len(scripts)} script(s) =====")
@@ -105,12 +124,22 @@ async def run_pipeline(project_id: int, on_line=None) -> tuple[str, list]:
             await emit("[pipeline] no scripts found in code/ — nothing to run")
 
         for sid, folder, filename in scripts:
+            if project_id in _stop_requested:
+                overall = "STOPPED"
+                await emit("[pipeline] ⏹ stopped by user — remaining scripts skipped")
+                break
+
             await emit(f"[pipeline] ▶ running {folder}/{filename}")
 
             async def fwd(line: str):
                 await emit(f"    {line}")
 
-            status, code = await run_script(sid, name, folder, filename, on_line=fwd)
+            _current_script[project_id] = sid
+            try:
+                status, code = await run_script(sid, name, folder, filename, on_line=fwd)
+            finally:
+                _current_script.pop(project_id, None)
+
             results.append({
                 "filename": filename,
                 "folder": folder,
@@ -120,16 +149,22 @@ async def run_pipeline(project_id: int, on_line=None) -> tuple[str, list]:
             })
             if status == "SUCCESS":
                 await emit(f"[pipeline] ✓ {filename} OK")
+            elif status == "STOPPED":
+                overall = "STOPPED"
+                await emit(f"[pipeline] ⏹ {filename} stopped by user")
+                break
             else:
                 overall = "FAILED"
                 await emit(f"[pipeline] ✗ {filename} FAILED (exit {code})")
             # Persist after each script so the UI updates live
             _update_run(run_id, status="RUNNING", results=results)
 
-        # Restart the dashboard so it reloads fresh data (best effort)
+        # Restart the dashboard so it reloads fresh data (skipped if stopped)
         restarted = False
         dashboard_app = settings.PROJECTS_ROOT / name / "dashboard" / "app.py"
-        if dashboard_app.is_file():
+        if overall == "STOPPED":
+            await emit("[pipeline] (stopped — dashboard not restarted)")
+        elif dashboard_app.is_file():
             await emit("[pipeline] ↻ restarting dashboard to load fresh data")
             try:
                 supervisor_service.restart(name)
@@ -141,10 +176,13 @@ async def run_pipeline(project_id: int, on_line=None) -> tuple[str, list]:
             await emit("[pipeline] (no dashboard/app.py — skipping restart)")
 
         _update_run(run_id, status=overall, results=results, finished=True, restarted=restarted)
-        log_activity(f"{'✓' if overall == 'SUCCESS' else '✗'} pipeline {name} finished — status={overall}")
+        mark = {"SUCCESS": "✓", "STOPPED": "⏹"}.get(overall, "✗")
+        log_activity(f"{mark} pipeline {name} finished — status={overall}")
         await emit(f"===== pipeline run finished: status={overall} =====")
         return overall, results
     finally:
+        _stop_requested.discard(project_id)
+        _current_script.pop(project_id, None)
         try:
             log_fh.close()
         except Exception:

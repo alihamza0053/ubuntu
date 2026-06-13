@@ -22,6 +22,15 @@ export default function ScriptsTab({ project, onChanged }) {
     refresh()
   }, [refresh])
 
+  // While a live run panel is open, poll so RUNNING/STOPPED status (and the
+  // Stop button) stays current.
+  useEffect(() => {
+    const anyLive = Object.values(panels).some((p) => p?.mode === 'live')
+    if (!anyLive) return
+    const t = setInterval(refresh, 3000)
+    return () => clearInterval(t)
+  }, [panels, refresh])
+
   function runLive(script) {
     // Open (or re-open) the live stream panel for this script
     setPanels((prev) => ({ ...prev, [script.id]: null }))
@@ -29,6 +38,15 @@ export default function ScriptsTab({ project, onChanged }) {
       () => setPanels((prev) => ({ ...prev, [script.id]: { mode: 'live' } })),
       0,
     )
+  }
+
+  async function stopScript(script) {
+    try {
+      await api.post(`/scripts/${script.id}/stop`)
+      refresh()
+    } catch (err) {
+      alert(errorMessage(err))
+    }
   }
 
   async function viewLog(script) {
@@ -67,16 +85,15 @@ export default function ScriptsTab({ project, onChanged }) {
               <span className="text-xs text-slate-500">last run: {formatTime(script.last_run)}</span>
 
               <div className="ml-auto flex gap-2">
-                <button
-                  className="btn-primary"
-                  onClick={() => runLive(script)}
-                  disabled={script.last_status === 'RUNNING'}
-                >
-                  ▶ Run Now
-                </button>
-                <button className="btn-secondary" disabled title="Scheduling arrives in Phase 2">
-                  ⏰ Schedule
-                </button>
+                {script.last_status === 'RUNNING' ? (
+                  <button className="btn-danger" onClick={() => stopScript(script)}>
+                    ⏹ Stop
+                  </button>
+                ) : (
+                  <button className="btn-primary" onClick={() => runLive(script)}>
+                    ▶ Run Now
+                  </button>
+                )}
                 <button className="btn-secondary" onClick={() => viewLog(script)}>
                   📜 View Log
                 </button>

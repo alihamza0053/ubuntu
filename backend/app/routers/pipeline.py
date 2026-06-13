@@ -135,6 +135,17 @@ async def run_pipeline_now(project_id: int, db: Session = Depends(get_db)):
     return DetailResponse(detail=f"Pipeline started for '{project.name}'")
 
 
+@router.post("/api/projects/{project_id}/stop-pipeline", response_model=DetailResponse,
+             dependencies=[Depends(get_current_user)])
+def stop_pipeline_now(project_id: int, db: Session = Depends(get_db)):
+    """Stop a running pipeline (kills its current script, skips the rest)."""
+    _get_project(project_id, db)
+    if not pipeline_service.is_pipeline_running(project_id):
+        raise HTTPException(status_code=409, detail="No pipeline is currently running")
+    pipeline_service.request_stop(project_id)
+    return DetailResponse(detail="Stopping pipeline…")
+
+
 @ws_router.websocket("/ws/pipeline/{project_id}/run")
 async def run_pipeline_ws(websocket: WebSocket, project_id: int):
     """Run the pipeline and stream progress live (✓/✗ markers per script)."""

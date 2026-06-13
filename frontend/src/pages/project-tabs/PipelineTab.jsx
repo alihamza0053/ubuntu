@@ -66,6 +66,15 @@ export default function PipelineTab({ project }) {
     setTimeout(() => setRunWs(`/ws/pipeline/${project.id}/run`), 0)
   }
 
+  async function stopNow() {
+    try {
+      await api.post(`/projects/${project.id}/stop-pipeline`)
+      setMsg('Stopping pipeline…')
+    } catch (err) {
+      alert(errorMessage(err))
+    }
+  }
+
   async function saveSchedule() {
     setMsg('')
     try {
@@ -110,6 +119,8 @@ export default function PipelineTab({ project }) {
 
   const lastRun = info?.last_run
   const scheduled = !!info?.cron_expression
+  // Running if we're locally streaming, or the latest run is still RUNNING
+  const running = !!runWs || lastRun?.status === 'RUNNING'
 
   return (
     <div className="space-y-4">
@@ -120,7 +131,14 @@ export default function PipelineTab({ project }) {
           <span className="text-xs text-slate-500">
             Runs all {info?.scripts?.length ?? 0} code/ script(s) in order, then restarts the dashboard.
           </span>
-          <button className="btn-primary ml-auto" onClick={runNow}>▶ Run All Now</button>
+          <div className="ml-auto flex gap-2">
+            {running && (
+              <button className="btn-danger" onClick={stopNow}>⏹ Stop</button>
+            )}
+            <button className="btn-primary" onClick={runNow} disabled={running}>
+              {running ? 'Running…' : '▶ Run All Now'}
+            </button>
+          </div>
         </div>
 
         {/* Ordered script list */}

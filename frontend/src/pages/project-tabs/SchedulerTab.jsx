@@ -88,6 +88,15 @@ export default function SchedulerTab({ project }) {
     refresh()
   }
 
+  async function stopRun(scriptId) {
+    try {
+      await api.post(`/scripts/${scriptId}/stop`)
+      refresh()
+    } catch (err) {
+      alert(errorMessage(err))
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Builder */}
@@ -188,7 +197,10 @@ export default function SchedulerTab({ project }) {
                       {s.is_active ? 'ON' : 'OFF'}
                     </button>
                   </td>
-                  <td className="text-right">
+                  <td className="text-right space-x-2 whitespace-nowrap">
+                    {s.last_status === 'RUNNING' && (
+                      <button onClick={() => stopRun(s.script_id)} className="text-red-400 hover:underline">⏹ stop</button>
+                    )}
                     <button onClick={() => remove(s.id)} className="text-red-400 hover:underline">delete</button>
                   </td>
                 </tr>
