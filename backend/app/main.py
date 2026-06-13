@@ -18,7 +18,7 @@ from .database import Base, engine
 from .routers import (auth, dashboard, databases, files, logs, nginx, pipeline,
                       projects, schedules, scripts, server, settings_router,
                       terminal, websites)
-from .services import scheduler_service
+from .services import pipeline_service, scheduler_service
 
 # Create any missing tables on startup (idempotent)
 Base.metadata.create_all(bind=engine)
@@ -26,6 +26,8 @@ Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # A restart kills any in-flight scripts/pipelines — clear stale RUNNING rows
+    pipeline_service.mark_interrupted()
     # Start APScheduler and load active schedules from the DB
     scheduler_service.start()
     yield

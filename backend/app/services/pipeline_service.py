@@ -21,6 +21,9 @@ from .script_runner import run_script, stop_script
 # running pipeline can be cancelled from the UI.
 _stop_requested: set[int] = set()
 _current_script: dict[int, int] = {}
+# Projects whose pipeline task is alive right now (for the whole run, not just
+# while a script executes) — used so Stop works between scripts too.
+_running_pipelines: set[int] = set()
 
 
 def request_stop(project_id: int) -> bool:
@@ -33,7 +36,28 @@ def request_stop(project_id: int) -> bool:
 
 
 def is_pipeline_running(project_id: int) -> bool:
-    return project_id in _current_script
+    return project_id in _running_pipelines
+
+
+def mark_interrupted() -> None:
+    """
+    On panel startup, any pipeline run or script left in RUNNING state must be
+    stale — the process that was running them is gone (a restart kills child
+    scripts). Mark them FAILED so the UI isn't stuck showing "RUNNING".
+    """
+    from datetime import datetime as _dt
+    db = SessionLocal()
+    try:
+        db.query(PipelineRun).filter(PipelineRun.status == "RUNNING").update(
+            {PipelineRun.status: "FAILED", PipelineRun.finished_at: _dt.utcnow()},
+            synchronize_session=False,
+        )
+        db.query(Script).filter(Script.last_status == "RUNNING").update(
+            {Script.last_status: "FAILED"}, synchronize_session=False,
+        )
+        db.commit()
+    finally:
+        db.close()
 
 
 def pipeline_log_path(project_name: str):
@@ -92,6 +116,8 @@ async def run_pipeline(project_id: int, on_line=None) -> tuple[str, list]:
         run_id = run.id
     finally:
         db.close()
+
+    _running_pipelines.add(project_id)   # Stop works for the whole run now
 
     # Every line is timestamped and appended to the project's pipeline.log so it
     # also shows in the Logs page (source "Pipeline: <project>").
@@ -180,7 +206,13 @@ async def run_pipeline(project_id: int, on_line=None) -> tuple[str, list]:
         log_activity(f"{mark} pipeline {name} finished — status={overall}")
         await emit(f"===== pipeline run finished: status={overall} =====")
         return overall, results
+    except Exception as exc:
+        # Never leave the run stuck at RUNNING on an unexpected error
+        _update_run(run_id, status="FAILED", results=results, finished=True)
+        log_activity(f"✗ pipeline {name} crashed: {exc}")
+        return "FAILED", results
     finally:
+        _running_pipelines.discard(project_id)
         _stop_requested.discard(project_id)
         _current_script.pop(project_id, None)
         try:

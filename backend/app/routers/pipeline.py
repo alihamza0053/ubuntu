@@ -138,12 +138,28 @@ async def run_pipeline_now(project_id: int, db: Session = Depends(get_db)):
 @router.post("/api/projects/{project_id}/stop-pipeline", response_model=DetailResponse,
              dependencies=[Depends(get_current_user)])
 def stop_pipeline_now(project_id: int, db: Session = Depends(get_db)):
-    """Stop a running pipeline (kills its current script, skips the rest)."""
+    """Stop a running pipeline; also clears a stale RUNNING run left by a restart."""
     _get_project(project_id, db)
-    if not pipeline_service.is_pipeline_running(project_id):
-        raise HTTPException(status_code=409, detail="No pipeline is currently running")
-    pipeline_service.request_stop(project_id)
-    return DetailResponse(detail="Stopping pipeline…")
+    if pipeline_service.is_pipeline_running(project_id):
+        pipeline_service.request_stop(project_id)
+        return DetailResponse(detail="Stopping pipeline…")
+
+    # Nothing is actually running — finalize a stale RUNNING row if present
+    # (e.g. the panel restarted mid-run, leaving the record stuck).
+    from datetime import datetime
+
+    stale = (
+        db.query(PipelineRun)
+        .filter(PipelineRun.project_id == project_id, PipelineRun.status == "RUNNING")
+        .order_by(PipelineRun.started_at.desc())
+        .first()
+    )
+    if stale:
+        stale.status = "FAILED"
+        stale.finished_at = datetime.utcnow()
+        db.commit()
+        return DetailResponse(detail="Cleared a stale running pipeline")
+    raise HTTPException(status_code=409, detail="No pipeline is currently running")
 
 
 @ws_router.websocket("/ws/pipeline/{project_id}/run")

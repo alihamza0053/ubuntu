@@ -68,8 +68,10 @@ export default function PipelineTab({ project }) {
 
   async function stopNow() {
     try {
-      await api.post(`/projects/${project.id}/stop-pipeline`)
-      setMsg('Stopping pipeline…')
+      const res = await api.post(`/projects/${project.id}/stop-pipeline`)
+      setMsg(res.data.detail)
+      setRunWs(null)
+      setTimeout(refresh, 1000)   // let the run wind down, then refresh status
     } catch (err) {
       alert(errorMessage(err))
     }
