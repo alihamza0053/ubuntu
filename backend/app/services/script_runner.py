@@ -15,6 +15,7 @@ from pathlib import Path
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Script
+from .activity import log_activity
 
 
 def log_path_for(project_name: str, filename: str) -> Path:
@@ -42,6 +43,7 @@ async def run_script(
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     _update_script(script_id, status="RUNNING", log=str(log_path))
+    log_activity(f"▶ script {project_name}/{folder}/{filename} started")
 
     started = datetime.utcnow()
     lines: list[str] = []
@@ -58,6 +60,7 @@ async def run_script(
         error_line = f"[serverhub] failed to start: {exc}"
         log_path.write_text(error_line + "\n", encoding="utf-8")
         _update_script(script_id, status="FAILED", log=str(log_path), ran_at=started)
+        log_activity(f"✗ script {project_name}/{folder}/{filename} FAILED to start")
         if on_line:
             try:
                 await on_line(error_line)
@@ -89,6 +92,8 @@ async def run_script(
     )
     log_path.write_text("\n".join(lines) + footer, encoding="utf-8")
     _update_script(script_id, status=status, log=str(log_path), ran_at=started)
+    mark = "✓" if status == "SUCCESS" else "✗"
+    log_activity(f"{mark} script {project_name}/{folder}/{filename} {status} (exit {exit_code})")
     return status, exit_code
 
 

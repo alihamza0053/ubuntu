@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 from ..database import SessionLocal, get_db
 from ..deps import authenticate_websocket, get_current_user
 from ..models import Project, Script
+from ..services.activity import ACTIVITY_LOG
+from ..services.pipeline_service import pipeline_log_path
 from ..services.streaming import tail_file
 from ..services.supervisor_service import dashboard_log_path
 
@@ -38,12 +40,16 @@ def _safe_name(name: str) -> str:
 
 def _resolve(log_type: str, name: str | None, db: Session) -> Path:
     """Map a (log_type, name) pair to a concrete file path."""
+    if log_type == "activity":
+        return ACTIVITY_LOG
     if log_type == "nginx":
         return NGINX_ACCESS if name == "access" else NGINX_ERROR
     if log_type == "system":
         return SYSLOG
     if log_type == "supervisor":
         return dashboard_log_path(_safe_name(name or ""), "out")
+    if log_type == "pipeline":
+        return pipeline_log_path(_safe_name(name or ""))
     if log_type == "script":
         script = db.get(Script, int(name)) if name else None
         if not script or not script.last_log:
@@ -69,6 +75,10 @@ def log_sources(db: Session = Depends(get_db)):
     for p in db.query(Project).all():
         sources.append({"type": "supervisor", "name": p.name,
                         "label": f"Dashboard: {p.name}"})
+        # Pipeline log (only list it once the project has run a pipeline)
+        if pipeline_log_path(p.name).is_file():
+            sources.append({"type": "pipeline", "name": p.name,
+                            "label": f"Pipeline: {p.name}"})
     for s in db.query(Script).filter(Script.last_log.isnot(None)).all():
         sources.append({"type": "script", "name": str(s.id),
                         "label": f"Script: {s.project.name}/{s.filename}"})
@@ -87,6 +97,14 @@ def system_log(lines: int = Query(TAIL_DEFAULT, ge=1, le=5000)):
     return {"content": _tail(SYSLOG, lines)}
 
 
+@router.get("/api/logs/activity", dependencies=[Depends(get_current_user)])
+def activity_log(lines: int = Query(300, ge=1, le=5000)):
+    """The global activity feed (scripts, pipelines, dashboard actions)."""
+    if not ACTIVITY_LOG.is_file():
+        return {"content": ""}
+    return {"content": _tail(ACTIVITY_LOG, lines)}
+
+
 @router.get("/api/logs/supervisor/{name}", dependencies=[Depends(get_current_user)])
 def supervisor_log(name: str, stream: str = Query("out", pattern="^(out|err)$"),
                    lines: int = Query(TAIL_DEFAULT, ge=1, le=5000)):
@@ -97,6 +115,12 @@ def supervisor_log(name: str, stream: str = Query("out", pattern="^(out|err)$"),
 def script_log(script_id: int, lines: int = Query(2000, ge=1, le=20000),
                db: Session = Depends(get_db)):
     return {"content": _tail(_resolve("script", str(script_id), db), lines)}
+
+
+@router.get("/api/logs/pipeline/{name}", dependencies=[Depends(get_current_user)])
+def pipeline_log(name: str, lines: int = Query(5000, ge=1, le=50000),
+                 db: Session = Depends(get_db)):
+    return {"content": _tail(_resolve("pipeline", name, db), lines)}
 
 
 @router.get("/api/logs/download", dependencies=[Depends(get_current_user)])

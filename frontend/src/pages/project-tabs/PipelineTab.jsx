@@ -80,7 +80,36 @@ export default function PipelineTab({ project }) {
     }
   }
 
+  // Quickly turn the schedule on/off without changing the cron
+  async function setActiveState(next) {
+    setMsg('')
+    try {
+      await api.put(`/projects/${project.id}/pipeline`, {
+        cron_expression: info?.cron_expression || cron,
+        is_active: next,
+      })
+      setActive(next)
+      setMsg(next ? 'Schedule enabled ✓' : 'Schedule stopped ✓')
+      refresh()
+    } catch (err) {
+      setMsg(errorMessage(err))
+    }
+  }
+
+  async function deleteSchedule() {
+    if (!window.confirm('Delete this pipeline schedule? (the pipeline can still be run manually)')) return
+    setMsg('')
+    try {
+      await api.delete(`/projects/${project.id}/pipeline`)
+      setMsg('Schedule deleted ✓')
+      refresh()
+    } catch (err) {
+      setMsg(errorMessage(err))
+    }
+  }
+
   const lastRun = info?.last_run
+  const scheduled = !!info?.cron_expression
 
   return (
     <div className="space-y-4">
@@ -157,6 +186,31 @@ export default function PipelineTab({ project }) {
       <div className="card">
         <h3 className="font-semibold mb-3">Schedule the Pipeline</h3>
         {msg && <p className={`text-sm mb-2 ${msg.includes('✓') ? 'text-green-400' : 'text-red-400'}`}>{msg}</p>}
+
+        {/* Current schedule status + stop/delete */}
+        <div className="flex items-center gap-3 flex-wrap mb-4 p-3 rounded-lg bg-slate-900 border border-panel-border">
+          {scheduled ? (
+            <>
+              <span className={`badge ${info.is_active ? 'bg-green-500/15 text-green-400' : 'bg-slate-500/20 text-slate-400'}`}>
+                {info.is_active ? '● Scheduled (active)' : '○ Scheduled (stopped)'}
+              </span>
+              <code className="text-sky-300 text-xs bg-slate-800 px-2 py-1 rounded">{info.cron_expression}</code>
+              {info.is_active && info.next_run && (
+                <span className="text-xs text-slate-500">next run: {fmt(info.next_run)}</span>
+              )}
+              <div className="ml-auto flex gap-2">
+                {info.is_active ? (
+                  <button className="btn-secondary" onClick={() => setActiveState(false)}>⏸ Stop</button>
+                ) : (
+                  <button className="btn-secondary" onClick={() => setActiveState(true)}>▶ Enable</button>
+                )}
+                <button className="btn-secondary text-red-400" onClick={deleteSchedule}>🗑 Delete</button>
+              </div>
+            </>
+          ) : (
+            <span className="text-sm text-slate-500">No schedule yet — set one below.</span>
+          )}
+        </div>
 
         <div className="grid sm:grid-cols-2 gap-3">
           <div>

@@ -96,6 +96,115 @@ Set them once on the server (see Section 5) instead of committing passwords.
 
 ---
 
+## 2b. Convert one of YOUR existing download scripts (drop-in recipe)
+
+Most of the operations scripts use the `webdriver.ChromeOptions()` + `prefs`
+style. Here's the exact recipe used to convert them — follow these 5 edits on
+any new script and it will run headless on the server.
+
+### Edit 1 — top of file: imports, output folder, credentials, browser path
+
+Replace your Windows config block with this (change `operations` to your project
+and the env-var names to suit the login):
+
+```python
+import os, shutil, atexit   # add these to your existing imports
+
+# Save where the dashboard reads. Override with DOWNLOAD_DIR if needed.
+download_directory = os.getenv("DOWNLOAD_DIR", "/srv/projects/operations/data")
+os.makedirs(download_directory, exist_ok=True)
+
+# Credentials from env vars (fallback keeps it working immediately)
+LOGIN_USER = os.getenv("ORACLE_USER", "HOD.ERP")
+LOGIN_PASS = os.getenv("ORACLE_PASS", "UKMST@123")
+
+# Find the server's Chrome/Chromium binary
+CHROME_BINARY = next((p for p in [
+    shutil.which("google-chrome"), shutil.which("chromium-browser"),
+    shutil.which("chromium"), "/usr/bin/google-chrome"] if p and os.path.exists(p)), None)
+```
+
+### Edit 2 — the ChromeOptions block: add headless + binary, fix the path
+
+```python
+chrome_options = webdriver.ChromeOptions()
+prefs = {
+    "download.default_directory": download_directory,   # NOT .replace('/','\\')
+    "download.prompt_for_download": False,
+    "download.directory_upgrade": True,
+    "profile.default_content_setting_values.automatic_downloads": 1,
+}
+chrome_options.add_experimental_option("prefs", prefs)
+# --- headless server flags (the important part) ---
+chrome_options.add_argument("--headless=new")
+chrome_options.add_argument("--no-sandbox")
+chrome_options.add_argument("--disable-dev-shm-usage")
+chrome_options.add_argument("--disable-gpu")
+chrome_options.add_argument("--window-size=1920,1080")
+if CHROME_BINARY:
+    chrome_options.binary_location = CHROME_BINARY
+# keep any of your other options (excludeSwitches, etc.)
+```
+
+> Remove `--start-maximized` and `driver.maximize_window()` — they don't work
+> headless (there's no window to maximize).
+
+### Edit 3 — right after creating the driver: cleanup + allow downloads
+
+```python
+driver = webdriver.Chrome(options=chrome_options)
+
+def _cleanup():
+    try:
+        driver.quit()
+    except Exception:
+        pass
+atexit.register(_cleanup)   # closes Chrome even if the script crashes
+
+driver.execute_cdp_cmd("Page.setDownloadBehavior",
+                       {"behavior": "allow", "downloadPath": download_directory})
+```
+
+> `atexit` is the easy way to guarantee cleanup without wrapping the whole
+> linear script in `try/finally`. (If your script already has a `try/finally`,
+> just put `driver.quit()` in the `finally` instead.)
+
+### Edit 4 — use the credential variables at login
+
+```python
+username.send_keys(LOGIN_USER)
+password.send_keys(LOGIN_PASS)
+```
+
+### Edit 5 — make the output filename match the dashboard
+
+If a dashboard reads this file, save it with the **exact name** the dashboard
+expects, in `data/`. Check the dashboard's `CONFIG` section for the filename.
+
+| If the dashboard reads… | your script must produce in `data/`… |
+|---|---|
+| `pd.read_excel(".../Foo.xlsx")` | `Foo.xlsx` (same name, same folder) |
+| an `.xls` file | save `.xls` (the dashboard needs `xlrd` — see Section 3) |
+
+### Conversion checklist
+
+- [ ] `download_directory` → `/srv/projects/<project>/data` via `DOWNLOAD_DIR`.
+- [ ] Removed Windows paths and any `.replace('/', '\\')`.
+- [ ] Added the 5 headless flags + `binary_location`.
+- [ ] Removed `--start-maximized` / `maximize_window()`.
+- [ ] `setDownloadBehavior` CDP call after creating the driver.
+- [ ] `atexit` cleanup (or `driver.quit()` in `finally`).
+- [ ] Credentials via `os.getenv(...)`.
+- [ ] Output filename matches what the dashboard reads.
+- [ ] Tested from the **Terminal**, then **Scripts → Run Now**.
+
+> A second login system? Use different env-var names, e.g. the OQL report uses
+> `OQL_USER` / `OQL_PASS` while the Oracle Fusion reports use
+> `ORACLE_USER` / `ORACLE_PASS`. Set them all in the supervisor `environment=`
+> line (Section 5).
+
+---
+
 ## 3. One-time server setup for Selenium
 
 > ⚠️ **Use Google Chrome (.deb), NOT apt/snap `chromium`.** On Ubuntu 22.04/24.04
@@ -121,13 +230,19 @@ sudo apt install -y ./google-chrome-stable_current_amd64.deb
 google-chrome --version            # confirm it installed
 ```
 
-Install Selenium into the panel's venv (the `selenium` package includes
-**Selenium Manager**, which auto-downloads the matching driver — you do **not**
-need a separate chromedriver):
+Install Selenium (+ the common data libraries your scripts use) into the panel's
+venv. Scripts run with `/srv/serverhub/venv/bin/python`, so anything they
+`import` must be installed there. The `selenium` package includes **Selenium
+Manager**, which auto-downloads the matching driver — you do **not** need a
+separate chromedriver:
 
 ```bash
-sudo /srv/serverhub/venv/bin/pip install selenium
+sudo /srv/serverhub/venv/bin/pip install selenium pandas openpyxl xlrd
 ```
+
+> `openpyxl` = read/write `.xlsx`; **`xlrd` = read/convert `.xls`** (e.g.
+> `cut-to-pack.py` converts an `.xls` export to `.xlsx`). Add any other library
+> a script imports the same way.
 
 Let the panel user write the driver cache:
 
@@ -203,6 +318,7 @@ status. Toggle it on/off or delete it from the same table.
 
 | Symptom | Cause / fix |
 |---|---|
+| **`javascript error: Cannot convert undefined or null to object`** (inside a `WebDriverWait(...).until(...)`) | Selenium's `is_displayed()` JS atom is broken on **very new Chrome (149+)**. `element_to_be_clickable` / `visibility_of` call it. Add the `is_displayed` workaround below — or use `presence_of_element_located` + a JS click instead. |
 | **`Service /usr/bin/chromedriver unexpectedly exited. Status code was: 1`** | You're on **snap Chromium** — the snap chromedriver can't run as the `serverhub` user. Switch to Google Chrome `.deb` and remove the snap driver (Section 3). Then `CHROMEDRIVER` is `None` and Selenium Manager supplies the right driver. |
 | `WebDriverException: unable to discover open pages` / `session not created` | Browser not found or not headless. Confirm `google-chrome --version` works; ensure the headless args are set. |
 | `... cannot find Chrome binary` | Set `options.binary_location` to the path from `which google-chrome`. |
@@ -218,6 +334,25 @@ Check a missing Python import:
 ```bash
 sudo /srv/serverhub/venv/bin/pip install <package>
 ```
+
+### The `is_displayed()` / Chrome 149+ workaround
+
+Paste this once, right after you create the driver. It makes
+`element_to_be_clickable` / `visibility_of` waits survive the broken Chrome JS
+atom (it only changes behaviour when the check itself errors):
+
+```python
+from selenium.webdriver.remote.webelement import WebElement as _WebElement
+_orig_is_displayed = _WebElement.is_displayed
+def _safe_is_displayed(self):
+    try:
+        return _orig_is_displayed(self)
+    except Exception:
+        return True
+_WebElement.is_displayed = _safe_is_displayed
+```
+
+All of the operations report scripts already include this block.
 
 ---
 

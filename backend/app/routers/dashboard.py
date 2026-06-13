@@ -8,6 +8,7 @@ from ..database import get_db
 from ..deps import get_current_user
 from ..schemas import DashboardStatusOut, DetailResponse
 from ..services import supervisor_service
+from ..services.activity import log_activity
 from .projects import get_project_or_404, project_root
 
 router = APIRouter(
@@ -40,6 +41,7 @@ def start_dashboard(project_id: int, db: Session = Depends(get_db)):
     supervisor_service.write_config(project.name, project.dashboard_port)
     output = supervisor_service.start(project.name)
     _set_status(project, db)
+    log_activity(f"▶ dashboard {project.name} start")
     return DetailResponse(detail=output)
 
 
@@ -48,6 +50,7 @@ def stop_dashboard(project_id: int, db: Session = Depends(get_db)):
     project = get_project_or_404(project_id, db)
     output = supervisor_service.stop(project.name)
     _set_status(project, db)
+    log_activity(f"⏹ dashboard {project.name} stop")
     return DetailResponse(detail=output)
 
 
@@ -55,6 +58,7 @@ def stop_dashboard(project_id: int, db: Session = Depends(get_db)):
 def restart_dashboard(project_id: int, db: Session = Depends(get_db)):
     project = get_project_or_404(project_id, db)
     output = supervisor_service.restart(project.name)
+    log_activity(f"🔄 dashboard {project.name} restart")
     _set_status(project, db)
     return DetailResponse(detail=output)
 

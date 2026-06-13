@@ -112,6 +112,18 @@ def set_pipeline(project_id: int, body: PipelineConfig, db: Session = Depends(ge
     }
 
 
+@router.delete("/api/projects/{project_id}/pipeline", response_model=DetailResponse,
+               dependencies=[Depends(get_current_user)])
+def delete_pipeline(project_id: int, db: Session = Depends(get_db)):
+    """Remove a project's pipeline schedule entirely (stops + deletes it)."""
+    scheduler_service.remove_pipeline_job(project_id)
+    pipe = db.query(PipelineSchedule).filter(PipelineSchedule.project_id == project_id).first()
+    if pipe:
+        db.delete(pipe)
+        db.commit()
+    return DetailResponse(detail="Pipeline schedule removed")
+
+
 @router.post("/api/projects/{project_id}/run-pipeline", response_model=DetailResponse,
              dependencies=[Depends(get_current_user)])
 async def run_pipeline_now(project_id: int, db: Session = Depends(get_db)):

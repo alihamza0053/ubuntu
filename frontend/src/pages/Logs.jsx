@@ -1,6 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import { wsUrl } from '../api/ws'
+import LiveLog from '../components/LiveLog'
+
+/**
+ * Always-on global activity feed — streams everything the panel is doing right
+ * now (scripts running, pipelines, dashboard actions), failures in red.
+ */
+function LiveActivity() {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="card">
+      <div className="flex items-center gap-2">
+        <h3 className="font-semibold">⚡ Live Activity</h3>
+        <span className="text-xs text-slate-500">scripts, pipelines &amp; dashboard actions as they happen</span>
+        <button className="ml-auto text-xs text-slate-400 hover:text-slate-200" onClick={() => setOpen((o) => !o)}>
+          {open ? 'hide' : 'show'}
+        </button>
+      </div>
+      {open && <LiveLog path="/ws/logs/activity/all" />}
+    </div>
+  )
+}
 
 /**
  * Log viewer: sidebar of sources, main panel showing content, a Live toggle
@@ -24,6 +45,7 @@ export default function Logs() {
     if (src.type === 'nginx') return `/logs/nginx/${src.name}`
     if (src.type === 'system') return '/logs/system'
     if (src.type === 'supervisor') return `/logs/supervisor/${src.name}`
+    if (src.type === 'pipeline') return `/logs/pipeline/${src.name}`
     if (src.type === 'script') return `/logs/script/${src.name}`
     return null
   }
@@ -88,6 +110,9 @@ export default function Logs() {
   return (
     <div className="space-y-4">
       <h2 className="text-2xl font-bold">Logs</h2>
+
+      {/* Always-on global activity feed */}
+      <LiveActivity />
 
       <div className="flex gap-4" style={{ minHeight: '70vh' }}>
         {/* Sidebar */}
