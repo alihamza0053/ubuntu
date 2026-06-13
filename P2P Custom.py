@@ -26,7 +26,7 @@ import shutil
 # Override with the DOWNLOAD_DIR env var if you like.
 download_dir = os.getenv(
     "DOWNLOAD_DIR",
-    "/srv/projects/p2p_custom/data/nazir_manzoor",
+    "/srv/projects/operations/data/nazir_manzoor",
 )
 os.makedirs(download_dir, exist_ok=True)
 

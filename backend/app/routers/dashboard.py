@@ -34,6 +34,10 @@ def start_dashboard(project_id: int, db: Session = Depends(get_db)):
             status_code=400,
             detail="dashboard/app.py not found — upload your Streamlit app first",
         )
+    # Regenerate the supervisor config so it picks up a per-project venv created
+    # after the project was made (deploy/dashboard-venv.sh). Self-healing: no
+    # manual config edit / reread needed.
+    supervisor_service.write_config(project.name, project.dashboard_port)
     output = supervisor_service.start(project.name)
     _set_status(project, db)
     return DetailResponse(detail=output)

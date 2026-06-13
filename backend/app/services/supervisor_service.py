@@ -36,6 +36,23 @@ def config_path(project_name: str) -> Path:
     return settings.SUPERVISOR_CONF_DIR / f"{program_name(project_name)}.conf"
 
 
+def project_streamlit_bin(project_name: str) -> str:
+    """
+    Streamlit executable to run a project's dashboard with.
+
+    Prefer a per-project virtualenv at /srv/projects/<name>/venv — dashboards
+    need their own dependencies (Streamlit pulls a Starlette version that
+    conflicts with the panel's FastAPI in the shared venv). Fall back to the
+    global STREAMLIT_BIN when the project has no venv yet.
+
+    Create a project venv with: deploy/dashboard-venv.sh <name>
+    """
+    venv_streamlit = settings.PROJECTS_ROOT / project_name / "venv" / "bin" / "streamlit"
+    if venv_streamlit.exists():
+        return str(venv_streamlit)
+    return settings.STREAMLIT_BIN
+
+
 def _supervisorctl(*args: str) -> subprocess.CompletedProcess:
     """Run supervisorctl (optionally via sudo) and return the result."""
     cmd = ["supervisorctl", *args]
@@ -61,7 +78,7 @@ def write_config(project_name: str, port: int) -> Path:
     dashboard_dir = settings.PROJECTS_ROOT / project_name / "dashboard"
     content = SUPERVISOR_TEMPLATE.format(
         name=project_name,
-        streamlit_bin=settings.STREAMLIT_BIN,
+        streamlit_bin=project_streamlit_bin(project_name),
         app_path=dashboard_dir / "app.py",
         port=port,
         dashboard_dir=dashboard_dir,

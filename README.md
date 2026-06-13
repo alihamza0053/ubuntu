@@ -14,6 +14,15 @@ with domain assignment + Certbot SSL, global file manager, MySQL manager
 output, live CPU/RAM/disk graphs, supervisor process control, and a settings
 page (password / config / DB backup).
 
+## Guides
+
+- **`DEPLOYMENT.md`** — install from zero on a fresh Ubuntu VPS (every dependency).
+- **`UPDATING.md`** — push code changes to an installed panel (`deploy/update.sh`).
+- **`DASHBOARD_GUIDE.md`** — deploy Streamlit dashboards + fix every common issue
+  (per-project venv, spawn errors, `.xls`/`xlrd`, missing modules).
+- **`SCRIPTS_GUIDE.md`** — run Python/Selenium scripts (headless Chrome, scheduling).
+- **`MASTER_BUILD_PROMPT.md`** — the full feature specification.
+
 ## Stack
 
 - **Backend** — FastAPI + SQLite (SQLAlchemy), JWT auth (bcrypt), WebSockets,
