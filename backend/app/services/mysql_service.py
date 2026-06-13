@@ -135,6 +135,38 @@ def preview_table(database: str, table: str, limit: int = 50) -> dict:
     return {"columns": columns, "rows": rows}
 
 
+def _quote(value) -> str:
+    """Escape a value as a SQL string literal (or NULL)."""
+    if value is None:
+        return "NULL"
+    s = str(value).replace("\\", "\\\\").replace("'", "\\'")
+    return f"'{s}'"
+
+
+def update_row(database: str, table: str, pk_column: str, pk_value: str,
+               changes: dict) -> None:
+    """
+    UPDATE one row, identified by its primary-key column = value, setting only
+    the changed columns. Identifiers are validated; values are escaped.
+    """
+    t = _ident(table)
+    pk = _ident(pk_column)
+    if not changes:
+        return
+    set_parts = [f"`{_ident(col)}` = {_quote(val)}" for col, val in changes.items()]
+    sql = (f"UPDATE `{t}` SET {', '.join(set_parts)} "
+           f"WHERE `{pk}` = {_quote(pk_value)} LIMIT 1;")
+    _exec_sql(sql, database=database)
+
+
+def delete_row(database: str, table: str, pk_column: str, pk_value: str) -> None:
+    """DELETE one row by its primary-key value."""
+    t = _ident(table)
+    pk = _ident(pk_column)
+    _exec_sql(f"DELETE FROM `{t}` WHERE `{pk}` = {_quote(pk_value)} LIMIT 1;",
+              database=database)
+
+
 def run_query(database: str, sql: str) -> dict:
     """Run arbitrary SQL against a database; return columns + rows (tab-parsed)."""
     out = _exec_sql(sql, database=database)

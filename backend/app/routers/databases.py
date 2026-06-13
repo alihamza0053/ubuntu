@@ -33,6 +33,17 @@ class QueryRequest(BaseModel):
     sql: str
 
 
+class RowUpdateRequest(BaseModel):
+    pk_column: str
+    pk_value: str
+    changes: dict[str, str | None]
+
+
+class RowDeleteRequest(BaseModel):
+    pk_column: str
+    pk_value: str
+
+
 @router.get("")
 def list_databases(db: Session = Depends(get_db)):
     """All user databases, annotated with any website that links to them."""
@@ -70,6 +81,20 @@ def describe_table(name: str, table: str, limit: int = 50):
     info = mysql_service.describe_table(name, table)
     preview = mysql_service.preview_table(name, table, limit)
     return {**info, "preview": preview}
+
+
+@router.post("/{name}/tables/{table}/update-row", response_model=DetailResponse)
+def update_row(name: str, table: str, body: RowUpdateRequest):
+    """Update the changed cells of one row (identified by its primary key)."""
+    mysql_service.update_row(name, table, body.pk_column, body.pk_value, body.changes)
+    return DetailResponse(detail="Row updated")
+
+
+@router.post("/{name}/tables/{table}/delete-row", response_model=DetailResponse)
+def delete_row(name: str, table: str, body: RowDeleteRequest):
+    """Delete one row (identified by its primary key)."""
+    mysql_service.delete_row(name, table, body.pk_column, body.pk_value)
+    return DetailResponse(detail="Row deleted")
 
 
 @router.get("/{name}/export")

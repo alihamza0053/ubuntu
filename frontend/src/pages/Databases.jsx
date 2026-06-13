@@ -209,6 +209,55 @@ function DbBrowser({ databases, db, setDb }) {
   const [info, setInfo] = useState(null)
   const [view, setView] = useState('columns') // 'columns' | 'data'
   const [error, setError] = useState('')
+  const [editIdx, setEditIdx] = useState(-1)   // which data row is being edited
+  const [editVals, setEditVals] = useState([]) // working copy of that row's cells
+
+  // The primary-key column lets us safely UPDATE/DELETE a specific row
+  const pkColumn = info?.columns?.find((c) => c.key === 'PRI')?.name || null
+  const pkIndex = pkColumn ? (info?.preview?.columns?.indexOf(pkColumn) ?? -1) : -1
+
+  function startEdit(rowIdx, row) {
+    setEditIdx(rowIdx)
+    setEditVals([...row])
+  }
+
+  function cancelEdit() {
+    setEditIdx(-1)
+    setEditVals([])
+  }
+
+  async function saveEdit(originalRow) {
+    const cols = info.preview.columns
+    const changes = {}
+    cols.forEach((c, i) => {
+      if (editVals[i] !== originalRow[i]) changes[c] = editVals[i]
+    })
+    if (Object.keys(changes).length === 0) { cancelEdit(); return }
+    try {
+      await api.post(`/databases/${db}/tables/${table}/update-row`, {
+        pk_column: pkColumn,
+        pk_value: originalRow[pkIndex],
+        changes,
+      })
+      cancelEdit()
+      openTable(table) // reload fresh data
+    } catch (err) {
+      alert(errorMessage(err))
+    }
+  }
+
+  async function deleteRow(originalRow) {
+    if (!window.confirm('Delete this row? This cannot be undone.')) return
+    try {
+      await api.post(`/databases/${db}/tables/${table}/delete-row`, {
+        pk_column: pkColumn,
+        pk_value: originalRow[pkIndex],
+      })
+      openTable(table)
+    } catch (err) {
+      alert(errorMessage(err))
+    }
+  }
 
   // Load tables when the selected database changes
   useEffect(() => {
@@ -227,6 +276,7 @@ function DbBrowser({ databases, db, setDb }) {
   function openTable(name) {
     setTable(name)
     setInfo(null)
+    setEditIdx(-1)
     api.get(`/databases/${db}/tables/${name}`, { params: { limit: 100 } })
       .then((res) => setInfo(res.data))
       .catch((err) => setError(errorMessage(err)))
@@ -323,8 +373,11 @@ function DbBrowser({ databases, db, setDb }) {
                       <thead>
                         <tr className="bg-slate-800 text-left">
                           {info.preview.columns.map((c) => (
-                            <th key={c} className="px-2 py-1 border border-panel-border font-mono">{c}</th>
+                            <th key={c} className="px-2 py-1 border border-panel-border font-mono">
+                              {c}{c === pkColumn && <span className="text-yellow-400"> 🔑</span>}
+                            </th>
                           ))}
+                          <th className="px-2 py-1 border border-panel-border w-px">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -332,13 +385,38 @@ function DbBrowser({ databases, db, setDb }) {
                           <tr key={i}>
                             {row.map((cell, j) => (
                               <td key={j} className="px-2 py-1 border border-panel-border font-mono whitespace-nowrap">
-                                {cell === 'NULL' ? <span className="text-slate-600 italic">NULL</span> : cell}
+                                {editIdx === i ? (
+                                  <input
+                                    className="bg-slate-900 border border-panel-border rounded px-1 py-0.5 w-full min-w-[6rem]"
+                                    value={editVals[j] ?? ''}
+                                    onChange={(e) => {
+                                      const v = [...editVals]; v[j] = e.target.value; setEditVals(v)
+                                    }}
+                                  />
+                                ) : cell === 'NULL' ? (
+                                  <span className="text-slate-600 italic">NULL</span>
+                                ) : cell}
                               </td>
                             ))}
+                            <td className="px-2 py-1 border border-panel-border whitespace-nowrap text-right space-x-2">
+                              {!pkColumn ? (
+                                <span className="text-slate-600" title="Editing needs a single primary-key column">—</span>
+                              ) : editIdx === i ? (
+                                <>
+                                  <button className="text-green-400 hover:underline" onClick={() => saveEdit(row)}>save</button>
+                                  <button className="text-slate-400 hover:underline" onClick={cancelEdit}>cancel</button>
+                                </>
+                              ) : (
+                                <>
+                                  <button className="text-sky-400 hover:underline" onClick={() => startEdit(i, row)}>✎ edit</button>
+                                  <button className="text-red-400 hover:underline" onClick={() => deleteRow(row)}>🗑</button>
+                                </>
+                              )}
+                            </td>
                           </tr>
                         ))}
                         {info.preview.rows.length === 0 && (
-                          <tr><td className="px-2 py-3 text-center text-slate-600" colSpan={info.preview.columns.length || 1}>
+                          <tr><td className="px-2 py-3 text-center text-slate-600" colSpan={(info.preview.columns.length || 1) + 1}>
                             (no rows)
                           </td></tr>
                         )}
@@ -346,6 +424,11 @@ function DbBrowser({ databases, db, setDb }) {
                     </table>
                   )}
                 </div>
+                {view === 'data' && !pkColumn && info.preview.rows.length > 0 && (
+                  <p className="text-xs text-yellow-500/80 mt-2">
+                    This table has no single primary key — rows can't be safely edited here. Use the Query Runner.
+                  </p>
+                )}
                 {view === 'data' && info.row_count > info.preview.rows.length && (
                   <p className="text-xs text-slate-500 mt-2">
                     Showing first {info.preview.rows.length} of {info.row_count} rows. Use the Query Runner for more.
