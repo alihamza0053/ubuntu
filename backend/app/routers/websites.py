@@ -50,6 +50,11 @@ class DomainRequest(BaseModel):
     domain: str
 
 
+class LinkDatabaseRequest(BaseModel):
+    # Empty / null unlinks the database
+    db_name: str | None = None
+
+
 def get_website_or_404(website_id: int, db: Session) -> Website:
     site = db.get(Website, website_id)
     if site is None:
@@ -153,6 +158,17 @@ def list_website_files(website_id: int, subpath: str = Query(""),
             modified=datetime.utcfromtimestamp(stat.st_mtime),
         ))
     return out
+
+
+@router.post("/{website_id}/link-database", response_model=DetailResponse)
+def link_database(website_id: int, body: LinkDatabaseRequest, db: Session = Depends(get_db)):
+    """Link (or unlink, with an empty value) a MySQL database to a website."""
+    site = get_website_or_404(website_id, db)
+    site.db_name = (body.db_name or "").strip() or None
+    db.commit()
+    if site.db_name:
+        return DetailResponse(detail=f"Linked database '{site.db_name}'")
+    return DetailResponse(detail="Database unlinked")
 
 
 @router.post("/{website_id}/assign-domain", response_model=DetailResponse)

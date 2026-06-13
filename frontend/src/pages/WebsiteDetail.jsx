@@ -136,24 +136,73 @@ export default function WebsiteDetail() {
       )}
 
       {/* Database */}
-      {tab === 'database' && (
-        <div className="card max-w-xl">
-          <h3 className="font-semibold mb-2">Linked Database</h3>
-          {site.db_name ? (
-            <p className="text-sm">This site is linked to <span className="font-mono text-sky-300">{site.db_name}</span>.
-              Manage it on the <Link to="/databases" className="text-sky-400 hover:underline">Databases</Link> page
-              (import/export/query).</p>
-          ) : (
-            <p className="text-sm text-slate-500">No database linked. Set one when creating the site, or create a
-              database on the <Link to="/databases" className="text-sky-400 hover:underline">Databases</Link> page.</p>
-          )}
-        </div>
-      )}
+      {tab === 'database' && <DatabaseTab site={site} onChanged={refresh} />}
 
       {/* Domain & SSL */}
       {tab === 'domain' && <DomainTab site={site} onChanged={refresh} />}
 
       <EditorModal path={editorPath} onClose={() => setEditorPath(null)} />
+    </div>
+  )
+}
+
+/** Link / change / unlink the website's MySQL database. */
+function DatabaseTab({ site, onChanged }) {
+  const [databases, setDatabases] = useState([])
+  const [selected, setSelected] = useState(site.db_name || '')
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    api.get('/databases').then((res) => setDatabases(res.data)).catch(() => {})
+  }, [])
+
+  async function save() {
+    setBusy(true); setMsg('')
+    try {
+      const res = await api.post(`/websites/${site.id}/link-database`, { db_name: selected })
+      setMsg(res.data.detail)
+      onChanged()
+    } catch (err) {
+      setMsg(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="card max-w-xl space-y-3">
+      <h3 className="font-semibold">Linked Database</h3>
+
+      <p className="text-sm text-slate-400">
+        Current: {site.db_name
+          ? <span className="font-mono text-sky-300">{site.db_name}</span>
+          : <span className="text-slate-500">none</span>}
+      </p>
+
+      <div>
+        <label className="block text-sm text-slate-400 mb-1">Select a database to link</label>
+        <select className="input max-w-xs" value={selected} onChange={(e) => setSelected(e.target.value)}>
+          <option value="">— none (unlink) —</option>
+          {databases.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+        </select>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <button className="btn-primary" onClick={save} disabled={busy}>
+          {busy ? 'Saving…' : 'Save link'}
+        </button>
+        <Link to="/databases" className="text-sm text-sky-400 hover:underline">
+          Manage databases (create / import / query) →
+        </Link>
+      </div>
+
+      {msg && <p className="text-sm text-slate-300">{msg}</p>}
+      {databases.length === 0 && (
+        <p className="text-xs text-slate-500">
+          No databases exist yet — create one on the Databases page, then link it here.
+        </p>
+      )}
     </div>
   )
 }
