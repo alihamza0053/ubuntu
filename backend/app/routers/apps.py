@@ -255,7 +255,11 @@ async def install_app_ws(websocket: WebSocket, slug: str):
         if app is None:
             app = App(slug=slug, name=entry["name"], kind=kind, status="STOPPED")
             if kind in ("service", "docker", "compose"):
-                app.port = app_service.allocate_port(db)
+                # A compose stack binds its OWN fixed host port (defined in its
+                # .env / compose file), so the panel must proxy THAT port — not
+                # an allocated one. Other kinds get an allocated localhost port.
+                app.port = (entry.get("container_port") if kind == "compose"
+                            else app_service.allocate_port(db))
                 if entry.get("use_password") or entry.get("use_token") or entry.get("secret_env"):
                     app.secret = app_service.new_password()
             db.add(app)
