@@ -123,7 +123,7 @@ function InstalledApp({ app, onChanged }) {
   async function action(name) {
     setMsg('')
     try {
-      const res = await api.post(`/apps/${app.id}/${name}`)
+      const res = await api.post(`/apps/${app.id}/action/${name}`)
       setMsg(res.data.detail)
       onChanged()
     } catch (err) {
@@ -177,12 +177,18 @@ function InstalledApp({ app, onChanged }) {
       {isService ? (
         <>
           <dl className="mt-3 space-y-1.5 text-sm">
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-2">
               <dt className="text-slate-500">URL</dt>
-              <dd>
-                <a href={liveUrl} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">
-                  {app.domain || `:${app.port}`} ↗
-                </a>
+              <dd className="text-right">
+                {app.domain ? (
+                  <a href={liveUrl} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">
+                    {app.domain} ↗
+                  </a>
+                ) : (
+                  <span className="text-slate-400" title="Port is localhost-only — assign a domain to reach it">
+                    :{app.port} <span className="text-xs text-slate-600">(internal — assign a domain)</span>
+                  </span>
+                )}
               </dd>
             </div>
             {app.secret && (

@@ -73,7 +73,7 @@ def list_apps(db: Session = Depends(get_db)):
     return [_to_out(a, live_status=True) for a in db.query(App).all()]
 
 
-@router.post("/{app_id}/{action}", response_model=DetailResponse)
+@router.post("/{app_id}/action/{action}", response_model=DetailResponse)
 def control_app(app_id: int, action: str, db: Session = Depends(get_db)):
     if action not in ("start", "stop", "restart"):
         raise HTTPException(status_code=400, detail="action must be start/stop/restart")
