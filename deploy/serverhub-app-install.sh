@@ -92,6 +92,12 @@ case "$SLUG" in
     [ -f .env ] || cp .env.example .env
     # Bind the Kong gateway to localhost only (panel proxies it via a domain)
     sed -i 's/^KONG_HTTP_PORT=.*/KONG_HTTP_PORT=8000/' .env 2>/dev/null || true
+    # Clean leftovers from any previous attempt — Supabase uses FIXED container
+    # names (supabase-*), so stale containers cause "name already in use".
+    docker compose -p app_supabase down --remove-orphans 2>/dev/null || true
+    docker compose down --remove-orphans 2>/dev/null || true
+    STALE="$(docker ps -aq --filter 'name=supabase-')"
+    [ -n "$STALE" ] && docker rm -f $STALE 2>/dev/null || true
     # Pre-pull images here (streamed); the PANEL brings the stack UP afterwards
     # so the compose project name stays consistent for start/stop/logs.
     docker compose -p app_supabase pull

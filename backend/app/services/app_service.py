@@ -529,7 +529,8 @@ def _compose(app, *args: str, timeout: int = 600) -> subprocess.CompletedProcess
 
 
 def compose_control(app, action: str) -> str:
-    mapping = {"start": ["up", "-d"], "stop": ["stop"], "restart": ["restart"]}
+    mapping = {"start": ["up", "-d", "--remove-orphans"], "stop": ["stop"],
+               "restart": ["restart"]}
     result = _compose(app, *mapping.get(action, ["ps"]))
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=(result.stderr or result.stdout)[:400])

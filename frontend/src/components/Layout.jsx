@@ -7,6 +7,7 @@ const NAV = [
   { to: '/projects', label: 'Projects', icon: '🐍' },
   { to: '/websites', label: 'Websites', icon: '🌐' },
   { to: '/apps', label: 'Apps', icon: '🧩' },
+  { to: '/docker', label: 'Docker', icon: '🐳' },
   { to: '/terminal', label: 'Terminal', icon: '💻' },
   { to: '/logs', label: 'Logs', icon: '📜' },
   { to: '/files', label: 'Files', icon: '📁' },

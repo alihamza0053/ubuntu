@@ -3,6 +3,7 @@ import Layout from './components/Layout'
 import { useAuth } from './context/AuthContext'
 import Apps from './pages/Apps'
 import Databases from './pages/Databases'
+import Docker from './pages/Docker'
 import Files from './pages/Files'
 import Home from './pages/Home'
 import Login from './pages/Login'
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="websites" element={<Websites />} />
         <Route path="websites/:id" element={<WebsiteDetail />} />
         <Route path="apps" element={<Apps />} />
+        <Route path="docker" element={<Docker />} />
         <Route path="terminal" element={<Terminal />} />
         <Route path="logs" element={<Logs />} />
         <Route path="files" element={<Files />} />

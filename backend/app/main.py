@@ -15,8 +15,8 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import Base, engine
-from .routers import (apps, auth, dashboard, databases, files, logs, nginx,
-                      pipeline, projects, schedules, scripts, server,
+from .routers import (apps, auth, dashboard, databases, docker, files, logs,
+                      nginx, pipeline, projects, schedules, scripts, server,
                       settings_router, terminal, websites)
 from .services import pipeline_service, scheduler_service
 
@@ -70,6 +70,8 @@ app.include_router(server.router)
 app.include_router(server.ws_router)          # apt live-stream WebSocket
 app.include_router(apps.router)
 app.include_router(apps.ws_router)            # app install WebSocket
+app.include_router(docker.router)
+app.include_router(docker.ws_router)          # container logs WebSocket
 app.include_router(settings_router.router)
 
 
