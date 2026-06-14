@@ -61,7 +61,7 @@ def _to_out(app: App, live_status: bool = False) -> dict:
         "secret_label": "Token" if entry.get("use_token") else "Password",
         # Can the panel set this app's password/token?
         "can_set_password": bool(entry.get("use_password") or entry.get("use_token")
-                                 or entry.get("set_password_cmd")),
+                                 or entry.get("set_password_cmd") or entry.get("pw_change")),
     }
     if entry.get("secret_label"):
         out["secret_label"] = entry["secret_label"]
@@ -91,6 +91,12 @@ def catalog(db: Session = Depends(get_db)):
             for slug, e in app_service.CATALOG.items()
         ],
     }
+
+
+@router.get("/generate-password")
+def generate_password():
+    """Return a freshly generated strong password (for the autogenerate button)."""
+    return {"password": app_service.strong_password()}
 
 
 @router.get("")

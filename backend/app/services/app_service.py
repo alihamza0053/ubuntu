@@ -136,6 +136,7 @@ CATALOG: dict[str, dict] = {
         "username": "admin", "secret_env": "N8N_BASIC_AUTH_PASSWORD",
         "env": {"N8N_BASIC_AUTH_ACTIVE": "true", "N8N_BASIC_AUTH_USER": "admin"},
         "run_args": ["-v", "app_n8n_data:/home/node/.n8n"],
+        "pw_change": "env_recreate",   # basic-auth password is read from env each start
     },
     "nextcloud": {
         "name": "Nextcloud", "description": "Self-hosted files, calendar & office suite.",
@@ -151,6 +152,7 @@ CATALOG: dict[str, dict] = {
         "image": "vaultwarden/server:latest", "container_port": 80,
         "secret_env": "ADMIN_TOKEN", "secret_label": "Admin token",
         "run_args": ["-v", "app_vaultwarden_data:/data"],
+        "pw_change": "env_recreate",   # ADMIN_TOKEN is read from env each start
     },
     "gitea": {
         "name": "Gitea", "description": "Lightweight self-hosted Git service.",
@@ -164,6 +166,8 @@ CATALOG: dict[str, dict] = {
         "image": "grafana/grafana:latest", "container_port": 3000,
         "username": "admin", "secret_env": "GF_SECURITY_ADMIN_PASSWORD",
         "run_args": ["-v", "app_grafana_data:/var/lib/grafana"],
+        "pw_change": "exec",
+        "pw_exec_cmd": ["grafana", "cli", "admin", "reset-admin-password", "{password}"],
     },
     "metabase": {
         "name": "Metabase", "description": "Business-intelligence / analytics UI.",
@@ -179,12 +183,16 @@ CATALOG: dict[str, dict] = {
         "icon": "🐘", "kind": "docker", "web_ui": False, "container_port": 5432,
         "image": "postgres:16", "username": "postgres", "secret_env": "POSTGRES_PASSWORD",
         "run_args": ["-v", "app_postgres_data:/var/lib/postgresql/data"],
+        "pw_change": "exec",
+        "pw_exec_cmd": ["psql", "-U", "postgres", "-c", "ALTER USER postgres PASSWORD '{password}'"],
     },
     "mariadb": {
         "name": "MariaDB", "description": "MySQL-compatible database (backend service).",
         "icon": "🐬", "kind": "docker", "web_ui": False, "container_port": 3306,
         "image": "mariadb:11", "username": "root", "secret_env": "MARIADB_ROOT_PASSWORD",
         "run_args": ["-v", "app_mariadb_data:/var/lib/mysql"],
+        "pw_change": "exec",
+        "pw_exec_cmd": ["mariadb-admin", "-uroot", "-p{old}", "password", "{password}"],
     },
     "redis": {
         "name": "Redis", "description": "In-memory key/value store (backend service).",
@@ -601,6 +609,18 @@ def new_password() -> str:
     return secrets.token_urlsafe(12)
 
 
+def strong_password(length: int = 20) -> str:
+    """Generate a strong alphanumeric password (no symbols — safe in env/URLs)."""
+    import string
+    alphabet = string.ascii_letters + string.digits
+    # ensure at least one lower/upper/digit
+    while True:
+        pw = "".join(secrets.choice(alphabet) for _ in range(length))
+        if (any(c.islower() for c in pw) and any(c.isupper() for c in pw)
+                and any(c.isdigit() for c in pw)):
+            return pw
+
+
 def read_env_value(path: str, key: str) -> str | None:
     """Read KEY=value from an env file (used to surface compose-app creds)."""
     try:
@@ -679,6 +699,11 @@ def docker_status(instance: str) -> str:
 
 def docker_remove(instance: str) -> None:
     _docker("rm", "-f", container_name(instance), timeout=60)
+
+
+def docker_exec(app, cmd_list: list[str], timeout: int = 90) -> subprocess.CompletedProcess:
+    return subprocess.run([*DOCKER, "exec", container_name(app.instance), *cmd_list],
+                          capture_output=True, text=True, timeout=timeout)
 
 
 # ---- Compose (multi-container) ----
@@ -778,6 +803,23 @@ def set_password(app, new_pw: str) -> None:
         finally:
             if was_running:
                 control(app.instance, "start")
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "unknown error").strip()
+            raise HTTPException(status_code=500, detail=f"set password failed: {detail[:300]}")
+        app.secret = new_pw
+        return
+
+    # Docker app whose credential env is read on every start → recreate it
+    if entry.get("pw_change") == "env_recreate":
+        app.secret = new_pw
+        docker_run(app)
+        return
+
+    # Docker app with a CLI reset command run inside the container
+    if entry.get("pw_change") == "exec":
+        fmt = {"password": new_pw, "old": app.secret or ""}
+        cmd = [c.format(**fmt) for c in entry["pw_exec_cmd"]]
+        result = docker_exec(app, cmd)
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "unknown error").strip()
             raise HTTPException(status_code=500, detail=f"set password failed: {detail[:300]}")

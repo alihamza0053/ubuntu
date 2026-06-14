@@ -193,6 +193,15 @@ function InstalledApp({ app, onChanged }) {
     }
   }
 
+  async function generatePw() {
+    try {
+      const res = await api.get('/apps/generate-password')
+      setNewPw(res.data.password)
+    } catch (err) {
+      alert(errorMessage(err))
+    }
+  }
+
   const liveUrl = app.domain
     ? `http://${app.domain}`
     : `http://${window.location.hostname}:${app.port}`
@@ -297,9 +306,10 @@ function InstalledApp({ app, onChanged }) {
           {app.can_set_password && (
             <div className="mt-2">
               {showPwForm ? (
-                <div className="flex gap-2 items-center">
-                  <input className="input py-1 max-w-[12rem]" placeholder="new password"
+                <div className="flex gap-2 items-center flex-wrap">
+                  <input className="input py-1 max-w-[14rem] font-mono" placeholder="new password"
                     value={newPw} onChange={(e) => setNewPw(e.target.value)} />
+                  <button className="btn-secondary" onClick={generatePw} title="Generate a strong password">🎲 Generate</button>
                   <button className="btn-primary" onClick={setPassword} disabled={newPw.length < 4}>Set</button>
                   <button className="btn-secondary" onClick={() => { setShowPwForm(false); setNewPw('') }}>Cancel</button>
                 </div>
