@@ -252,6 +252,13 @@ CATALOG: dict[str, dict] = {
         "image": "jvmilazz0/kavita:latest",
         "run_args": ["-v", "app_kavita_config:/kavita/config", "-v", "/srv:/data"],
     },
+    "audiobookshelf": {
+        "name": "Audiobookshelf", "description": "Audiobook & podcast media player (web).",
+        "icon": "🎧", "kind": "docker", "container_port": 80,
+        "image": "ghcr.io/advplyr/audiobookshelf:latest",
+        "run_args": ["-v", "app_abs_config:/config", "-v", "app_abs_metadata:/metadata",
+                     "-v", "/srv:/audiobooks"],
+    },
 
     # ---- Home & productivity ----
     "memos": {
@@ -429,7 +436,8 @@ CATEGORIES = [
     ("Developer", ["code-server", "gitea", "n8n", "nodered", "jupyterlab"]),
     ("CMS & CRM", ["wordpress", "joomla", "ghost", "espocrm"]),
     ("Files & Sync", ["filebrowser", "nextcloud", "syncthing"]),
-    ("Media & Library", ["jellyfin", "navidrome", "calibre-web", "kavita", "qbittorrent"]),
+    ("Media & Library", ["jellyfin", "navidrome", "audiobookshelf", "calibre-web",
+                         "kavita", "qbittorrent"]),
     ("Productivity", ["vaultwarden", "trilium", "memos", "vikunja", "mealie",
                       "actual", "grocy", "freshrss"]),
     ("Utilities", ["it-tools", "cyberchef", "searxng", "changedetection",
