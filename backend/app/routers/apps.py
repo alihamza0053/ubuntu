@@ -34,6 +34,10 @@ class DomainRequest(BaseModel):
     domain: str
 
 
+class PasswordRequest(BaseModel):
+    password: str
+
+
 def _get_app(app_id: int, db: Session) -> App:
     app = db.get(App, app_id)
     if app is None:
@@ -48,6 +52,12 @@ def _to_out(app: App, live_status: bool = False) -> dict:
         "port": app.port, "domain": app.domain, "status": app.status,
         "secret": app.secret, "icon": entry.get("icon", "📦"),
         "websocket": entry.get("websocket", False),
+        "username": entry.get("username"),
+        # Label "Token" for token-based apps (Jupyter), else "Password"
+        "secret_label": "Token" if entry.get("use_token") else "Password",
+        # Can the panel set this app's password/token?
+        "can_set_password": bool(entry.get("use_password") or entry.get("use_token")
+                                 or entry.get("set_password_cmd")),
     }
     if live_status and app.kind == "service":
         out["status"] = app_service.status(app.slug)
@@ -85,6 +95,18 @@ def control_app(app_id: int, action: str, db: Session = Depends(get_db)):
     db.commit()
     log_activity(f"app {app.slug} {action}")
     return DetailResponse(detail=output or f"{action} {app.slug}")
+
+
+@router.post("/{app_id}/set-password", response_model=DetailResponse)
+def set_password(app_id: int, body: PasswordRequest, db: Session = Depends(get_db)):
+    """Change a service app's login password."""
+    app = _get_app(app_id, db)
+    if len(body.password) < 4:
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
+    app_service.set_password(app, body.password)
+    db.commit()
+    log_activity(f"app {app.slug} password changed")
+    return DetailResponse(detail="Password updated")
 
 
 @router.post("/{app_id}/assign-domain", response_model=DetailResponse)
@@ -183,7 +205,7 @@ async def install_app_ws(websocket: WebSocket, slug: str):
             app = App(slug=slug, name=entry["name"], kind=entry["kind"], status="STOPPED")
             if entry["kind"] == "service":
                 app.port = app_service.allocate_port(db)
-                if entry.get("use_password"):
+                if entry.get("use_password") or entry.get("use_token"):
                     app.secret = app_service.new_password()
             db.add(app)
             db.commit()

@@ -39,6 +39,34 @@ case "$SLUG" in
     echo "Ready — it downloads on first start."
     ;;
 
+  syncthing)
+    echo "==> Installing Syncthing"
+    apt-get install -y syncthing
+    mkdir -p /srv/serverhub/apps/syncthing
+    syncthing --version || true
+    ;;
+
+  glances)
+    echo "==> Installing Glances (web monitor)"
+    apt-get install -y python3-venv
+    python3 -m venv /srv/serverhub/apps/glances/venv
+    /srv/serverhub/apps/glances/venv/bin/pip install --upgrade pip
+    /srv/serverhub/apps/glances/venv/bin/pip install "glances[web]"
+    ;;
+
+  jupyterlab)
+    echo "==> Installing JupyterLab"
+    apt-get install -y python3-venv
+    python3 -m venv /srv/serverhub/apps/jupyterlab/venv
+    /srv/serverhub/apps/jupyterlab/venv/bin/pip install --upgrade pip
+    /srv/serverhub/apps/jupyterlab/venv/bin/pip install jupyterlab
+    ;;
+
+  webtop)
+    echo "==> Installing Web Browser desktop (Xvfb + noVNC + Firefox)"
+    apt-get install -y xvfb x11vnc novnc websockify fluxbox firefox-esr
+    ;;
+
   google-chrome)
     echo "==> Installing Google Chrome (.deb)"
     if ! command -v google-chrome >/dev/null; then

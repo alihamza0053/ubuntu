@@ -84,9 +84,10 @@ fi
 
 # 4b. Deploy helpers (Apps installer + sudoers) — keep them current
 if [ -f "$SRC/deploy/serverhub-app-install.sh" ]; then
-  echo "==> Updating apps installer helper + sudoers"
-  mkdir -p "$PANEL_ROOT/bin"
+  echo "==> Updating apps installer + helpers + sudoers"
+  mkdir -p "$PANEL_ROOT/bin" "$PANEL_ROOT/apps"
   install -m 0755 "$SRC/deploy/serverhub-app-install.sh" "$PANEL_ROOT/bin/serverhub-app-install"
+  [ -f "$SRC/deploy/serverhub-webtop.sh" ] && install -m 0755 "$SRC/deploy/serverhub-webtop.sh" "$PANEL_ROOT/bin/serverhub-webtop"
   install -m 0440 "$SRC/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub
   visudo -c >/dev/null
 fi

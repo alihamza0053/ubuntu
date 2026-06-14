@@ -48,6 +48,11 @@ CATALOG: dict[str, dict] = {
         "run": "{bin} --address 127.0.0.1 --port {port} --root /srv --database /srv/serverhub/db/filebrowser.db",
         "use_password": False,
         "websocket": False,
+        # Built-in login; password changeable via its CLI (against its own DB).
+        "username": "admin",
+        "set_password_cmd": ["{bin}", "users", "update", "admin",
+                             "--password", "{password}",
+                             "--database", "/srv/serverhub/db/filebrowser.db"],
     },
     "uptime-kuma": {
         "name": "Uptime Kuma",
@@ -56,6 +61,48 @@ CATALOG: dict[str, dict] = {
         "kind": "service",
         "bin": "/usr/bin/npx",
         "run": "/usr/bin/npx --yes uptime-kuma-server --port {port} --host 127.0.0.1",
+        "use_password": False,
+        "websocket": True,
+    },
+    "syncthing": {
+        "name": "Syncthing",
+        "description": "Continuous file synchronization with a web UI.",
+        "icon": "🔄",
+        "kind": "service",
+        "bin": "/usr/bin/syncthing",
+        "run": "{bin} serve --no-browser --gui-address=127.0.0.1:{port} --home=/srv/serverhub/apps/syncthing",
+        "use_password": False,
+        "websocket": True,
+    },
+    "glances": {
+        "name": "Glances",
+        "description": "Live CPU / RAM / disk / network monitor in the browser.",
+        "icon": "📊",
+        "kind": "service",
+        "bin": "/srv/serverhub/apps/glances/venv/bin/glances",
+        "run": "{bin} -w --bind 127.0.0.1 --port {port}",
+        "use_password": False,
+        "websocket": True,
+    },
+    "jupyterlab": {
+        "name": "JupyterLab",
+        "description": "Notebooks & data science IDE in the browser.",
+        "icon": "📓",
+        "kind": "service",
+        "bin": "/srv/serverhub/apps/jupyterlab/venv/bin/jupyter",
+        "run": ("{bin} lab --ip 127.0.0.1 --port {port} --no-browser "
+                "--ServerApp.token={secret} --ServerApp.root_dir=/srv"),
+        "use_token": True,
+        "websocket": True,
+    },
+    "webtop": {
+        "name": "Web Browser (Firefox)",
+        "description": "A real Firefox desktop streamed to your browser via noVNC. "
+                       "Heavy (runs a virtual display) — best on 2 GB+ RAM.",
+        "icon": "🦊",
+        "kind": "service",
+        "bin": "/srv/serverhub/bin/serverhub-webtop",
+        "run": "{bin} {port}",
         "use_password": False,
         "websocket": True,
     },
@@ -116,6 +163,8 @@ command={command}
 directory=/srv/serverhub
 autostart=false
 autorestart=true
+stopasgroup=true
+killasgroup=true
 {env_line}stderr_logfile={log_dir}/{program}.err.log
 stdout_logfile={log_dir}/{program}.out.log
 """
@@ -127,10 +176,21 @@ def write_program(app: App) -> None:
     if entry["kind"] != "service":
         return
     settings.SUPERVISOR_CONF_DIR.mkdir(parents=True, exist_ok=True)
-    command = entry["run"].format(bin=entry.get("bin", ""), port=app.port)
-    env_line = ""
+    command = entry["run"].format(
+        bin=entry.get("bin", ""), port=app.port, secret=app.secret or "")
+
+    # Build the environment= line from catalog env + an optional PASSWORD
+    env_pairs = {
+        k: str(v).format(port=app.port, secret=app.secret or "")
+        for k, v in entry.get("env", {}).items()
+    }
     if entry.get("use_password") and app.secret:
-        env_line = f'environment=PASSWORD="{app.secret}"\n'
+        env_pairs["PASSWORD"] = app.secret
+    env_line = ""
+    if env_pairs:
+        joined = ",".join(f'{k}="{v}"' for k, v in env_pairs.items())
+        env_line = f"environment={joined}\n"
+
     content = SUPERVISOR_TEMPLATE.format(
         program=program_name(app.slug),
         command=command,
@@ -171,3 +231,41 @@ def status(slug: str) -> str:
 
 def new_password() -> str:
     return secrets.token_urlsafe(12)
+
+
+def set_password(app, new_pw: str) -> None:
+    """
+    Change a service app's password. Two mechanisms:
+      - env-based (code-server): store secret + rewrite the supervisor program
+        (its env PASSWORD), which restarts it on `update`.
+      - CLI-based (File Browser): stop, update the password in its own DB via
+        its CLI, then start.
+    Caller commits the App row afterwards.
+    """
+    entry = get_catalog_entry(app.slug)
+
+    # code-server (env PASSWORD) or Jupyter (token in the run command): just
+    # store the new secret and rewrite the program — `update` restarts it.
+    if entry.get("use_password") or entry.get("use_token"):
+        app.secret = new_pw
+        write_program(app)
+        return
+
+    cmd_tpl = entry.get("set_password_cmd")
+    if cmd_tpl:
+        was_running = status(app.slug) == "RUNNING"
+        if was_running:
+            control(app.slug, "stop")
+        cmd = [c.format(bin=entry.get("bin", ""), password=new_pw) for c in cmd_tpl]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        finally:
+            if was_running:
+                control(app.slug, "start")
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "unknown error").strip()
+            raise HTTPException(status_code=500, detail=f"set password failed: {detail[:300]}")
+        app.secret = new_pw
+        return
+
+    raise HTTPException(status_code=400, detail="This app's password can't be changed from the panel")

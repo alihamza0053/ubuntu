@@ -115,6 +115,22 @@ function InstalledApp({ app, onChanged }) {
   const [domain, setDomain] = useState(app.domain || '')
   const [showLog, setShowLog] = useState(false)
   const [msg, setMsg] = useState('')
+  const [reveal, setReveal] = useState(false)
+  const [newPw, setNewPw] = useState('')
+  const [showPwForm, setShowPwForm] = useState(false)
+
+  async function setPassword() {
+    setMsg('')
+    try {
+      const res = await api.post(`/apps/${app.id}/set-password`, { password: newPw })
+      setMsg(res.data.detail)
+      setNewPw('')
+      setShowPwForm(false)
+      onChanged()
+    } catch (err) {
+      setMsg(errorMessage(err))
+    }
+  }
 
   const liveUrl = app.domain
     ? `http://${app.domain}`
@@ -191,13 +207,44 @@ function InstalledApp({ app, onChanged }) {
                 )}
               </dd>
             </div>
-            {app.secret && (
+            {app.username && (
               <div className="flex justify-between">
-                <dt className="text-slate-500">Password</dt>
-                <dd className="font-mono text-yellow-400">{app.secret}</dd>
+                <dt className="text-slate-500">Username</dt>
+                <dd className="font-mono text-slate-200">{app.username}</dd>
+              </div>
+            )}
+            {(app.secret || app.can_set_password) && (
+              <div className="flex justify-between gap-2">
+                <dt className="text-slate-500">{app.secret_label || 'Password'}</dt>
+                <dd className="font-mono text-yellow-400 flex items-center gap-2">
+                  {app.secret
+                    ? (reveal ? app.secret : '••••••••')
+                    : <span className="text-slate-500">not set</span>}
+                  {app.secret && (
+                    <button className="text-xs text-slate-500 hover:text-slate-300"
+                      onClick={() => setReveal((v) => !v)}>{reveal ? 'hide' : 'show'}</button>
+                  )}
+                </dd>
               </div>
             )}
           </dl>
+
+          {app.can_set_password && (
+            <div className="mt-2">
+              {showPwForm ? (
+                <div className="flex gap-2 items-center">
+                  <input className="input py-1 max-w-[12rem]" placeholder="new password"
+                    value={newPw} onChange={(e) => setNewPw(e.target.value)} />
+                  <button className="btn-primary" onClick={setPassword} disabled={newPw.length < 4}>Set</button>
+                  <button className="btn-secondary" onClick={() => { setShowPwForm(false); setNewPw('') }}>Cancel</button>
+                </div>
+              ) : (
+                <button className="text-xs text-sky-400 hover:underline" onClick={() => setShowPwForm(true)}>
+                  ✎ change {(app.secret_label || 'password').toLowerCase()}
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="mt-3 flex flex-wrap gap-2">
             <button className="btn-secondary" onClick={() => action('start')}>▶ Start</button>

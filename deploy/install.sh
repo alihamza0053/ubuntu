@@ -86,9 +86,10 @@ chown "$PANEL_USER:$PANEL_USER" /var/log/supervisor || true
 mkdir -p "/home/$PANEL_USER/.cache"
 chown -R "$PANEL_USER:$PANEL_USER" "/home/$PANEL_USER"
 
-echo "==> Apps installer helper"
-mkdir -p "$PANEL_ROOT/bin"
+echo "==> Apps installer + helpers"
+mkdir -p "$PANEL_ROOT/bin" "$PANEL_ROOT/apps"
 install -m 0755 "$REPO_DIR/deploy/serverhub-app-install.sh" "$PANEL_ROOT/bin/serverhub-app-install"
+install -m 0755 "$REPO_DIR/deploy/serverhub-webtop.sh" "$PANEL_ROOT/bin/serverhub-webtop"
 
 echo "==> Sudoers rule"
 install -m 0440 "$REPO_DIR/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub
