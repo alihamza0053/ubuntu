@@ -1,7 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import LiveLog from '../components/LiveLog'
 import StatusBadge from '../components/StatusBadge'
+
+const CATEGORY_ORDER = [
+  'Infrastructure', 'Database UIs', 'Developer', 'Files & Media',
+  'Productivity', 'Monitoring', 'Notifications', 'Browsers & Misc', 'Other',
+]
 
 /**
  * Apps section: one-click install of self-hosted apps (VS Code/code-server,
@@ -38,6 +43,15 @@ export default function Apps() {
     setInstallWs(null)
     setTimeout(() => setInstallWs(`/ws/apps/${slug}/install`), 0)
   }
+
+  // Group catalog by category in the defined order
+  const grouped = useMemo(() => {
+    const byCat = {}
+    for (const c of catalog) (byCat[c.category || 'Other'] ||= []).push(c)
+    return CATEGORY_ORDER
+      .filter((cat) => byCat[cat]?.length)
+      .map((cat) => [cat, byCat[cat]])
+  }, [catalog])
 
   return (
     <div className="space-y-6">
@@ -79,41 +93,46 @@ export default function Apps() {
         )}
       </div>
 
-      {/* Catalog */}
+      {/* Catalog grouped by category */}
       <div>
         <h3 className="text-lg font-semibold mb-3">Catalog</h3>
-        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {catalog.map((c) => (
-            <div key={c.slug} className="card">
-              <div className="flex items-start gap-3">
-                <span className="text-2xl">{c.icon}</span>
-                <div className="min-w-0">
-                  <p className="font-semibold">{c.name}</p>
-                  <p className="text-xs text-slate-500">{c.description}</p>
+        {grouped.map(([category, apps]) => (
+          <div key={category} className="mb-6">
+            <p className="text-sm font-semibold text-slate-400 mb-2">{category}</p>
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {apps.map((c) => (
+                <div key={c.slug} className="card">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">{c.icon}</span>
+                    <div className="min-w-0">
+                      <p className="font-semibold">{c.name}</p>
+                      <p className="text-xs text-slate-500">{c.description}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="text-xs text-slate-600">
+                      {c.kind === 'tool' ? 'tool / dependency'
+                        : c.kind === 'docker' ? (c.web_ui === false ? '🐳 backend' : '🐳 docker')
+                        : c.kind === 'compose' ? '🐳 compose stack'
+                        : 'runs on a port'}
+                    </span>
+                    {c.installed ? (
+                      <span className="badge bg-green-500/15 text-green-400 ml-auto">installed</span>
+                    ) : (c.kind === 'docker' || c.kind === 'compose') && !dockerReady ? (
+                      <span className="text-xs text-yellow-500 ml-auto" title="Install the Docker Engine app first">
+                        needs Docker
+                      </span>
+                    ) : (
+                      <button className="btn-primary ml-auto" onClick={() => install(c.slug)}>
+                        ⬇ Install
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="mt-3 flex items-center gap-2">
-                <span className="text-xs text-slate-600">
-                  {c.kind === 'tool' ? 'tool / dependency'
-                    : c.kind === 'docker' ? '🐳 docker'
-                    : c.kind === 'compose' ? '🐳 compose stack'
-                    : 'runs on a port'}
-                </span>
-                {c.installed ? (
-                  <span className="badge bg-green-500/15 text-green-400 ml-auto">installed</span>
-                ) : (c.kind === 'docker' || c.kind === 'compose') && !dockerReady ? (
-                  <span className="text-xs text-yellow-500 ml-auto" title="Install the Docker Engine app first">
-                    needs Docker
-                  </span>
-                ) : (
-                  <button className="btn-primary ml-auto" onClick={() => install(c.slug)}>
-                    ⬇ Install
-                  </button>
-                )}
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -203,9 +222,13 @@ function InstalledApp({ app, onChanged }) {
         <>
           <dl className="mt-3 space-y-1.5 text-sm">
             <div className="flex justify-between gap-2">
-              <dt className="text-slate-500">URL</dt>
+              <dt className="text-slate-500">{app.web_ui === false ? 'Port' : 'URL'}</dt>
               <dd className="text-right">
-                {app.domain ? (
+                {app.web_ui === false ? (
+                  <span className="font-mono text-slate-300" title="Backend service — connect other apps to this port">
+                    127.0.0.1:{app.port} <span className="text-xs text-slate-600">(backend)</span>
+                  </span>
+                ) : app.domain ? (
                   <a href={liveUrl} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">
                     {app.domain} ↗
                   </a>
@@ -262,12 +285,14 @@ function InstalledApp({ app, onChanged }) {
             <button className="btn-secondary" onClick={() => setShowLog((v) => !v)}>📜 Logs</button>
           </div>
 
-          <div className="mt-3 flex gap-2 items-center flex-wrap">
-            <input className="input max-w-[12rem] py-1" placeholder="app.example.com"
-              value={domain} onChange={(e) => setDomain(e.target.value)} />
-            <button className="btn-secondary" onClick={assignDomain} disabled={!domain}>Domain</button>
-            <button className="btn-secondary" onClick={requestSsl} disabled={!app.domain}>🔒 SSL</button>
-          </div>
+          {app.web_ui !== false && (
+            <div className="mt-3 flex gap-2 items-center flex-wrap">
+              <input className="input max-w-[12rem] py-1" placeholder="app.example.com"
+                value={domain} onChange={(e) => setDomain(e.target.value)} />
+              <button className="btn-secondary" onClick={assignDomain} disabled={!domain}>Domain</button>
+              <button className="btn-secondary" onClick={requestSsl} disabled={!app.domain}>🔒 SSL</button>
+            </div>
+          )}
 
           {showLog && <LiveLog path={`/ws/apps/${app.id}/logs`} />}
         </>

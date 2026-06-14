@@ -173,6 +173,134 @@ CATALOG: dict[str, dict] = {
         "env": {"MB_DB_FILE": "/metabase-data/metabase.db"},
     },
 
+    # ---- Databases / backends (no web UI — ports for other apps to use) ----
+    "postgres": {
+        "name": "PostgreSQL", "description": "Relational database (backend service).",
+        "icon": "🐘", "kind": "docker", "web_ui": False, "container_port": 5432,
+        "image": "postgres:16", "username": "postgres", "secret_env": "POSTGRES_PASSWORD",
+        "run_args": ["-v", "app_postgres_data:/var/lib/postgresql/data"],
+    },
+    "mariadb": {
+        "name": "MariaDB", "description": "MySQL-compatible database (backend service).",
+        "icon": "🐬", "kind": "docker", "web_ui": False, "container_port": 3306,
+        "image": "mariadb:11", "username": "root", "secret_env": "MARIADB_ROOT_PASSWORD",
+        "run_args": ["-v", "app_mariadb_data:/var/lib/mysql"],
+    },
+    "redis": {
+        "name": "Redis", "description": "In-memory key/value store (backend service).",
+        "icon": "🧱", "kind": "docker", "web_ui": False, "container_port": 6379,
+        "image": "redis:7", "run_args": ["-v", "app_redis_data:/data"],
+    },
+    "mongo": {
+        "name": "MongoDB", "description": "Document database (backend service).",
+        "icon": "🍃", "kind": "docker", "web_ui": False, "container_port": 27017,
+        "image": "mongo:7", "username": "admin", "secret_env": "MONGO_INITDB_ROOT_PASSWORD",
+        "env": {"MONGO_INITDB_ROOT_USERNAME": "admin"},
+        "run_args": ["-v", "app_mongo_data:/data/db"],
+    },
+
+    # ---- Database UIs ----
+    "adminer": {
+        "name": "Adminer", "description": "Lightweight database management UI.",
+        "icon": "🗄️", "kind": "docker", "container_port": 8080,
+        "image": "adminer:latest",
+    },
+    "pgadmin": {
+        "name": "pgAdmin", "description": "PostgreSQL administration UI.",
+        "icon": "🐘", "kind": "docker", "container_port": 80,
+        "image": "dpage/pgadmin4:latest", "username": "admin@example.com",
+        "secret_env": "PGADMIN_DEFAULT_PASSWORD",
+        "env": {"PGADMIN_DEFAULT_EMAIL": "admin@example.com"},
+        "run_args": ["-v", "app_pgadmin_data:/var/lib/pgadmin"],
+    },
+
+    # ---- Developer / automation ----
+    "nodered": {
+        "name": "Node-RED", "description": "Low-code flow-based automation.",
+        "icon": "🔴", "kind": "docker", "websocket": True, "container_port": 1880,
+        "image": "nodered/node-red:latest", "run_args": ["-v", "app_nodered_data:/data"],
+    },
+    "it-tools": {
+        "name": "IT-Tools", "description": "A box of handy developer utilities.",
+        "icon": "🧰", "kind": "docker", "container_port": 80,
+        "image": "corentinth/it-tools:latest",
+    },
+
+    # ---- Productivity ----
+    "trilium": {
+        "name": "Trilium Notes", "description": "Hierarchical note-taking app.",
+        "icon": "📝", "kind": "docker", "container_port": 8080,
+        "image": "zadam/trilium:latest", "run_args": ["-v", "app_trilium_data:/home/node/trilium-data"],
+    },
+    "vikunja": {
+        "name": "Vikunja", "description": "To-do list & project management.",
+        "icon": "✅", "kind": "docker", "container_port": 3456,
+        "image": "vikunja/vikunja:latest", "run_args": ["-v", "app_vikunja_files:/app/vikunja/files"],
+    },
+    "freshrss": {
+        "name": "FreshRSS", "description": "Self-hosted RSS feed reader.",
+        "icon": "📡", "kind": "docker", "container_port": 80,
+        "image": "freshrss/freshrss:latest", "run_args": ["-v", "app_freshrss_data:/var/www/FreshRSS/data"],
+    },
+    "excalidraw": {
+        "name": "Excalidraw", "description": "Virtual whiteboard for sketching diagrams.",
+        "icon": "✏️", "kind": "docker", "container_port": 80,
+        "image": "excalidraw/excalidraw:latest",
+    },
+    "drawio": {
+        "name": "draw.io", "description": "Diagrams & flowcharts editor.",
+        "icon": "📐", "kind": "docker", "container_port": 8080,
+        "image": "jgraph/drawio:latest",
+    },
+    "stirling-pdf": {
+        "name": "Stirling-PDF", "description": "All-in-one PDF tools (merge, split, OCR…).",
+        "icon": "📄", "kind": "docker", "container_port": 8080,
+        "image": "frooodle/s-pdf:latest", "run_args": ["-v", "app_stirling_data:/usr/share/tessdata"],
+    },
+
+    # ---- Monitoring / dashboards ----
+    "dozzle": {
+        "name": "Dozzle", "description": "Live Docker container logs in the browser.",
+        "icon": "📃", "kind": "docker", "websocket": True, "container_port": 8080,
+        "image": "amir20/dozzle:latest",
+        "run_args": ["-v", "/var/run/docker.sock:/var/run/docker.sock"],
+    },
+    "homer": {
+        "name": "Homer", "description": "A simple static homepage / app dashboard.",
+        "icon": "🏠", "kind": "docker", "container_port": 8080,
+        "image": "b4bz/homer:latest", "run_args": ["-v", "app_homer_assets:/www/assets"],
+    },
+
+    # ---- Notifications ----
+    "gotify": {
+        "name": "Gotify", "description": "Send & receive push notifications.",
+        "icon": "🔔", "kind": "docker", "container_port": 80,
+        "image": "gotify/server:latest", "username": "admin", "secret_env": "GOTIFY_DEFAULTUSER_PASS",
+        "env": {"GOTIFY_DEFAULTUSER_NAME": "admin"},
+        "run_args": ["-v", "app_gotify_data:/app/data"],
+    },
+    "ntfy": {
+        "name": "ntfy", "description": "Pub/sub push notifications to your phone.",
+        "icon": "📨", "kind": "docker", "container_port": 80,
+        "image": "binwiederhier/ntfy:latest", "command": ["serve"],
+        "run_args": ["-v", "app_ntfy_cache:/var/cache/ntfy"],
+    },
+
+    # ---- Media ----
+    "jellyfin": {
+        "name": "Jellyfin", "description": "Free media server (movies, music, TV).",
+        "icon": "🎬", "kind": "docker", "websocket": True, "container_port": 8096,
+        "image": "jellyfin/jellyfin:latest",
+        "run_args": ["-v", "app_jellyfin_config:/config", "-v", "/srv:/media:ro"],
+    },
+    "qbittorrent": {
+        "name": "qBittorrent", "description": "Torrent client with a web UI.",
+        "icon": "🌀", "kind": "docker", "container_port": 8080,
+        "image": "linuxserver/qbittorrent:latest",
+        "env": {"WEBUI_PORT": "8080"},
+        "run_args": ["-v", "app_qbittorrent_config:/config", "-v", "/srv/downloads:/downloads"],
+    },
+
     # ---- Docker Compose stack (multi-container) ----
     "supabase": {
         "name": "Supabase", "description": "Open-source Firebase alternative (Postgres, "
@@ -182,6 +310,27 @@ CATALOG: dict[str, dict] = {
         "container_port": 8000,   # Kong gateway (Studio + API)
     },
 }
+
+
+# Catalog grouping for the UI (ordered). Anything not listed → "Other".
+CATEGORIES = [
+    ("Infrastructure", ["docker", "postgres", "mariadb", "redis", "mongo"]),
+    ("Database UIs", ["adminer", "pgadmin"]),
+    ("Developer", ["code-server", "gitea", "n8n", "nodered", "it-tools", "jupyterlab"]),
+    ("Files & Media", ["filebrowser", "nextcloud", "syncthing", "jellyfin", "qbittorrent"]),
+    ("Productivity", ["vaultwarden", "trilium", "vikunja", "freshrss",
+                      "excalidraw", "drawio", "stirling-pdf"]),
+    ("Monitoring", ["portainer", "grafana", "glances", "uptime-kuma",
+                    "metabase", "dozzle", "homer"]),
+    ("Notifications", ["gotify", "ntfy"]),
+    ("Browsers & Misc", ["webtop", "google-chrome", "supabase"]),
+]
+
+_CATEGORY_OF = {slug: cat for cat, slugs in CATEGORIES for slug in slugs}
+
+
+def category_of(slug: str) -> str:
+    return _CATEGORY_OF.get(slug, "Other")
 
 
 def get_catalog_entry(slug: str) -> dict:
@@ -341,6 +490,7 @@ def docker_run(app) -> None:
         cmd += ["-e", f"{entry['secret_env']}={app.secret}"]
     cmd += entry.get("run_args", [])
     cmd.append(entry["image"])
+    cmd += entry.get("command", [])   # optional args after the image (e.g. ntfy serve)
 
     result = _docker(*cmd)
     if result.returncode != 0:

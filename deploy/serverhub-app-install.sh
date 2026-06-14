@@ -92,9 +92,10 @@ case "$SLUG" in
     [ -f .env ] || cp .env.example .env
     # Bind the Kong gateway to localhost only (panel proxies it via a domain)
     sed -i 's/^KONG_HTTP_PORT=.*/KONG_HTTP_PORT=8000/' .env 2>/dev/null || true
-    docker compose pull
-    docker compose up -d
-    echo "Supabase Studio is on the Kong gateway (port 8000) — assign a domain in the panel."
+    # Pre-pull images here (streamed); the PANEL brings the stack UP afterwards
+    # so the compose project name stays consistent for start/stop/logs.
+    docker compose -p app_supabase pull
+    echo "Images pulled — the panel will start the stack."
     ;;
 
   google-chrome)

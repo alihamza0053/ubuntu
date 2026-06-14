@@ -53,6 +53,7 @@ def _to_out(app: App, live_status: bool = False) -> dict:
         "secret": app.secret, "icon": entry.get("icon", "📦"),
         "websocket": entry.get("websocket", False),
         "username": entry.get("username"),
+        "web_ui": entry.get("web_ui", True),
         # Label "Token" for token-based apps (Jupyter), else "Password"
         "secret_label": "Token" if entry.get("use_token") else "Password",
         # Can the panel set this app's password/token?
@@ -78,7 +79,9 @@ def catalog(db: Session = Depends(get_db)):
         "docker_ready": app_service.docker_ready(),
         "apps": [
             {"slug": slug, "name": e["name"], "description": e["description"],
-             "icon": e["icon"], "kind": e["kind"], "installed": slug in installed}
+             "icon": e["icon"], "kind": e["kind"], "installed": slug in installed,
+             "category": app_service.category_of(slug),
+             "web_ui": e.get("web_ui", True)}
             for slug, e in app_service.CATALOG.items()
         ],
     }
