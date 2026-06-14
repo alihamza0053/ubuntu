@@ -82,6 +82,15 @@ if [ "$DO_FRONTEND" = true ]; then
   ( cd "$PANEL_ROOT/frontend" && npm install --no-fund --no-audit && npm run build )
 fi
 
+# 4b. Deploy helpers (Apps installer + sudoers) — keep them current
+if [ -f "$SRC/deploy/serverhub-app-install.sh" ]; then
+  echo "==> Updating apps installer helper + sudoers"
+  mkdir -p "$PANEL_ROOT/bin"
+  install -m 0755 "$SRC/deploy/serverhub-app-install.sh" "$PANEL_ROOT/bin/serverhub-app-install"
+  install -m 0440 "$SRC/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub
+  visudo -c >/dev/null
+fi
+
 # 5. Ownership + restart
 echo "==> Fixing ownership"
 chown -R "$PANEL_USER:$PANEL_USER" "$PANEL_ROOT"

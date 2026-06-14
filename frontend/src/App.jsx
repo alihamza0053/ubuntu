@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import { useAuth } from './context/AuthContext'
+import Apps from './pages/Apps'
 import Databases from './pages/Databases'
 import Files from './pages/Files'
 import Home from './pages/Home'
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="projects/:id" element={<ProjectDetail />} />
         <Route path="websites" element={<Websites />} />
         <Route path="websites/:id" element={<WebsiteDetail />} />
+        <Route path="apps" element={<Apps />} />
         <Route path="terminal" element={<Terminal />} />
         <Route path="logs" element={<Logs />} />
         <Route path="files" element={<Files />} />

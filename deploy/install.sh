@@ -86,7 +86,11 @@ chown "$PANEL_USER:$PANEL_USER" /var/log/supervisor || true
 mkdir -p "/home/$PANEL_USER/.cache"
 chown -R "$PANEL_USER:$PANEL_USER" "/home/$PANEL_USER"
 
-echo "==> Sudoers rule (supervisorctl only)"
+echo "==> Apps installer helper"
+mkdir -p "$PANEL_ROOT/bin"
+install -m 0755 "$REPO_DIR/deploy/serverhub-app-install.sh" "$PANEL_ROOT/bin/serverhub-app-install"
+
+echo "==> Sudoers rule"
 install -m 0440 "$REPO_DIR/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub
 visudo -c >/dev/null   # abort if the sudoers file is invalid
 

@@ -125,6 +125,25 @@ class PipelineSchedule(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class App(Base):
+    """
+    A self-hosted app installed from the catalog (e.g. code-server / VS Code).
+    `kind`: 'service' (runs on a port under Supervisor) or 'tool' (install only).
+    """
+    __tablename__ = "apps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    kind: Mapped[str] = mapped_column(String(16), default="service")
+    port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="STOPPED")
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Optional access secret (e.g. code-server password) shown to the admin
+    secret: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class PipelineRun(Base):
     """One execution of a project's pipeline (manual or scheduled)."""
     __tablename__ = "pipeline_runs"

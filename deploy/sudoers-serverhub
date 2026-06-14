@@ -26,3 +26,6 @@ serverhub ALL=(root) NOPASSWD: /usr/bin/apt-get -y remove *
 # Uses local socket root auth for create/drop/query/import/export.
 serverhub ALL=(root) NOPASSWD: /usr/bin/mysql *
 serverhub ALL=(root) NOPASSWD: /usr/bin/mysqldump *
+
+# --- Apps section: vetted one-click installer (only known slugs) ---
+serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-app-install *

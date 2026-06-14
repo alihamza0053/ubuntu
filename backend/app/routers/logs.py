@@ -48,6 +48,9 @@ def _resolve(log_type: str, name: str | None, db: Session) -> Path:
         return SYSLOG
     if log_type == "supervisor":
         return dashboard_log_path(_safe_name(name or ""), "out")
+    if log_type == "app":
+        from ..services.app_service import log_path as app_log_path
+        return app_log_path(_safe_name(name or ""), "out")
     if log_type == "pipeline":
         return pipeline_log_path(_safe_name(name or ""))
     if log_type == "script":
@@ -121,6 +124,12 @@ def script_log(script_id: int, lines: int = Query(2000, ge=1, le=20000),
 def pipeline_log(name: str, lines: int = Query(5000, ge=1, le=50000),
                  db: Session = Depends(get_db)):
     return {"content": _tail(_resolve("pipeline", name, db), lines)}
+
+
+@router.get("/api/logs/app/{name}", dependencies=[Depends(get_current_user)])
+def app_log(name: str, lines: int = Query(500, ge=1, le=5000),
+            db: Session = Depends(get_db)):
+    return {"content": _tail(_resolve("app", name, db), lines)}
 
 
 @router.get("/api/logs/download", dependencies=[Depends(get_current_user)])

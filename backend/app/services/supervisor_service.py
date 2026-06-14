@@ -66,6 +66,11 @@ def _supervisorctl(*args: str) -> subprocess.CompletedProcess:
         raise HTTPException(status_code=504, detail="supervisorctl timed out")
 
 
+def run_supervisorctl(*args: str) -> subprocess.CompletedProcess:
+    """Public wrapper so other services (apps) can drive supervisorctl too."""
+    return _supervisorctl(*args)
+
+
 def allocate_port(db: Session) -> int:
     """Pick the next free dashboard port (max existing + 1)."""
     max_port = db.query(func.max(Project.dashboard_port)).scalar()
