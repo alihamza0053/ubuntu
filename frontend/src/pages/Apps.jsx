@@ -10,6 +10,7 @@ import StatusBadge from '../components/StatusBadge'
 export default function Apps() {
   const [catalog, setCatalog] = useState([])
   const [ready, setReady] = useState(true)
+  const [dockerReady, setDockerReady] = useState(true)
   const [installed, setInstalled] = useState([])
   const [installWs, setInstallWs] = useState(null) // WS path during an install
 
@@ -17,6 +18,7 @@ export default function Apps() {
     api.get('/apps/catalog').then((res) => {
       setCatalog(res.data.apps || [])
       setReady(res.data.installer_ready !== false)
+      setDockerReady(res.data.docker_ready !== false)
     }).catch(() => {})
     api.get('/apps').then((res) => setInstalled(res.data)).catch(() => {})
   }, [])
@@ -92,10 +94,17 @@ export default function Apps() {
               </div>
               <div className="mt-3 flex items-center gap-2">
                 <span className="text-xs text-slate-600">
-                  {c.kind === 'service' ? 'runs on a port' : 'tool / dependency'}
+                  {c.kind === 'tool' ? 'tool / dependency'
+                    : c.kind === 'docker' ? '🐳 docker'
+                    : c.kind === 'compose' ? '🐳 compose stack'
+                    : 'runs on a port'}
                 </span>
                 {c.installed ? (
                   <span className="badge bg-green-500/15 text-green-400 ml-auto">installed</span>
+                ) : (c.kind === 'docker' || c.kind === 'compose') && !dockerReady ? (
+                  <span className="text-xs text-yellow-500 ml-auto" title="Install the Docker Engine app first">
+                    needs Docker
+                  </span>
                 ) : (
                   <button className="btn-primary ml-auto" onClick={() => install(c.slug)}>
                     ⬇ Install
@@ -178,7 +187,7 @@ function InstalledApp({ app, onChanged }) {
     }
   }
 
-  const isService = app.kind === 'service'
+  const isRunnable = app.kind !== 'tool'
 
   return (
     <div className="card">
@@ -187,10 +196,10 @@ function InstalledApp({ app, onChanged }) {
           <span className="text-xl">{app.icon}</span>
           <span className="font-semibold truncate">{app.name}</span>
         </div>
-        {isService && <StatusBadge status={app.status} />}
+        {isRunnable && <StatusBadge status={app.status} />}
       </div>
 
-      {isService ? (
+      {isRunnable ? (
         <>
           <dl className="mt-3 space-y-1.5 text-sm">
             <div className="flex justify-between gap-2">
@@ -260,7 +269,7 @@ function InstalledApp({ app, onChanged }) {
             <button className="btn-secondary" onClick={requestSsl} disabled={!app.domain}>🔒 SSL</button>
           </div>
 
-          {showLog && <LiveLog path={`/ws/logs/app/${app.slug}`} />}
+          {showLog && <LiveLog path={`/ws/apps/${app.id}/logs`} />}
         </>
       ) : (
         <p className="mt-3 text-sm text-slate-500">Installed tool — no web UI to run.</p>

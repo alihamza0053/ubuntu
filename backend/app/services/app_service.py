@@ -112,6 +112,75 @@ CATALOG: dict[str, dict] = {
         "icon": "🌐",
         "kind": "tool",
     },
+
+    # ---- Docker engine (prerequisite for the docker apps below) ----
+    "docker": {
+        "name": "Docker Engine",
+        "description": "Container runtime — required to install the apps below.",
+        "icon": "🐳",
+        "kind": "tool",
+    },
+
+    # ---- Docker-based apps (single container) ----
+    "portainer": {
+        "name": "Portainer", "description": "Web UI to manage Docker containers.",
+        "icon": "🛳️", "kind": "docker", "websocket": True,
+        "image": "portainer/portainer-ce:latest", "container_port": 9000,
+        "run_args": ["-v", "/var/run/docker.sock:/var/run/docker.sock",
+                     "-v", "app_portainer_data:/data"],
+    },
+    "n8n": {
+        "name": "n8n", "description": "Workflow automation (Zapier-style).",
+        "icon": "🔗", "kind": "docker", "websocket": True,
+        "image": "n8nio/n8n:latest", "container_port": 5678,
+        "username": "admin", "secret_env": "N8N_BASIC_AUTH_PASSWORD",
+        "env": {"N8N_BASIC_AUTH_ACTIVE": "true", "N8N_BASIC_AUTH_USER": "admin"},
+        "run_args": ["-v", "app_n8n_data:/home/node/.n8n"],
+    },
+    "nextcloud": {
+        "name": "Nextcloud", "description": "Self-hosted files, calendar & office suite.",
+        "icon": "☁️", "kind": "docker", "websocket": False,
+        "image": "nextcloud:latest", "container_port": 80,
+        "username": "admin", "secret_env": "NEXTCLOUD_ADMIN_PASSWORD",
+        "env": {"NEXTCLOUD_ADMIN_USER": "admin"},
+        "run_args": ["-v", "app_nextcloud_data:/var/www/html"],
+    },
+    "vaultwarden": {
+        "name": "Vaultwarden", "description": "Bitwarden-compatible password manager.",
+        "icon": "🔐", "kind": "docker", "websocket": True,
+        "image": "vaultwarden/server:latest", "container_port": 80,
+        "secret_env": "ADMIN_TOKEN", "secret_label": "Admin token",
+        "run_args": ["-v", "app_vaultwarden_data:/data"],
+    },
+    "gitea": {
+        "name": "Gitea", "description": "Lightweight self-hosted Git service.",
+        "icon": "🍵", "kind": "docker", "websocket": False,
+        "image": "gitea/gitea:latest", "container_port": 3000,
+        "run_args": ["-v", "app_gitea_data:/data"],
+    },
+    "grafana": {
+        "name": "Grafana", "description": "Dashboards & observability.",
+        "icon": "📉", "kind": "docker", "websocket": True,
+        "image": "grafana/grafana:latest", "container_port": 3000,
+        "username": "admin", "secret_env": "GF_SECURITY_ADMIN_PASSWORD",
+        "run_args": ["-v", "app_grafana_data:/var/lib/grafana"],
+    },
+    "metabase": {
+        "name": "Metabase", "description": "Business-intelligence / analytics UI.",
+        "icon": "📈", "kind": "docker", "websocket": False,
+        "image": "metabase/metabase:latest", "container_port": 3000,
+        "run_args": ["-v", "app_metabase_data:/metabase-data"],
+        "env": {"MB_DB_FILE": "/metabase-data/metabase.db"},
+    },
+
+    # ---- Docker Compose stack (multi-container) ----
+    "supabase": {
+        "name": "Supabase", "description": "Open-source Firebase alternative (Postgres, "
+                       "Auth, Storage, Studio). Large stack — experimental, 2 GB+ RAM.",
+        "icon": "⚡", "kind": "compose", "websocket": True,
+        "compose_dir": "/srv/serverhub/apps/supabase/docker",
+        "container_port": 8000,   # Kong gateway (Studio + API)
+    },
 }
 
 
@@ -231,6 +300,152 @@ def status(slug: str) -> str:
 
 def new_password() -> str:
     return secrets.token_urlsafe(12)
+
+
+# ============================================================
+# Docker / Compose lifecycle (kind == "docker" / "compose")
+# ============================================================
+
+DOCKER = ["sudo", "-n", "docker"]
+
+
+def docker_ready() -> bool:
+    """True if Docker is installed and the panel can run it."""
+    try:
+        r = subprocess.run(DOCKER + ["version", "--format", "{{.Server.Version}}"],
+                           capture_output=True, text=True, timeout=15)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def container_name(slug: str) -> str:
+    return f"app_{slug}"
+
+
+def _docker(*args: str, timeout: int = 300) -> subprocess.CompletedProcess:
+    return subprocess.run([*DOCKER, *args], capture_output=True, text=True, timeout=timeout)
+
+
+def docker_run(app) -> None:
+    """(Re)create and start a single-container app."""
+    entry = get_catalog_entry(app.slug)
+    cname = container_name(app.slug)
+    _docker("rm", "-f", cname, timeout=60)   # replace any existing container
+
+    cmd = ["run", "-d", "--name", cname, "--restart", "unless-stopped",
+           "-p", f"127.0.0.1:{app.port}:{entry['container_port']}"]
+    for k, v in entry.get("env", {}).items():
+        cmd += ["-e", f"{k}={str(v).format(port=app.port, secret=app.secret or '')}"]
+    if entry.get("secret_env") and app.secret:
+        cmd += ["-e", f"{entry['secret_env']}={app.secret}"]
+    cmd += entry.get("run_args", [])
+    cmd.append(entry["image"])
+
+    result = _docker(*cmd)
+    if result.returncode != 0:
+        raise HTTPException(status_code=500,
+                            detail=f"docker run failed: {(result.stderr or result.stdout)[:400]}")
+
+
+def docker_control(slug: str, action: str) -> str:
+    result = _docker(action, container_name(slug), timeout=120)
+    if result.returncode != 0:
+        raise HTTPException(status_code=500, detail=(result.stderr or result.stdout)[:300])
+    return result.stdout.strip() or f"{action} {slug}"
+
+
+def docker_status(slug: str) -> str:
+    r = _docker("inspect", "-f", "{{.State.Status}}", container_name(slug), timeout=20)
+    state = r.stdout.strip()
+    if state == "running":
+        return "RUNNING"
+    if state in ("exited", "created", "paused", "dead"):
+        return "STOPPED"
+    return "STOPPED"   # not found / unknown
+
+
+def docker_remove(slug: str) -> None:
+    _docker("rm", "-f", container_name(slug), timeout=60)
+
+
+# ---- Compose (multi-container) ----
+
+def _compose(app, *args: str, timeout: int = 600) -> subprocess.CompletedProcess:
+    entry = get_catalog_entry(app.slug)
+    base = [*DOCKER, "compose", "-f", f"{entry['compose_dir']}/docker-compose.yml",
+            "-p", f"app_{app.slug}"]
+    return subprocess.run([*base, *args], capture_output=True, text=True, timeout=timeout)
+
+
+def compose_control(app, action: str) -> str:
+    mapping = {"start": ["up", "-d"], "stop": ["stop"], "restart": ["restart"]}
+    result = _compose(app, *mapping.get(action, ["ps"]))
+    if result.returncode != 0:
+        raise HTTPException(status_code=500, detail=(result.stderr or result.stdout)[:400])
+    return result.stdout.strip() or f"{action} {app.slug}"
+
+
+def compose_status(app) -> str:
+    result = _compose(app, "ps", "--status", "running", "-q", timeout=60)
+    return "RUNNING" if result.stdout.strip() else "STOPPED"
+
+
+def compose_remove(app) -> None:
+    _compose(app, "down", "-v", timeout=300)
+
+
+# ---- Live-log command per kind (None ⇒ tail the supervisor file) ----
+
+def logs_stream_cmd(app) -> list[str] | None:
+    if app.kind == "docker":
+        return [*DOCKER, "logs", "-f", "--tail", "200", container_name(app.slug)]
+    if app.kind == "compose":
+        entry = get_catalog_entry(app.slug)
+        return [*DOCKER, "compose", "-f", f"{entry['compose_dir']}/docker-compose.yml",
+                "-p", f"app_{app.slug}", "logs", "-f", "--tail", "200"]
+    return None
+
+
+# ---- Generic dispatch by kind ----
+
+def start_app(app) -> str:
+    if app.kind == "service":
+        out = control(app.slug, "start"); app.status = status(app.slug); return out
+    if app.kind == "docker":
+        out = docker_control(app.slug, "start"); app.status = docker_status(app.slug); return out
+    if app.kind == "compose":
+        out = compose_control(app, "start"); app.status = compose_status(app); return out
+    raise HTTPException(status_code=400, detail="This app is a tool (nothing to run)")
+
+
+def control_app(app, action: str) -> str:
+    if app.kind == "service":
+        out = control(app.slug, action); app.status = status(app.slug); return out
+    if app.kind == "docker":
+        out = docker_control(app.slug, action); app.status = docker_status(app.slug); return out
+    if app.kind == "compose":
+        out = compose_control(app, action); app.status = compose_status(app); return out
+    raise HTTPException(status_code=400, detail="This app is a tool (nothing to run)")
+
+
+def live_status(app) -> str:
+    if app.kind == "service":
+        return status(app.slug)
+    if app.kind == "docker":
+        return docker_status(app.slug)
+    if app.kind == "compose":
+        return compose_status(app)
+    return app.status
+
+
+def remove_app(app) -> None:
+    if app.kind == "service":
+        remove_program(app.slug)
+    elif app.kind == "docker":
+        docker_remove(app.slug)
+    elif app.kind == "compose":
+        compose_remove(app)
 
 
 def set_password(app, new_pw: str) -> None:

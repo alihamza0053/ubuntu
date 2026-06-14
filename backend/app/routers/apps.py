@@ -59,8 +59,13 @@ def _to_out(app: App, live_status: bool = False) -> dict:
         "can_set_password": bool(entry.get("use_password") or entry.get("use_token")
                                  or entry.get("set_password_cmd")),
     }
-    if live_status and app.kind == "service":
-        out["status"] = app_service.status(app.slug)
+    if entry.get("secret_label"):
+        out["secret_label"] = entry["secret_label"]
+    if live_status and app.kind in ("service", "docker", "compose"):
+        try:
+            out["status"] = app_service.live_status(app)
+        except Exception:
+            pass
     return out
 
 
@@ -70,6 +75,7 @@ def catalog(db: Session = Depends(get_db)):
     installed = {a.slug for a in db.query(App).all()}
     return {
         "installer_ready": app_service.installer_ready(),
+        "docker_ready": app_service.docker_ready(),
         "apps": [
             {"slug": slug, "name": e["name"], "description": e["description"],
              "icon": e["icon"], "kind": e["kind"], "installed": slug in installed}
@@ -88,10 +94,7 @@ def control_app(app_id: int, action: str, db: Session = Depends(get_db)):
     if action not in ("start", "stop", "restart"):
         raise HTTPException(status_code=400, detail="action must be start/stop/restart")
     app = _get_app(app_id, db)
-    if app.kind != "service":
-        raise HTTPException(status_code=400, detail="This app is a tool (nothing to run)")
-    output = app_service.control(app.slug, action)
-    app.status = app_service.status(app.slug)
+    output = app_service.control_app(app, action)   # dispatches by kind
     db.commit()
     log_activity(f"app {app.slug} {action}")
     return DetailResponse(detail=output or f"{action} {app.slug}")
@@ -112,7 +115,7 @@ def set_password(app_id: int, body: PasswordRequest, db: Session = Depends(get_d
 @router.post("/{app_id}/assign-domain", response_model=DetailResponse)
 def assign_domain(app_id: int, body: DomainRequest, db: Session = Depends(get_db)):
     app = _get_app(app_id, db)
-    if app.kind != "service" or not app.port:
+    if app.kind == "tool" or not app.port:
         raise HTTPException(status_code=400, detail="Only running apps can have a domain")
     slug = f"app-{app.slug}"
     # The streamlit proxy block forwards WebSockets too (needed by code-server)
@@ -143,9 +146,9 @@ def app_ssl(app_id: int, db: Session = Depends(get_db)):
 def uninstall_app(app_id: int, db: Session = Depends(get_db)):
     """Remove the app from the panel (stops it; leaves the installed binary)."""
     app = _get_app(app_id, db)
-    if app.kind == "service":
+    if app.kind != "tool":
         try:
-            app_service.remove_program(app.slug)
+            app_service.remove_app(app)   # supervisor / docker / compose
         except HTTPException:
             pass
     nginx_service.remove_site(f"app-{app.slug}")
@@ -154,6 +157,38 @@ def uninstall_app(app_id: int, db: Session = Depends(get_db)):
     db.delete(app)
     db.commit()
     return DetailResponse(detail=f"App '{app.slug}' removed")
+
+
+@ws_router.websocket("/ws/apps/{app_id}/logs")
+async def app_logs_ws(websocket: WebSocket, app_id: int):
+    """Live logs for any app kind (file tail for services, docker logs for containers)."""
+    user = await authenticate_websocket(websocket)
+    if user is None:
+        return
+    await websocket.accept()
+
+    db = SessionLocal()
+    try:
+        app = db.get(App, app_id)
+    finally:
+        db.close()
+    if app is None:
+        await websocket.send_text("[serverhub] app not found")
+        await websocket.close()
+        return
+
+    async def send(line: str):
+        await websocket.send_text(line)
+
+    try:
+        cmd = app_service.logs_stream_cmd(app)
+        if cmd is None:   # service → tail the supervisor stdout log
+            from ..services.streaming import tail_file
+            await tail_file(app_service.log_path(app.slug, "out"), send)
+        else:             # docker / compose → stream the container logs
+            await stream_command(cmd, send)
+    except (WebSocketDisconnect, RuntimeError):
+        pass
 
 
 @ws_router.websocket("/ws/apps/{slug}/install")
@@ -170,6 +205,7 @@ async def install_app_ws(websocket: WebSocket, slug: str):
         await websocket.close()
         return
 
+    kind = entry["kind"]
     sudo_blocked = {"hit": False}
 
     async def send(line: str):
@@ -177,9 +213,22 @@ async def install_app_ws(websocket: WebSocket, slug: str):
             sudo_blocked["hit"] = True
         await websocket.send_text(line)
 
+    # Docker / compose apps need the Docker engine first
+    if kind in ("docker", "compose") and not app_service.docker_ready():
+        await send("[serverhub] Docker isn't installed/running yet.")
+        await send("[serverhub] Install the 'Docker Engine' app first, then retry.")
+        await send("[serverhub] install failed (exit 1)")
+        await websocket.close()
+        return
+
     await send(f"[serverhub] installing {entry['name']} …")
     try:
-        code = await stream_command(app_service.installer_cmd(slug), send)
+        if kind in ("tool", "service", "compose"):
+            # These run the vetted root installer (apt / scripts / git+compose)
+            code = await stream_command(app_service.installer_cmd(slug), send)
+        else:  # docker single-container: pull the image (compose/tool use script)
+            code = await stream_command(
+                ["sudo", "-n", "docker", "pull", entry["image"]], send)
     except WebSocketDisconnect:
         return
 
@@ -192,35 +241,42 @@ async def install_app_ws(websocket: WebSocket, slug: str):
             await send("[serverhub] That rule isn't deployed on this server yet.")
             await send("[serverhub] Fix it once, then retry Install:")
             await send("[serverhub]   cd /opt/serverhub-src && sudo bash deploy/update.sh")
-            await send("[serverhub] (installs /srv/serverhub/bin/serverhub-app-install + the sudoers rule)")
         await send(f"[serverhub] install failed (exit {code})")
         await websocket.close()
         return
 
-    # Register the app (idempotent) and, for services, write supervisor + start
+    # Register the app (idempotent) and bring it up
     db = SessionLocal()
     try:
         app = db.query(App).filter(App.slug == slug).first()
         if app is None:
-            app = App(slug=slug, name=entry["name"], kind=entry["kind"], status="STOPPED")
-            if entry["kind"] == "service":
+            app = App(slug=slug, name=entry["name"], kind=kind, status="STOPPED")
+            if kind in ("service", "docker", "compose"):
                 app.port = app_service.allocate_port(db)
-                if entry.get("use_password") or entry.get("use_token"):
+                if entry.get("use_password") or entry.get("use_token") or entry.get("secret_env"):
                     app.secret = app_service.new_password()
             db.add(app)
             db.commit()
             db.refresh(app)
-        if entry["kind"] == "service":
-            app_service.write_program(app)
-            try:
+
+        try:
+            if kind == "service":
+                app_service.write_program(app)
                 app_service.control(slug, "start")
-                app.status = "RUNNING"
+            elif kind == "docker":
+                app_service.docker_run(app)
+            elif kind == "compose":
+                app_service.compose_control(app, "start")
+            if kind != "tool":
+                app.status = app_service.live_status(app)
                 db.commit()
                 await send(f"[serverhub] started on port {app.port}")
                 if app.secret:
-                    await send(f"[serverhub] password: {app.secret}")
-            except HTTPException as exc:
-                await send(f"[serverhub] installed but failed to start: {exc.detail}")
+                    await send(f"[serverhub] {('username: ' + entry['username'] + '  ') if entry.get('username') else ''}"
+                               f"{entry.get('secret_label', 'password').lower()}: {app.secret}")
+        except HTTPException as exc:
+            await send(f"[serverhub] installed but failed to start: {exc.detail}")
+
         log_activity(f"app {slug} installed")
         await send("[serverhub] ✓ done")
     finally:

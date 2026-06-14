@@ -29,3 +29,6 @@ serverhub ALL=(root) NOPASSWD: /usr/bin/mysqldump *
 
 # --- Apps section: vetted one-click installer (only known slugs) ---
 serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-app-install *
+
+# --- Docker engine + container apps (Apps section) ---
+serverhub ALL=(root) NOPASSWD: /usr/bin/docker *

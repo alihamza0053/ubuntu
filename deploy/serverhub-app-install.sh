@@ -67,6 +67,36 @@ case "$SLUG" in
     apt-get install -y xvfb x11vnc novnc websockify fluxbox firefox-esr
     ;;
 
+  docker)
+    echo "==> Installing Docker Engine + Compose"
+    if ! command -v docker >/dev/null; then
+      curl -fsSL https://get.docker.com | sh
+    fi
+    # Let the panel user run docker too (sudo rule also covers it)
+    usermod -aG docker serverhub 2>/dev/null || true
+    systemctl enable --now docker 2>/dev/null || true
+    docker --version || true
+    docker compose version || true
+    ;;
+
+  supabase)
+    echo "==> Installing Supabase (docker compose stack) — this is large"
+    command -v docker >/dev/null || { echo "Install Docker first"; exit 1; }
+    command -v git >/dev/null || apt-get install -y git
+    mkdir -p /srv/serverhub/apps/supabase
+    if [ ! -d /srv/serverhub/apps/supabase/docker ]; then
+      git clone --depth 1 https://github.com/supabase/supabase /srv/serverhub/apps/supabase/repo
+      cp -r /srv/serverhub/apps/supabase/repo/docker /srv/serverhub/apps/supabase/docker
+    fi
+    cd /srv/serverhub/apps/supabase/docker
+    [ -f .env ] || cp .env.example .env
+    # Bind the Kong gateway to localhost only (panel proxies it via a domain)
+    sed -i 's/^KONG_HTTP_PORT=.*/KONG_HTTP_PORT=8000/' .env 2>/dev/null || true
+    docker compose pull
+    docker compose up -d
+    echo "Supabase Studio is on the Kong gateway (port 8000) — assign a domain in the panel."
+    ;;
+
   google-chrome)
     echo "==> Installing Google Chrome (.deb)"
     if ! command -v google-chrome >/dev/null; then
