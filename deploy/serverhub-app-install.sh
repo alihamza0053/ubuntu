@@ -108,6 +108,105 @@ case "$SLUG" in
     echo "Images pulled — the panel will start the stack."
     ;;
 
+  wordpress|joomla|ghost|espocrm)
+    echo "==> Setting up $SLUG (compose stack with bundled DB)"
+    command -v docker >/dev/null || { echo "Install Docker first"; exit 1; }
+    DIR="/srv/serverhub/apps/$SLUG"
+    mkdir -p "$DIR"; cd "$DIR"
+    DBPW="$(openssl rand -hex 16 2>/dev/null || head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)"
+    case "$SLUG" in
+      wordpress)
+        cat > docker-compose.yml <<EOF
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment: { MARIADB_DATABASE: wordpress, MARIADB_USER: wordpress, MARIADB_PASSWORD: "$DBPW", MARIADB_RANDOM_ROOT_PASSWORD: "yes" }
+    volumes: [ "db:/var/lib/mysql" ]
+  app:
+    image: wordpress:latest
+    restart: unless-stopped
+    depends_on: [ db ]
+    ports: [ "127.0.0.1:8091:80" ]
+    environment: { WORDPRESS_DB_HOST: db, WORDPRESS_DB_USER: wordpress, WORDPRESS_DB_PASSWORD: "$DBPW", WORDPRESS_DB_NAME: wordpress }
+    volumes: [ "app:/var/www/html" ]
+volumes: { db: {}, app: {} }
+EOF
+        ;;
+      joomla)
+        cat > docker-compose.yml <<EOF
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment: { MYSQL_DATABASE: joomla, MYSQL_USER: joomla, MYSQL_PASSWORD: "$DBPW", MYSQL_RANDOM_ROOT_PASSWORD: "1" }
+    volumes: [ "db:/var/lib/mysql" ]
+  app:
+    image: joomla:latest
+    restart: unless-stopped
+    depends_on: [ db ]
+    ports: [ "127.0.0.1:8094:80" ]
+    environment: { JOOMLA_DB_HOST: db, JOOMLA_DB_USER: joomla, JOOMLA_DB_PASSWORD: "$DBPW", JOOMLA_DB_NAME: joomla }
+    volumes: [ "app:/var/www/html" ]
+volumes: { db: {}, app: {} }
+EOF
+        ;;
+      ghost)
+        cat > docker-compose.yml <<EOF
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment: { MYSQL_DATABASE: ghost, MYSQL_USER: ghost, MYSQL_PASSWORD: "$DBPW", MYSQL_RANDOM_ROOT_PASSWORD: "1" }
+    volumes: [ "db:/var/lib/mysql" ]
+  app:
+    image: ghost:5
+    restart: unless-stopped
+    depends_on: [ db ]
+    ports: [ "127.0.0.1:8092:2368" ]
+    environment:
+      database__client: mysql
+      database__connection__host: db
+      database__connection__user: ghost
+      database__connection__password: "$DBPW"
+      database__connection__database: ghost
+      url: http://localhost:8092
+    volumes: [ "content:/var/lib/ghost/content" ]
+volumes: { db: {}, content: {} }
+EOF
+        ;;
+      espocrm)
+        ADMINPW="$(openssl rand -hex 8 2>/dev/null || head -c 12 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 16)"
+        printf 'ADMIN_USERNAME=admin\nADMIN_PASSWORD=%s\n' "$ADMINPW" > credentials.env
+        cat > docker-compose.yml <<EOF
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment: { MARIADB_DATABASE: espocrm, MARIADB_USER: espocrm, MARIADB_PASSWORD: "$DBPW", MARIADB_RANDOM_ROOT_PASSWORD: "yes" }
+    volumes: [ "db:/var/lib/mysql" ]
+  app:
+    image: espocrm/espocrm:latest
+    restart: unless-stopped
+    depends_on: [ db ]
+    ports: [ "127.0.0.1:8093:80" ]
+    environment:
+      ESPOCRM_DATABASE_HOST: db
+      ESPOCRM_DATABASE_USER: espocrm
+      ESPOCRM_DATABASE_PASSWORD: "$DBPW"
+      ESPOCRM_DATABASE_NAME: espocrm
+      ESPOCRM_ADMIN_USERNAME: admin
+      ESPOCRM_ADMIN_PASSWORD: "$ADMINPW"
+      ESPOCRM_SITE_URL: http://localhost:8093
+    volumes: [ "data:/var/www/html" ]
+volumes: { db: {}, data: {} }
+EOF
+        ;;
+    esac
+    docker compose -p "app_$SLUG" pull
+    echo "Compose written + images pulled — the panel will start the stack."
+    ;;
+
   google-chrome)
     echo "==> Installing Google Chrome (.deb)"
     if ! command -v google-chrome >/dev/null; then

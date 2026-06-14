@@ -4,8 +4,9 @@ import LiveLog from '../components/LiveLog'
 import StatusBadge from '../components/StatusBadge'
 
 const CATEGORY_ORDER = [
-  'Infrastructure', 'Database UIs', 'Developer', 'Files & Sync', 'Media & Library',
-  'Productivity', 'Utilities', 'Monitoring', 'Notifications', 'Browsers & Misc', 'Other',
+  'Infrastructure', 'Database UIs', 'Developer', 'CMS & CRM', 'Files & Sync',
+  'Media & Library', 'Productivity', 'Utilities', 'Monitoring', 'Notifications',
+  'Browsers & Misc', 'Other',
 ]
 
 /**
@@ -18,6 +19,7 @@ export default function Apps() {
   const [dockerReady, setDockerReady] = useState(true)
   const [installed, setInstalled] = useState([])
   const [installWs, setInstallWs] = useState(null) // WS path during an install
+  const [query, setQuery] = useState('')
 
   const refresh = useCallback(() => {
     api.get('/apps/catalog').then((res) => {
@@ -44,14 +46,16 @@ export default function Apps() {
     setTimeout(() => setInstallWs(`/ws/apps/${slug}/install`), 0)
   }
 
-  // Group catalog by category in the defined order
+  // Group catalog by category (filtered by the search query) in defined order
   const grouped = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const match = (c) => !q || `${c.name} ${c.description} ${c.slug} ${c.category}`.toLowerCase().includes(q)
     const byCat = {}
-    for (const c of catalog) (byCat[c.category || 'Other'] ||= []).push(c)
+    for (const c of catalog) if (match(c)) (byCat[c.category || 'Other'] ||= []).push(c)
     return CATEGORY_ORDER
       .filter((cat) => byCat[cat]?.length)
       .map((cat) => [cat, byCat[cat]])
-  }, [catalog])
+  }, [catalog, query])
 
   return (
     <div className="space-y-6">
@@ -95,7 +99,18 @@ export default function Apps() {
 
       {/* Catalog grouped by category */}
       <div>
-        <h3 className="text-lg font-semibold mb-3">Catalog</h3>
+        <div className="flex items-center gap-3 mb-3 flex-wrap">
+          <h3 className="text-lg font-semibold">Catalog</h3>
+          <input
+            className="input max-w-xs ml-auto"
+            placeholder="🔎 Search apps…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        {grouped.length === 0 && (
+          <p className="text-slate-600 text-sm">No apps match “{query}”.</p>
+        )}
         {grouped.map(([category, apps]) => (
           <div key={category} className="mb-6">
             <p className="text-sm font-semibold text-slate-400 mb-2">{category}</p>
@@ -146,6 +161,17 @@ function InstalledApp({ app, onChanged }) {
   const [reveal, setReveal] = useState(false)
   const [newPw, setNewPw] = useState('')
   const [showPwForm, setShowPwForm] = useState(false)
+  const [creds, setCreds] = useState(null) // full credential list when opened
+
+  async function toggleCreds() {
+    if (creds) { setCreds(null); return }
+    try {
+      const res = await api.get(`/apps/${app.id}/credentials`)
+      setCreds(res.data.items)
+    } catch (err) {
+      alert(errorMessage(err))
+    }
+  }
 
   async function setPassword() {
     setMsg('')
@@ -283,7 +309,28 @@ function InstalledApp({ app, onChanged }) {
             <button className="btn-secondary" onClick={() => action('stop')}>⏹ Stop</button>
             <button className="btn-secondary" onClick={() => action('restart')}>🔄 Restart</button>
             <button className="btn-secondary" onClick={() => setShowLog((v) => !v)}>📜 Logs</button>
+            {app.has_credentials && (
+              <button className="btn-secondary" onClick={toggleCreds}>🔑 Credentials</button>
+            )}
           </div>
+
+          {creds && (
+            <div className="mt-3 rounded-lg border border-panel-border bg-slate-900 p-3 space-y-1.5">
+              <p className="text-xs text-slate-500 mb-1">All credentials (from the stack's config)</p>
+              {creds.map((c) => (
+                <div key={c.label} className="flex items-start justify-between gap-3 text-xs">
+                  <span className="text-slate-400 shrink-0">{c.label}</span>
+                  <span className="font-mono text-yellow-300 break-all text-right flex items-center gap-1">
+                    {c.value || <span className="text-slate-600">—</span>}
+                    {c.value && (
+                      <button className="text-slate-500 hover:text-slate-200"
+                        onClick={() => navigator.clipboard?.writeText(c.value)} title="Copy">⧉</button>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {app.web_ui !== false && (
             <div className="mt-3 flex gap-2 items-center flex-wrap">

@@ -54,6 +54,7 @@ def _to_out(app: App, live_status: bool = False) -> dict:
         "websocket": entry.get("websocket", False),
         "username": entry.get("username"),
         "web_ui": entry.get("web_ui", True),
+        "has_credentials": bool(entry.get("credentials") and entry.get("env_file")),
         # Label "Token" for token-based apps (Jupyter), else "Password"
         "secret_label": "Token" if entry.get("use_token") else "Password",
         # Can the panel set this app's password/token?
@@ -110,6 +111,25 @@ def control_app(app_id: int, action: str, db: Session = Depends(get_db)):
     db.commit()
     log_activity(f"app {app.slug} {action}")
     return DetailResponse(detail=output or f"{action} {app.slug}")
+
+
+@router.get("/{app_id}/credentials")
+def app_credentials(app_id: int, db: Session = Depends(get_db)):
+    """Full credential set for an app, read live from its config (.env)."""
+    app = _get_app(app_id, db)
+    entry = app_service.CATALOG.get(app.slug, {})
+    creds = entry.get("credentials")
+    env_file = entry.get("env_file")
+    if not creds or not env_file:
+        raise HTTPException(status_code=404, detail="This app has no managed credentials")
+
+    # Static fallbacks for fields not stored in the env file
+    static = {"Postgres user": "postgres"}
+    items = []
+    for label, key in creds:
+        value = static.get(label, "") if key is None else (app_service.read_env_value(env_file, key) or "")
+        items.append({"label": label, "value": value})
+    return {"items": items, "source": env_file}
 
 
 @router.post("/{app_id}/set-password", response_model=DetailResponse)

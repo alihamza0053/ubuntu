@@ -368,6 +368,36 @@ CATALOG: dict[str, dict] = {
         "run_args": ["-v", "app_qbittorrent_config:/config", "-v", "/srv/downloads:/downloads"],
     },
 
+    # ---- CMS & CRM (compose stacks with a bundled database) ----
+    "wordpress": {
+        "name": "WordPress", "description": "The world's most popular CMS / blog. Bundled MariaDB.",
+        "icon": "📰", "kind": "compose", "websocket": False,
+        "compose_dir": "/srv/serverhub/apps/wordpress", "container_port": 8091,
+    },
+    "joomla": {
+        "name": "Joomla", "description": "Flexible CMS for websites & portals. Bundled MySQL.",
+        "icon": "🌐", "kind": "compose", "websocket": False,
+        "compose_dir": "/srv/serverhub/apps/joomla", "container_port": 8094,
+    },
+    "ghost": {
+        "name": "Ghost", "description": "Modern publishing / newsletter platform. Bundled MySQL.",
+        "icon": "👻", "kind": "compose", "websocket": False,
+        "compose_dir": "/srv/serverhub/apps/ghost", "container_port": 8092,
+    },
+    "espocrm": {
+        "name": "EspoCRM", "description": "Open-source CRM (contacts, leads, sales). Bundled MariaDB.",
+        "icon": "🤝", "kind": "compose", "websocket": False,
+        "compose_dir": "/srv/serverhub/apps/espocrm", "container_port": 8093,
+        "username": "admin",
+        "env_file": "/srv/serverhub/apps/espocrm/credentials.env",
+        "secret_env_file": {"file": "/srv/serverhub/apps/espocrm/credentials.env",
+                            "key": "ADMIN_PASSWORD"},
+        "credentials": [
+            ["Admin username", "ADMIN_USERNAME"],
+            ["Admin password", "ADMIN_PASSWORD"],
+        ],
+    },
+
     # ---- Docker Compose stack (multi-container) ----
     "supabase": {
         "name": "Supabase", "description": "Open-source Firebase alternative (Postgres, "
@@ -377,8 +407,21 @@ CATALOG: dict[str, dict] = {
         "container_port": 8000,   # Kong gateway (Studio + API)
         # Studio dashboard login (from the stack's .env, set by the installer)
         "username": "supabase",
+        "env_file": "/srv/serverhub/apps/supabase/docker/.env",
         "secret_env_file": {"file": "/srv/serverhub/apps/supabase/docker/.env",
                             "key": "DASHBOARD_PASSWORD"},
+        # Full credential set surfaced in the "Credentials" panel (label, env key)
+        "credentials": [
+            ["Studio username", "DASHBOARD_USERNAME"],
+            ["Studio password", "DASHBOARD_PASSWORD"],
+            ["Postgres user", None],            # always "postgres"
+            ["Postgres password", "POSTGRES_PASSWORD"],
+            ["Postgres database", "POSTGRES_DB"],
+            ["Postgres port", "POSTGRES_PORT"],
+            ["JWT secret", "JWT_SECRET"],
+            ["anon key (public)", "ANON_KEY"],
+            ["service_role key (admin)", "SERVICE_ROLE_KEY"],
+        ],
     },
 }
 
@@ -388,6 +431,7 @@ CATEGORIES = [
     ("Infrastructure", ["docker", "postgres", "mariadb", "redis", "mongo"]),
     ("Database UIs", ["adminer", "phpmyadmin", "pgadmin"]),
     ("Developer", ["code-server", "gitea", "n8n", "nodered", "jupyterlab"]),
+    ("CMS & CRM", ["wordpress", "joomla", "ghost", "espocrm"]),
     ("Files & Sync", ["filebrowser", "nextcloud", "syncthing"]),
     ("Media & Library", ["jellyfin", "navidrome", "calibre-web", "kavita", "qbittorrent"]),
     ("Productivity", ["vaultwarden", "trilium", "memos", "vikunja", "mealie",
