@@ -133,7 +133,10 @@ class App(Base):
     __tablename__ = "apps"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # Catalog key (NOT unique — an app can have multiple instances)
+    slug: Mapped[str] = mapped_column(String(64), index=True)
+    # Unique per-instance id used for container/program/nginx naming
+    instance: Mapped[str] = mapped_column(String(96), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(128))
     kind: Mapped[str] = mapped_column(String(16), default="service")
     port: Mapped[int | None] = mapped_column(Integer, nullable=True)

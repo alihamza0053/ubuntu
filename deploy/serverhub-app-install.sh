@@ -63,8 +63,18 @@ case "$SLUG" in
     ;;
 
   webtop)
-    echo "==> Installing Web Browser desktop (Xvfb + noVNC + Firefox)"
-    apt-get install -y xvfb x11vnc novnc websockify fluxbox firefox-esr
+    echo "==> Installing Web Browser desktop (Xvfb + noVNC + Google Chrome)"
+    apt-get install -y xvfb x11vnc novnc websockify fluxbox wget
+    # Firefox is snap-only on Ubuntu (won't run headless as root), so use the
+    # Google Chrome .deb — the same reliable browser used for Selenium.
+    if ! command -v google-chrome >/dev/null; then
+      snap remove chromium 2>/dev/null || true
+      TMP="$(mktemp --suffix=.deb)"
+      wget -qO "$TMP" https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+      apt-get install -y "$TMP"
+      rm -f "$TMP"
+    fi
+    google-chrome --version || true
     ;;
 
   docker)
@@ -109,9 +119,12 @@ case "$SLUG" in
     ;;
 
   wordpress|joomla|ghost|espocrm)
-    echo "==> Setting up $SLUG (compose stack with bundled DB)"
+    # Multi-instance compose: serverhub-app-install <slug> <instance> <port>
+    INSTANCE="${2:-$SLUG}"
+    PORT="${3:-8091}"
+    echo "==> Setting up $SLUG instance '$INSTANCE' on port $PORT"
     command -v docker >/dev/null || { echo "Install Docker first"; exit 1; }
-    DIR="/srv/serverhub/apps/$SLUG"
+    DIR="/srv/serverhub/apps/$INSTANCE"
     mkdir -p "$DIR"; cd "$DIR"
     DBPW="$(openssl rand -hex 16 2>/dev/null || head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)"
     case "$SLUG" in
@@ -127,7 +140,7 @@ services:
     image: wordpress:latest
     restart: unless-stopped
     depends_on: [ db ]
-    ports: [ "127.0.0.1:8091:80" ]
+    ports: [ "127.0.0.1:$PORT:80" ]
     environment: { WORDPRESS_DB_HOST: db, WORDPRESS_DB_USER: wordpress, WORDPRESS_DB_PASSWORD: "$DBPW", WORDPRESS_DB_NAME: wordpress }
     volumes: [ "app:/var/www/html" ]
 volumes: { db: {}, app: {} }
@@ -145,7 +158,7 @@ services:
     image: joomla:latest
     restart: unless-stopped
     depends_on: [ db ]
-    ports: [ "127.0.0.1:8094:80" ]
+    ports: [ "127.0.0.1:$PORT:80" ]
     environment: { JOOMLA_DB_HOST: db, JOOMLA_DB_USER: joomla, JOOMLA_DB_PASSWORD: "$DBPW", JOOMLA_DB_NAME: joomla }
     volumes: [ "app:/var/www/html" ]
 volumes: { db: {}, app: {} }
@@ -163,14 +176,14 @@ services:
     image: ghost:5
     restart: unless-stopped
     depends_on: [ db ]
-    ports: [ "127.0.0.1:8092:2368" ]
+    ports: [ "127.0.0.1:$PORT:2368" ]
     environment:
       database__client: mysql
       database__connection__host: db
       database__connection__user: ghost
       database__connection__password: "$DBPW"
       database__connection__database: ghost
-      url: http://localhost:8092
+      url: http://localhost:$PORT
     volumes: [ "content:/var/lib/ghost/content" ]
 volumes: { db: {}, content: {} }
 EOF
@@ -189,7 +202,7 @@ services:
     image: espocrm/espocrm:latest
     restart: unless-stopped
     depends_on: [ db ]
-    ports: [ "127.0.0.1:8093:80" ]
+    ports: [ "127.0.0.1:$PORT:80" ]
     environment:
       ESPOCRM_DATABASE_HOST: db
       ESPOCRM_DATABASE_USER: espocrm
@@ -197,13 +210,13 @@ services:
       ESPOCRM_DATABASE_NAME: espocrm
       ESPOCRM_ADMIN_USERNAME: admin
       ESPOCRM_ADMIN_PASSWORD: "$ADMINPW"
-      ESPOCRM_SITE_URL: http://localhost:8093
+      ESPOCRM_SITE_URL: http://localhost:$PORT
     volumes: [ "data:/var/www/html" ]
 volumes: { db: {}, data: {} }
 EOF
         ;;
     esac
-    docker compose -p "app_$SLUG" pull
+    docker compose -p "app_$INSTANCE" pull
     echo "Compose written + images pulled — the panel will start the stack."
     ;;
 

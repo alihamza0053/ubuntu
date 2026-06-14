@@ -96,10 +96,10 @@ CATALOG: dict[str, dict] = {
         "websocket": True,
     },
     "webtop": {
-        "name": "Web Browser (Firefox)",
-        "description": "A real Firefox desktop streamed to your browser via noVNC. "
+        "name": "Web Browser (Chrome)",
+        "description": "A real Chrome desktop streamed to your browser via noVNC. "
                        "Heavy (runs a virtual display) — best on 2 GB+ RAM.",
-        "icon": "🦊",
+        "icon": "🌐",
         "kind": "service",
         "bin": "/srv/serverhub/bin/serverhub-webtop",
         "run": "{bin} {port}",
@@ -368,30 +368,27 @@ CATALOG: dict[str, dict] = {
         "run_args": ["-v", "app_qbittorrent_config:/config", "-v", "/srv/downloads:/downloads"],
     },
 
-    # ---- CMS & CRM (compose stacks with a bundled database) ----
+    # ---- CMS & CRM (compose stacks with a bundled database; multi-instance) ----
     "wordpress": {
         "name": "WordPress", "description": "The world's most popular CMS / blog. Bundled MariaDB.",
-        "icon": "📰", "kind": "compose", "websocket": False,
-        "compose_dir": "/srv/serverhub/apps/wordpress", "container_port": 8091,
+        "icon": "📰", "kind": "compose", "multi": True, "websocket": False,
+        "container_port": 80,
     },
     "joomla": {
         "name": "Joomla", "description": "Flexible CMS for websites & portals. Bundled MySQL.",
-        "icon": "🌐", "kind": "compose", "websocket": False,
-        "compose_dir": "/srv/serverhub/apps/joomla", "container_port": 8094,
+        "icon": "🌐", "kind": "compose", "multi": True, "websocket": False,
+        "container_port": 80,
     },
     "ghost": {
         "name": "Ghost", "description": "Modern publishing / newsletter platform. Bundled MySQL.",
-        "icon": "👻", "kind": "compose", "websocket": False,
-        "compose_dir": "/srv/serverhub/apps/ghost", "container_port": 8092,
+        "icon": "👻", "kind": "compose", "multi": True, "websocket": False,
+        "container_port": 2368,
     },
     "espocrm": {
         "name": "EspoCRM", "description": "Open-source CRM (contacts, leads, sales). Bundled MariaDB.",
-        "icon": "🤝", "kind": "compose", "websocket": False,
-        "compose_dir": "/srv/serverhub/apps/espocrm", "container_port": 8093,
-        "username": "admin",
-        "env_file": "/srv/serverhub/apps/espocrm/credentials.env",
-        "secret_env_file": {"file": "/srv/serverhub/apps/espocrm/credentials.env",
-                            "key": "ADMIN_PASSWORD"},
+        "icon": "🤝", "kind": "compose", "multi": True, "websocket": False,
+        "container_port": 80, "username": "admin",
+        "env_file_name": "credentials.env", "secret_env_key": "ADMIN_PASSWORD",
         "credentials": [
             ["Admin username", "ADMIN_USERNAME"],
             ["Admin password", "ADMIN_PASSWORD"],
@@ -407,9 +404,8 @@ CATALOG: dict[str, dict] = {
         "container_port": 8000,   # Kong gateway (Studio + API)
         # Studio dashboard login (from the stack's .env, set by the installer)
         "username": "supabase",
-        "env_file": "/srv/serverhub/apps/supabase/docker/.env",
-        "secret_env_file": {"file": "/srv/serverhub/apps/supabase/docker/.env",
-                            "key": "DASHBOARD_PASSWORD"},
+        "env_file": "/srv/serverhub/apps/supabase/docker/.env",   # absolute (single instance)
+        "secret_env_key": "DASHBOARD_PASSWORD",
         # Full credential set surfaced in the "Credentials" panel (label, env key)
         "credentials": [
             ["Studio username", "DASHBOARD_USERNAME"],
@@ -458,16 +454,37 @@ def get_catalog_entry(slug: str) -> dict:
     return entry
 
 
-def program_name(slug: str) -> str:
-    return f"app_{slug}"
+# NOTE: container / supervisor / nginx / compose names key off the per-instance
+# `instance` id (not the catalog slug), so an app can have multiple instances.
+
+def program_name(instance: str) -> str:
+    return f"app_{instance}"
 
 
-def config_path(slug: str) -> Path:
-    return settings.SUPERVISOR_CONF_DIR / f"{program_name(slug)}.conf"
+def config_path(instance: str) -> Path:
+    return settings.SUPERVISOR_CONF_DIR / f"{program_name(instance)}.conf"
 
 
-def log_path(slug: str, stream: str = "out") -> Path:
-    return settings.SUPERVISOR_LOG_DIR / f"{program_name(slug)}.{stream}.log"
+def log_path(instance: str, stream: str = "out") -> Path:
+    return settings.SUPERVISOR_LOG_DIR / f"{program_name(instance)}.{stream}.log"
+
+
+def compose_dir(app) -> str:
+    """Per-instance compose directory (multi) or the catalog's fixed dir."""
+    entry = get_catalog_entry(app.slug)
+    if entry.get("multi"):
+        return f"/srv/serverhub/apps/{app.instance}"
+    return entry["compose_dir"]
+
+
+def app_env_file(app) -> str | None:
+    """Resolve an app's env/credentials file (absolute, or per-instance name)."""
+    entry = get_catalog_entry(app.slug)
+    if entry.get("env_file"):
+        return entry["env_file"]
+    if entry.get("env_file_name"):
+        return f"{compose_dir(app)}/{entry['env_file_name']}"
+    return None
 
 
 def allocate_port(db: Session) -> int:
@@ -475,9 +492,15 @@ def allocate_port(db: Session) -> int:
     return (max_port + 1) if max_port else APP_PORT_START
 
 
-def installer_cmd(slug: str) -> list[str]:
-    """The restricted sudo command that installs a catalog app (always root)."""
-    return ["sudo", "-n", INSTALLER, slug]
+def installer_cmd(slug: str, instance: str | None = None, port: int | None = None) -> list[str]:
+    """The restricted sudo command that installs a catalog app (always root).
+    Multi-instance compose apps also receive their instance id and port."""
+    cmd = ["sudo", "-n", INSTALLER, slug]
+    if instance is not None:
+        cmd.append(instance)
+    if port is not None:
+        cmd.append(str(port))
+    return cmd
 
 
 def installer_ready() -> bool:
@@ -513,11 +536,12 @@ def write_program(app: App) -> None:
         return
     settings.SUPERVISOR_CONF_DIR.mkdir(parents=True, exist_ok=True)
     command = entry["run"].format(
-        bin=entry.get("bin", ""), port=app.port, secret=app.secret or "")
+        bin=entry.get("bin", ""), port=app.port, secret=app.secret or "",
+        instance=app.instance)
 
     # Build the environment= line from catalog env + an optional PASSWORD
     env_pairs = {
-        k: str(v).format(port=app.port, secret=app.secret or "")
+        k: str(v).format(port=app.port, secret=app.secret or "", instance=app.instance)
         for k, v in entry.get("env", {}).items()
     }
     if entry.get("use_password") and app.secret:
@@ -528,35 +552,35 @@ def write_program(app: App) -> None:
         env_line = f"environment={joined}\n"
 
     content = SUPERVISOR_TEMPLATE.format(
-        program=program_name(app.slug),
+        program=program_name(app.instance),
         command=command,
         env_line=env_line,
         log_dir=settings.SUPERVISOR_LOG_DIR,
     )
-    config_path(app.slug).write_text(content, encoding="utf-8")
+    config_path(app.instance).write_text(content, encoding="utf-8")
     supervisor_service.run_supervisorctl("reread")
     supervisor_service.run_supervisorctl("update")
 
 
-def remove_program(slug: str) -> None:
-    supervisor_service.run_supervisorctl("stop", program_name(slug))
-    path = config_path(slug)
+def remove_program(instance: str) -> None:
+    supervisor_service.run_supervisorctl("stop", program_name(instance))
+    path = config_path(instance)
     if path.exists():
         path.unlink()
     supervisor_service.run_supervisorctl("reread")
     supervisor_service.run_supervisorctl("update")
 
 
-def control(slug: str, action: str) -> str:
-    result = supervisor_service.run_supervisorctl(action, program_name(slug))
+def control(instance: str, action: str) -> str:
+    result = supervisor_service.run_supervisorctl(action, program_name(instance))
     out = (result.stdout + result.stderr).strip()
     if "ERROR" in out and "already started" not in out:
         raise HTTPException(status_code=500, detail=f"supervisorctl {action}: {out}")
     return out
 
 
-def status(slug: str) -> str:
-    result = supervisor_service.run_supervisorctl("status", program_name(slug))
+def status(instance: str) -> str:
+    result = supervisor_service.run_supervisorctl("status", program_name(instance))
     raw = (result.stdout + result.stderr).upper()
     if "RUNNING" in raw or "STARTING" in raw:
         return "RUNNING"
@@ -597,8 +621,8 @@ def docker_ready() -> bool:
         return False
 
 
-def container_name(slug: str) -> str:
-    return f"app_{slug}"
+def container_name(instance: str) -> str:
+    return f"app_{instance}"
 
 
 def _docker(*args: str, timeout: int = 300) -> subprocess.CompletedProcess:
@@ -608,16 +632,17 @@ def _docker(*args: str, timeout: int = 300) -> subprocess.CompletedProcess:
 def docker_run(app) -> None:
     """(Re)create and start a single-container app."""
     entry = get_catalog_entry(app.slug)
-    cname = container_name(app.slug)
+    cname = container_name(app.instance)
     _docker("rm", "-f", cname, timeout=60)   # replace any existing container
 
+    fmt = dict(port=app.port, secret=app.secret or "", instance=app.instance)
     cmd = ["run", "-d", "--name", cname, "--restart", "unless-stopped",
            "-p", f"127.0.0.1:{app.port}:{entry['container_port']}"]
     for k, v in entry.get("env", {}).items():
-        cmd += ["-e", f"{k}={str(v).format(port=app.port, secret=app.secret or '')}"]
+        cmd += ["-e", f"{k}={str(v).format(**fmt)}"]
     if entry.get("secret_env") and app.secret:
         cmd += ["-e", f"{entry['secret_env']}={app.secret}"]
-    cmd += entry.get("run_args", [])
+    cmd += [str(a).format(**fmt) for a in entry.get("run_args", [])]
     cmd.append(entry["image"])
     cmd += entry.get("command", [])   # optional args after the image (e.g. ntfy serve)
 
@@ -627,15 +652,15 @@ def docker_run(app) -> None:
                             detail=f"docker run failed: {(result.stderr or result.stdout)[:400]}")
 
 
-def docker_control(slug: str, action: str) -> str:
-    result = _docker(action, container_name(slug), timeout=120)
+def docker_control(instance: str, action: str) -> str:
+    result = _docker(action, container_name(instance), timeout=120)
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=(result.stderr or result.stdout)[:300])
-    return result.stdout.strip() or f"{action} {slug}"
+    return result.stdout.strip() or f"{action} {instance}"
 
 
-def docker_status(slug: str) -> str:
-    r = _docker("inspect", "-f", "{{.State.Status}}", container_name(slug), timeout=20)
+def docker_status(instance: str) -> str:
+    r = _docker("inspect", "-f", "{{.State.Status}}", container_name(instance), timeout=20)
     state = r.stdout.strip()
     if state == "running":
         return "RUNNING"
@@ -644,16 +669,15 @@ def docker_status(slug: str) -> str:
     return "STOPPED"   # not found / unknown
 
 
-def docker_remove(slug: str) -> None:
-    _docker("rm", "-f", container_name(slug), timeout=60)
+def docker_remove(instance: str) -> None:
+    _docker("rm", "-f", container_name(instance), timeout=60)
 
 
 # ---- Compose (multi-container) ----
 
 def _compose(app, *args: str, timeout: int = 600) -> subprocess.CompletedProcess:
-    entry = get_catalog_entry(app.slug)
-    base = [*DOCKER, "compose", "-f", f"{entry['compose_dir']}/docker-compose.yml",
-            "-p", f"app_{app.slug}"]
+    base = [*DOCKER, "compose", "-f", f"{compose_dir(app)}/docker-compose.yml",
+            "-p", f"app_{app.instance}"]
     return subprocess.run([*base, *args], capture_output=True, text=True, timeout=timeout)
 
 
@@ -679,31 +703,20 @@ def compose_remove(app) -> None:
 
 def logs_stream_cmd(app) -> list[str] | None:
     if app.kind == "docker":
-        return [*DOCKER, "logs", "-f", "--tail", "200", container_name(app.slug)]
+        return [*DOCKER, "logs", "-f", "--tail", "200", container_name(app.instance)]
     if app.kind == "compose":
-        entry = get_catalog_entry(app.slug)
-        return [*DOCKER, "compose", "-f", f"{entry['compose_dir']}/docker-compose.yml",
-                "-p", f"app_{app.slug}", "logs", "-f", "--tail", "200"]
+        return [*DOCKER, "compose", "-f", f"{compose_dir(app)}/docker-compose.yml",
+                "-p", f"app_{app.instance}", "logs", "-f", "--tail", "200"]
     return None
 
 
 # ---- Generic dispatch by kind ----
 
-def start_app(app) -> str:
-    if app.kind == "service":
-        out = control(app.slug, "start"); app.status = status(app.slug); return out
-    if app.kind == "docker":
-        out = docker_control(app.slug, "start"); app.status = docker_status(app.slug); return out
-    if app.kind == "compose":
-        out = compose_control(app, "start"); app.status = compose_status(app); return out
-    raise HTTPException(status_code=400, detail="This app is a tool (nothing to run)")
-
-
 def control_app(app, action: str) -> str:
     if app.kind == "service":
-        out = control(app.slug, action); app.status = status(app.slug); return out
+        out = control(app.instance, action); app.status = status(app.instance); return out
     if app.kind == "docker":
-        out = docker_control(app.slug, action); app.status = docker_status(app.slug); return out
+        out = docker_control(app.instance, action); app.status = docker_status(app.instance); return out
     if app.kind == "compose":
         out = compose_control(app, action); app.status = compose_status(app); return out
     raise HTTPException(status_code=400, detail="This app is a tool (nothing to run)")
@@ -711,9 +724,9 @@ def control_app(app, action: str) -> str:
 
 def live_status(app) -> str:
     if app.kind == "service":
-        return status(app.slug)
+        return status(app.instance)
     if app.kind == "docker":
-        return docker_status(app.slug)
+        return docker_status(app.instance)
     if app.kind == "compose":
         return compose_status(app)
     return app.status
@@ -721,9 +734,9 @@ def live_status(app) -> str:
 
 def remove_app(app) -> None:
     if app.kind == "service":
-        remove_program(app.slug)
+        remove_program(app.instance)
     elif app.kind == "docker":
-        docker_remove(app.slug)
+        docker_remove(app.instance)
     elif app.kind == "compose":
         compose_remove(app)
 
@@ -748,15 +761,15 @@ def set_password(app, new_pw: str) -> None:
 
     cmd_tpl = entry.get("set_password_cmd")
     if cmd_tpl:
-        was_running = status(app.slug) == "RUNNING"
+        was_running = status(app.instance) == "RUNNING"
         if was_running:
-            control(app.slug, "stop")
+            control(app.instance, "stop")
         cmd = [c.format(bin=entry.get("bin", ""), password=new_pw) for c in cmd_tpl]
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         finally:
             if was_running:
-                control(app.slug, "start")
+                control(app.instance, "start")
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or "unknown error").strip()
             raise HTTPException(status_code=500, detail=f"set password failed: {detail[:300]}")

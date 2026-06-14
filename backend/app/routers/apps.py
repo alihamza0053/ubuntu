@@ -11,7 +11,7 @@ and SSL, and manage them.
   POST /api/apps/{id}/ssl
   DELETE /api/apps/{id}
 """
-from pathlib import Path
+import re
 
 from fastapi import (APIRouter, Depends, HTTPException, WebSocket,
                      WebSocketDisconnect)
@@ -48,13 +48,15 @@ def _get_app(app_id: int, db: Session) -> App:
 def _to_out(app: App, live_status: bool = False) -> dict:
     entry = app_service.CATALOG.get(app.slug, {})
     out = {
-        "id": app.id, "slug": app.slug, "name": app.name, "kind": app.kind,
+        "id": app.id, "slug": app.slug, "instance": app.instance,
+        "name": app.name, "kind": app.kind, "multi": entry.get("multi", False),
         "port": app.port, "domain": app.domain, "status": app.status,
         "secret": app.secret, "icon": entry.get("icon", "📦"),
         "websocket": entry.get("websocket", False),
         "username": entry.get("username"),
         "web_ui": entry.get("web_ui", True),
-        "has_credentials": bool(entry.get("credentials") and entry.get("env_file")),
+        "has_credentials": bool(entry.get("credentials")
+                                and (entry.get("env_file") or entry.get("env_file_name"))),
         # Label "Token" for token-based apps (Jupyter), else "Password"
         "secret_label": "Token" if entry.get("use_token") else "Password",
         # Can the panel set this app's password/token?
@@ -80,7 +82,10 @@ def catalog(db: Session = Depends(get_db)):
         "docker_ready": app_service.docker_ready(),
         "apps": [
             {"slug": slug, "name": e["name"], "description": e["description"],
-             "icon": e["icon"], "kind": e["kind"], "installed": slug in installed,
+             "icon": e["icon"], "kind": e["kind"],
+             # multi apps can always be installed again (another instance)
+             "installed": slug in installed and not e.get("multi"),
+             "multi": e.get("multi", False),
              "category": app_service.category_of(slug),
              "web_ui": e.get("web_ui", True)}
             for slug, e in app_service.CATALOG.items()
@@ -95,9 +100,9 @@ def list_apps(db: Session = Depends(get_db)):
     # before this was added).
     for a in apps:
         entry = app_service.CATALOG.get(a.slug, {})
-        if not a.secret and entry.get("secret_env_file"):
-            sf = entry["secret_env_file"]
-            a.secret = app_service.read_env_value(sf["file"], sf["key"])
+        env_file = app_service.app_env_file(a)
+        if not a.secret and entry.get("secret_env_key") and env_file:
+            a.secret = app_service.read_env_value(env_file, entry["secret_env_key"])
     db.commit()
     return [_to_out(a, live_status=True) for a in apps]
 
@@ -119,7 +124,7 @@ def app_credentials(app_id: int, db: Session = Depends(get_db)):
     app = _get_app(app_id, db)
     entry = app_service.CATALOG.get(app.slug, {})
     creds = entry.get("credentials")
-    env_file = entry.get("env_file")
+    env_file = app_service.app_env_file(app)
     if not creds or not env_file:
         raise HTTPException(status_code=404, detail="This app has no managed credentials")
 
@@ -149,10 +154,10 @@ def assign_domain(app_id: int, body: DomainRequest, db: Session = Depends(get_db
     app = _get_app(app_id, db)
     if app.kind == "tool" or not app.port:
         raise HTTPException(status_code=400, detail="Only running apps can have a domain")
-    slug = f"app-{app.slug}"
+    site = f"app-{app.instance}"
     # The streamlit proxy block forwards WebSockets too (needed by code-server)
     content = nginx_service.build_block("streamlit", domain=body.domain, port=app.port)
-    config = nginx_service.write_site(slug, content)
+    config = nginx_service.write_site(site, content)
     app.domain = body.domain
     row = (db.query(NginxConfig)
            .filter(NginxConfig.entity_type == "app", NginxConfig.entity_id == app.id).first())
@@ -183,12 +188,12 @@ def uninstall_app(app_id: int, db: Session = Depends(get_db)):
             app_service.remove_app(app)   # supervisor / docker / compose
         except HTTPException:
             pass
-    nginx_service.remove_site(f"app-{app.slug}")
+    nginx_service.remove_site(f"app-{app.instance}")
     db.query(NginxConfig).filter(
         NginxConfig.entity_type == "app", NginxConfig.entity_id == app.id).delete()
     db.delete(app)
     db.commit()
-    return DetailResponse(detail=f"App '{app.slug}' removed")
+    return DetailResponse(detail=f"App '{app.instance}' removed")
 
 
 @ws_router.websocket("/ws/apps/{app_id}/logs")
@@ -216,7 +221,7 @@ async def app_logs_ws(websocket: WebSocket, app_id: int):
         cmd = app_service.logs_stream_cmd(app)
         if cmd is None:   # service → tail the supervisor stdout log
             from ..services.streaming import tail_file
-            await tail_file(app_service.log_path(app.slug, "out"), send)
+            await tail_file(app_service.log_path(app.instance, "out"), send)
         else:             # docker / compose → stream the container logs
             await stream_command(cmd, send)
     except (WebSocketDisconnect, RuntimeError):
@@ -253,14 +258,40 @@ async def install_app_ws(websocket: WebSocket, slug: str):
         await websocket.close()
         return
 
-    await send(f"[serverhub] installing {entry['name']} …")
+    # --- Work out the instance id + port BEFORE installing ---
+    multi = entry.get("multi")
+    db = SessionLocal()
     try:
-        if kind in ("tool", "service", "compose"):
-            # These run the vetted root installer (apt / scripts / git+compose)
+        if multi:
+            raw = re.sub(r"[^a-z0-9-]+", "-",
+                         (websocket.query_params.get("name", "") or "").lower()).strip("-")
+            base = raw if raw.startswith(slug) else (f"{slug}-{raw}" if raw else slug)
+            instance, n = base, 2
+            while db.query(App).filter(App.instance == instance).first():
+                instance = f"{base}-{n}"; n += 1
+        else:
+            instance = slug
+            if db.query(App).filter(App.instance == instance).first():
+                await send(f"[serverhub] {entry['name']} is already installed")
+                await websocket.close()
+                return
+        # Port: single compose uses its fixed port; everyone else gets allocated
+        port = None
+        if kind in ("service", "docker", "compose"):
+            port = (entry["container_port"] if (kind == "compose" and not multi)
+                    else app_service.allocate_port(db))
+    finally:
+        db.close()
+
+    await send(f"[serverhub] installing {entry['name']} (instance: {instance}) …")
+    try:
+        if kind in ("docker",):  # single-container: pull the image
+            code = await stream_command(["sudo", "-n", "docker", "pull", entry["image"]], send)
+        elif kind == "compose" and multi:
+            # Multi compose: the installer writes a per-instance stack on this port
+            code = await stream_command(app_service.installer_cmd(slug, instance, port), send)
+        else:  # tool / service / single-compose → the vetted root installer
             code = await stream_command(app_service.installer_cmd(slug), send)
-        else:  # docker single-container: pull the image (compose/tool use script)
-            code = await stream_command(
-                ["sudo", "-n", "docker", "pull", entry["image"]], send)
     except WebSocketDisconnect:
         return
 
@@ -277,31 +308,28 @@ async def install_app_ws(websocket: WebSocket, slug: str):
         await websocket.close()
         return
 
-    # Register the app (idempotent) and bring it up
+    # Register the app instance and bring it up
     db = SessionLocal()
     try:
-        app = db.query(App).filter(App.slug == slug).first()
-        if app is None:
-            app = App(slug=slug, name=entry["name"], kind=kind, status="STOPPED")
-            if kind in ("service", "docker", "compose"):
-                # A compose stack binds its OWN fixed host port (defined in its
-                # .env / compose file), so the panel must proxy THAT port — not
-                # an allocated one. Other kinds get an allocated localhost port.
-                app.port = (entry.get("container_port") if kind == "compose"
-                            else app_service.allocate_port(db))
-                if entry.get("use_password") or entry.get("use_token") or entry.get("secret_env"):
-                    app.secret = app_service.new_password()
-                elif entry.get("secret_env_file"):   # compose: read from its .env
-                    sf = entry["secret_env_file"]
-                    app.secret = app_service.read_env_value(sf["file"], sf["key"])
-            db.add(app)
-            db.commit()
-            db.refresh(app)
+        display = entry["name"] if instance == slug else f"{entry['name']} — {instance}"
+        app = App(slug=slug, instance=instance, name=display, kind=kind,
+                  port=port, status="STOPPED")
+        if entry.get("use_password") or entry.get("use_token") or entry.get("secret_env"):
+            app.secret = app_service.new_password()
+        db.add(app)
+        db.commit()
+        db.refresh(app)
+
+        # Compose creds (e.g. EspoCRM/Supabase) live in the stack's env file
+        if entry.get("secret_env_key"):
+            ef = app_service.app_env_file(app)
+            if ef:
+                app.secret = app_service.read_env_value(ef, entry["secret_env_key"])
 
         try:
             if kind == "service":
                 app_service.write_program(app)
-                app_service.control(slug, "start")
+                app_service.control(app.instance, "start")
             elif kind == "docker":
                 app_service.docker_run(app)
             elif kind == "compose":
@@ -314,9 +342,10 @@ async def install_app_ws(websocket: WebSocket, slug: str):
                     await send(f"[serverhub] {('username: ' + entry['username'] + '  ') if entry.get('username') else ''}"
                                f"{entry.get('secret_label', 'password').lower()}: {app.secret}")
         except HTTPException as exc:
+            db.commit()
             await send(f"[serverhub] installed but failed to start: {exc.detail}")
 
-        log_activity(f"app {slug} installed")
+        log_activity(f"app {instance} installed")
         await send("[serverhub] ✓ done")
     finally:
         db.close()

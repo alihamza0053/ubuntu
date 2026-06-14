@@ -16,17 +16,18 @@ export HOME="${HOME:-/root}"
 # Clean any stragglers from a previous run
 pkill -f "Xvfb :99" 2>/dev/null || true
 pkill -f "x11vnc.*5901" 2>/dev/null || true
-pkill -f "firefox" 2>/dev/null || true
+pkill -f "chrome" 2>/dev/null || true
 sleep 1
 
 # Virtual display
 Xvfb :99 -screen 0 1360x768x24 -nolisten tcp &
 sleep 2
 
-# Lightweight window manager + the browser
+# Lightweight window manager + the browser (Chrome needs --no-sandbox as root)
 fluxbox >/dev/null 2>&1 &
 sleep 1
-firefox-esr --no-remote about:blank >/dev/null 2>&1 &
+google-chrome --no-sandbox --disable-gpu --no-first-run --no-default-browser-check \
+  --user-data-dir=/tmp/webtop-chrome --start-maximized about:blank >/dev/null 2>&1 &
 
 # VNC server bound to localhost, exposed to the browser via noVNC/websockify
 x11vnc -display :99 -forever -shared -nopw -rfbport 5901 -localhost >/dev/null 2>&1 &

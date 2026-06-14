@@ -41,9 +41,16 @@ export default function Apps() {
     return () => clearInterval(t)
   }, [installWs, refresh])
 
-  function install(slug) {
+  function install(app) {
+    let path = `/ws/apps/${app.slug}/install`
+    if (app.multi) {
+      const name = window.prompt(
+        `Name this ${app.name} instance (e.g. a site/client name):`, '')
+      if (name === null) return            // cancelled
+      if (name.trim()) path += `?name=${encodeURIComponent(name.trim())}`
+    }
     setInstallWs(null)
-    setTimeout(() => setInstallWs(`/ws/apps/${slug}/install`), 0)
+    setTimeout(() => setInstallWs(path), 0)
   }
 
   // Group catalog by category (filtered by the search query) in defined order
@@ -138,8 +145,8 @@ export default function Apps() {
                         needs Docker
                       </span>
                     ) : (
-                      <button className="btn-primary ml-auto" onClick={() => install(c.slug)}>
-                        ⬇ Install
+                      <button className="btn-primary ml-auto" onClick={() => install(c)}>
+                        {c.multi ? '⬇ Install instance' : '⬇ Install'}
                       </button>
                     )}
                   </div>

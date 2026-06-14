@@ -14,14 +14,15 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
-from .database import Base, engine
+from .database import Base, engine, run_migrations
 from .routers import (apps, auth, dashboard, databases, docker, files, logs,
                       nginx, pipeline, projects, schedules, scripts, server,
                       settings_router, terminal, websites)
 from .services import pipeline_service, scheduler_service
 
-# Create any missing tables on startup (idempotent)
+# Create any missing tables on startup (idempotent), then run column migrations
 Base.metadata.create_all(bind=engine)
+run_migrations()
 
 
 @asynccontextmanager

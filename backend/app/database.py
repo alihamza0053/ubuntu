@@ -33,3 +33,29 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def run_migrations() -> None:
+    """
+    Lightweight SQLite migrations for columns added after a DB already exists
+    (create_all only creates missing tables, never alters existing ones).
+    """
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if "apps" not in insp.get_table_names():
+        return
+
+    cols = [c["name"] for c in insp.get_columns("apps")]
+    indexes = insp.get_indexes("apps")
+    with engine.begin() as conn:
+        # apps.instance: per-instance id (added when multi-instance shipped)
+        if "instance" not in cols:
+            conn.execute(text("ALTER TABLE apps ADD COLUMN instance VARCHAR(96)"))
+            conn.execute(text("UPDATE apps SET instance = slug WHERE instance IS NULL"))
+        # slug must no longer be UNIQUE (multiple instances share a slug)
+        for idx in indexes:
+            if idx.get("column_names") == ["slug"] and idx.get("unique"):
+                conn.execute(text(f'DROP INDEX IF EXISTS "{idx["name"]}"'))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_apps_instance ON apps(instance)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_apps_slug_nonunique ON apps(slug)"))
