@@ -58,11 +58,14 @@ def _to_out(app: App, live_status: bool = False) -> dict:
 def catalog(db: Session = Depends(get_db)):
     """All catalog apps, each flagged with whether it's already installed."""
     installed = {a.slug for a in db.query(App).all()}
-    return [
-        {"slug": slug, "name": e["name"], "description": e["description"],
-         "icon": e["icon"], "kind": e["kind"], "installed": slug in installed}
-        for slug, e in app_service.CATALOG.items()
-    ]
+    return {
+        "installer_ready": app_service.installer_ready(),
+        "apps": [
+            {"slug": slug, "name": e["name"], "description": e["description"],
+             "icon": e["icon"], "kind": e["kind"], "installed": slug in installed}
+            for slug, e in app_service.CATALOG.items()
+        ],
+    }
 
 
 @router.get("")
@@ -145,7 +148,11 @@ async def install_app_ws(websocket: WebSocket, slug: str):
         await websocket.close()
         return
 
+    sudo_blocked = {"hit": False}
+
     async def send(line: str):
+        if "a password is required" in line or "sudo:" in line:
+            sudo_blocked["hit"] = True
         await websocket.send_text(line)
 
     await send(f"[serverhub] installing {entry['name']} …")
@@ -155,6 +162,15 @@ async def install_app_ws(websocket: WebSocket, slug: str):
         return
 
     if code != 0:
+        if sudo_blocked["hit"]:
+            await send("")
+            await send("[serverhub] ── why this failed ──")
+            await send("[serverhub] The panel installs apps through ONE whitelisted root")
+            await send("[serverhub] script (it can't run arbitrary commands as root, by design).")
+            await send("[serverhub] That rule isn't deployed on this server yet.")
+            await send("[serverhub] Fix it once, then retry Install:")
+            await send("[serverhub]   cd /opt/serverhub-src && sudo bash deploy/update.sh")
+            await send("[serverhub] (installs /srv/serverhub/bin/serverhub-app-install + the sudoers rule)")
         await send(f"[serverhub] install failed (exit {code})")
         await websocket.close()
         return

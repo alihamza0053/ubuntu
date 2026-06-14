@@ -9,11 +9,15 @@ import StatusBadge from '../components/StatusBadge'
  */
 export default function Apps() {
   const [catalog, setCatalog] = useState([])
+  const [ready, setReady] = useState(true)
   const [installed, setInstalled] = useState([])
   const [installWs, setInstallWs] = useState(null) // WS path during an install
 
   const refresh = useCallback(() => {
-    api.get('/apps/catalog').then((res) => setCatalog(res.data)).catch(() => {})
+    api.get('/apps/catalog').then((res) => {
+      setCatalog(res.data.apps || [])
+      setReady(res.data.installer_ready !== false)
+    }).catch(() => {})
     api.get('/apps').then((res) => setInstalled(res.data)).catch(() => {})
   }, [])
 
@@ -36,6 +40,18 @@ export default function Apps() {
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold">Apps</h2>
+
+      {/* Installer not deployed warning */}
+      {!ready && (
+        <div className="card border-yellow-600/50 bg-yellow-500/5">
+          <p className="text-sm text-yellow-300 font-semibold">⚠️ App installer not enabled on this server yet</p>
+          <p className="text-sm text-slate-400 mt-1">
+            Installs run through one whitelisted root script (the panel can't run arbitrary
+            commands as root). Deploy it once, then installs will work:
+          </p>
+          <pre className="mt-2 bg-black text-slate-300 text-xs p-2 rounded">cd /opt/serverhub-src && sudo bash deploy/update.sh</pre>
+        </div>
+      )}
 
       {/* Live install output */}
       {installWs && (

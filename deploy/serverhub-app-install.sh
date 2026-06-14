@@ -11,6 +11,11 @@ set -euo pipefail
 SLUG="${1:-}"
 
 case "$SLUG" in
+  --check)
+    # Used by the panel to verify the sudo rule works.
+    echo "ok"
+    exit 0
+    ;;
   code-server)
     echo "==> Installing code-server (VS Code in the browser)"
     if ! command -v code-server >/dev/null; then

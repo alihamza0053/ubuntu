@@ -93,11 +93,22 @@ def allocate_port(db: Session) -> int:
 
 
 def installer_cmd(slug: str) -> list[str]:
-    """The restricted sudo command that installs a catalog app."""
-    cmd = [INSTALLER, slug]
-    if settings.SUPERVISORCTL_USE_SUDO:
-        cmd = ["sudo", "-n", *cmd]
-    return cmd
+    """The restricted sudo command that installs a catalog app (always root)."""
+    return ["sudo", "-n", INSTALLER, slug]
+
+
+def installer_ready() -> bool:
+    """True if the installer helper exists and the panel can run it via sudo."""
+    if not Path(INSTALLER).exists():
+        return False
+    try:
+        result = subprocess.run(["sudo", "-n", INSTALLER, "--check"],
+                                capture_output=True, text=True, timeout=15)
+        # Our script exits 2 on unknown arg ("--check"), but reaching it means
+        # sudo was allowed. A sudo-password failure exits 1 with that message.
+        return "a password is required" not in (result.stderr + result.stdout)
+    except Exception:
+        return False
 
 
 SUPERVISOR_TEMPLATE = """[program:{program}]
