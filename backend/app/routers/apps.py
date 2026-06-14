@@ -89,7 +89,16 @@ def catalog(db: Session = Depends(get_db)):
 
 @router.get("")
 def list_apps(db: Session = Depends(get_db)):
-    return [_to_out(a, live_status=True) for a in db.query(App).all()]
+    apps = db.query(App).all()
+    # Backfill compose-app credentials read from their .env (for apps installed
+    # before this was added).
+    for a in apps:
+        entry = app_service.CATALOG.get(a.slug, {})
+        if not a.secret and entry.get("secret_env_file"):
+            sf = entry["secret_env_file"]
+            a.secret = app_service.read_env_value(sf["file"], sf["key"])
+    db.commit()
+    return [_to_out(a, live_status=True) for a in apps]
 
 
 @router.post("/{app_id}/action/{action}", response_model=DetailResponse)
@@ -262,6 +271,9 @@ async def install_app_ws(websocket: WebSocket, slug: str):
                             else app_service.allocate_port(db))
                 if entry.get("use_password") or entry.get("use_token") or entry.get("secret_env"):
                     app.secret = app_service.new_password()
+                elif entry.get("secret_env_file"):   # compose: read from its .env
+                    sf = entry["secret_env_file"]
+                    app.secret = app_service.read_env_value(sf["file"], sf["key"])
             db.add(app)
             db.commit()
             db.refresh(app)

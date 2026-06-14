@@ -213,6 +213,13 @@ CATALOG: dict[str, dict] = {
         "env": {"PGADMIN_DEFAULT_EMAIL": "admin@example.com"},
         "run_args": ["-v", "app_pgadmin_data:/var/lib/pgadmin"],
     },
+    "phpmyadmin": {
+        "name": "phpMyAdmin", "description": "MySQL / MariaDB administration UI.",
+        "icon": "🗃️", "kind": "docker", "container_port": 80,
+        "image": "phpmyadmin:latest",
+        # PMA_ARBITRARY lets you type any DB host on the login screen
+        "env": {"PMA_ARBITRARY": "1"},
+    },
 
     # ---- Developer / automation ----
     "nodered": {
@@ -224,6 +231,66 @@ CATALOG: dict[str, dict] = {
         "name": "IT-Tools", "description": "A box of handy developer utilities.",
         "icon": "🧰", "kind": "docker", "container_port": 80,
         "image": "corentinth/it-tools:latest",
+    },
+
+    # ---- Media & library ----
+    "navidrome": {
+        "name": "Navidrome", "description": "Music streaming server (Subsonic-compatible).",
+        "icon": "🎵", "kind": "docker", "container_port": 4533,
+        "image": "deluan/navidrome:latest", "env": {"ND_MUSICFOLDER": "/music"},
+        "run_args": ["-v", "app_navidrome_data:/data", "-v", "/srv:/music:ro"],
+    },
+    "calibre-web": {
+        "name": "Calibre-Web", "description": "Browse & read your e-book library.",
+        "icon": "📚", "kind": "docker", "container_port": 8083,
+        "image": "lscr.io/linuxserver/calibre-web:latest",
+        "run_args": ["-v", "app_calibreweb_config:/config", "-v", "/srv:/books"],
+    },
+    "kavita": {
+        "name": "Kavita", "description": "Reading server for comics, manga & books.",
+        "icon": "📖", "kind": "docker", "container_port": 5000,
+        "image": "jvmilazz0/kavita:latest",
+        "run_args": ["-v", "app_kavita_config:/kavita/config", "-v", "/srv:/data"],
+    },
+
+    # ---- Home & productivity ----
+    "memos": {
+        "name": "Memos", "description": "Lightweight, privacy-first note taking.",
+        "icon": "📌", "kind": "docker", "container_port": 5230,
+        "image": "neosmemo/memos:stable", "run_args": ["-v", "app_memos_data:/var/opt/memos"],
+    },
+    "mealie": {
+        "name": "Mealie", "description": "Recipe manager & meal planner.",
+        "icon": "🍴", "kind": "docker", "container_port": 9000,
+        "image": "ghcr.io/mealie-recipes/mealie:latest", "run_args": ["-v", "app_mealie_data:/app/data"],
+    },
+    "actual": {
+        "name": "Actual Budget", "description": "Private, local-first budgeting.",
+        "icon": "💰", "kind": "docker", "container_port": 5006,
+        "image": "actualbudget/actual-server:latest", "run_args": ["-v", "app_actual_data:/data"],
+    },
+    "grocy": {
+        "name": "Grocy", "description": "Groceries & household management (ERP for your home).",
+        "icon": "🛒", "kind": "docker", "container_port": 80,
+        "image": "lscr.io/linuxserver/grocy:latest", "run_args": ["-v", "app_grocy_config:/config"],
+    },
+
+    # ---- Utilities ----
+    "cyberchef": {
+        "name": "CyberChef", "description": "The cyber Swiss-army knife for data.",
+        "icon": "🔬", "kind": "docker", "container_port": 8000,
+        "image": "mpepping/cyberchef:latest",
+    },
+    "searxng": {
+        "name": "SearXNG", "description": "Private meta search engine.",
+        "icon": "🔎", "kind": "docker", "container_port": 8080,
+        "image": "searxng/searxng:latest", "run_args": ["-v", "app_searxng_config:/etc/searxng"],
+    },
+    "changedetection": {
+        "name": "Changedetection.io", "description": "Watch web pages for changes.",
+        "icon": "🔭", "kind": "docker", "container_port": 5000,
+        "image": "ghcr.io/dgtlmoon/changedetection.io:latest",
+        "run_args": ["-v", "app_changedetection_data:/datastore"],
     },
 
     # ---- Productivity ----
@@ -308,6 +375,10 @@ CATALOG: dict[str, dict] = {
         "icon": "⚡", "kind": "compose", "websocket": True,
         "compose_dir": "/srv/serverhub/apps/supabase/docker",
         "container_port": 8000,   # Kong gateway (Studio + API)
+        # Studio dashboard login (from the stack's .env, set by the installer)
+        "username": "supabase",
+        "secret_env_file": {"file": "/srv/serverhub/apps/supabase/docker/.env",
+                            "key": "DASHBOARD_PASSWORD"},
     },
 }
 
@@ -315,11 +386,14 @@ CATALOG: dict[str, dict] = {
 # Catalog grouping for the UI (ordered). Anything not listed → "Other".
 CATEGORIES = [
     ("Infrastructure", ["docker", "postgres", "mariadb", "redis", "mongo"]),
-    ("Database UIs", ["adminer", "pgadmin"]),
-    ("Developer", ["code-server", "gitea", "n8n", "nodered", "it-tools", "jupyterlab"]),
-    ("Files & Media", ["filebrowser", "nextcloud", "syncthing", "jellyfin", "qbittorrent"]),
-    ("Productivity", ["vaultwarden", "trilium", "vikunja", "freshrss",
-                      "excalidraw", "drawio", "stirling-pdf"]),
+    ("Database UIs", ["adminer", "phpmyadmin", "pgadmin"]),
+    ("Developer", ["code-server", "gitea", "n8n", "nodered", "jupyterlab"]),
+    ("Files & Sync", ["filebrowser", "nextcloud", "syncthing"]),
+    ("Media & Library", ["jellyfin", "navidrome", "calibre-web", "kavita", "qbittorrent"]),
+    ("Productivity", ["vaultwarden", "trilium", "memos", "vikunja", "mealie",
+                      "actual", "grocy", "freshrss"]),
+    ("Utilities", ["it-tools", "cyberchef", "searxng", "changedetection",
+                   "excalidraw", "drawio", "stirling-pdf"]),
     ("Monitoring", ["portainer", "grafana", "glances", "uptime-kuma",
                     "metabase", "dozzle", "homer"]),
     ("Notifications", ["gotify", "ntfy"]),
@@ -449,6 +523,17 @@ def status(slug: str) -> str:
 
 def new_password() -> str:
     return secrets.token_urlsafe(12)
+
+
+def read_env_value(path: str, key: str) -> str | None:
+    """Read KEY=value from an env file (used to surface compose-app creds)."""
+    try:
+        for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith(f"{key}="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        return None
+    return None
 
 
 # ============================================================

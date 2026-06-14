@@ -92,6 +92,10 @@ case "$SLUG" in
     [ -f .env ] || cp .env.example .env
     # Bind the Kong gateway to localhost only (panel proxies it via a domain)
     sed -i 's/^KONG_HTTP_PORT=.*/KONG_HTTP_PORT=8000/' .env 2>/dev/null || true
+    # Replace the insecure default Studio login with generated credentials
+    DASH_PW="$(openssl rand -hex 12 2>/dev/null || head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)"
+    grep -q '^DASHBOARD_USERNAME=' .env && sed -i 's/^DASHBOARD_USERNAME=.*/DASHBOARD_USERNAME=supabase/' .env || echo "DASHBOARD_USERNAME=supabase" >> .env
+    grep -q '^DASHBOARD_PASSWORD=' .env && sed -i "s|^DASHBOARD_PASSWORD=.*|DASHBOARD_PASSWORD=$DASH_PW|" .env || echo "DASHBOARD_PASSWORD=$DASH_PW" >> .env
     # Clean leftovers from any previous attempt — Supabase uses FIXED container
     # names (supabase-*), so stale containers cause "name already in use".
     docker compose -p app_supabase down --remove-orphans 2>/dev/null || true

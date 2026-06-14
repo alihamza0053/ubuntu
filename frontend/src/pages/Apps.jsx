@@ -4,8 +4,8 @@ import LiveLog from '../components/LiveLog'
 import StatusBadge from '../components/StatusBadge'
 
 const CATEGORY_ORDER = [
-  'Infrastructure', 'Database UIs', 'Developer', 'Files & Media',
-  'Productivity', 'Monitoring', 'Notifications', 'Browsers & Misc', 'Other',
+  'Infrastructure', 'Database UIs', 'Developer', 'Files & Sync', 'Media & Library',
+  'Productivity', 'Utilities', 'Monitoring', 'Notifications', 'Browsers & Misc', 'Other',
 ]
 
 /**
