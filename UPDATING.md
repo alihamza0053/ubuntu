@@ -10,6 +10,22 @@ Everything after it is detail for special cases.
 
 ## 1. The basic update (use this every time)
 
+### Easiest: the "Update now" button in the panel
+
+Open the panel → **Settings → Updates**. It shows whether you're up to date and,
+if you've pushed changes, how many updates are available. Click **Update now** —
+it runs the same `deploy/update.sh` on the server (pull → backup → rebuild →
+restart), streaming the log live. The panel restarts itself at the end and the
+page reloads automatically when it's back.
+
+> Requires the server to have a source checkout (`UPDATE_SRC`, default
+> `/opt/serverhub-src`) and the sudoers rule — both are set up by
+> `install.sh`/`update.sh`. If you've never run the CLI update on this server,
+> run `sudo bash deploy/update.sh` once first to install the updater helper.
+
+If you edited code locally, still **push it first** (below) so the button has
+something to pull.
+
 ### If you edited code on your own computer — push it first
 
 On your **local machine**, in the project folder:

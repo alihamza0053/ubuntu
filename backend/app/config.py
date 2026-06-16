@@ -54,6 +54,12 @@ class Settings:
 
     # --- Panel itself ---
     PANEL_PORT: int = int(os.getenv("PANEL_PORT", "8765"))
+    PANEL_ROOT: Path = _env_path("PANEL_ROOT", "/srv/serverhub")
+
+    # --- Self-update ("Settings → Updates → Update now") ---
+    # Source-code checkout the panel redeploys from (a git clone or uploaded
+    # bundle that contains deploy/update.sh). Set by the installer.
+    UPDATE_SRC: Path = _env_path("UPDATE_SRC", "/opt/serverhub-src")
 
     # Frontend build output served by FastAPI in production
     STATIC_DIR: Path = BASE_DIR / "static"

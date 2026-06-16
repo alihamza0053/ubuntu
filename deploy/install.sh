@@ -75,6 +75,12 @@ if [ ! -f "$PANEL_ROOT/backend/.env" ]; then
   # Use the panel venv's binaries for project scripts and streamlit
   sed -i "s|^PYTHON_BIN=.*|PYTHON_BIN=$PANEL_ROOT/venv/bin/python|" "$PANEL_ROOT/backend/.env"
   sed -i "s|^STREAMLIT_BIN=.*|STREAMLIT_BIN=$PANEL_ROOT/venv/bin/streamlit|" "$PANEL_ROOT/backend/.env"
+  # Point the in-panel "Update now" button at this source checkout
+  if grep -q "^UPDATE_SRC=" "$PANEL_ROOT/backend/.env"; then
+    sed -i "s|^UPDATE_SRC=.*|UPDATE_SRC=$REPO_DIR|" "$PANEL_ROOT/backend/.env"
+  else
+    echo "UPDATE_SRC=$REPO_DIR" >> "$PANEL_ROOT/backend/.env"
+  fi
   echo "    Generated backend/.env with a fresh SECRET_KEY"
 fi
 
@@ -87,9 +93,10 @@ mkdir -p "/home/$PANEL_USER/.cache"
 chown -R "$PANEL_USER:$PANEL_USER" "/home/$PANEL_USER"
 
 echo "==> Apps installer + helpers"
-mkdir -p "$PANEL_ROOT/bin" "$PANEL_ROOT/apps"
+mkdir -p "$PANEL_ROOT/bin" "$PANEL_ROOT/apps" "$PANEL_ROOT/backups"
 install -m 0755 "$REPO_DIR/deploy/serverhub-app-install.sh" "$PANEL_ROOT/bin/serverhub-app-install"
 install -m 0755 "$REPO_DIR/deploy/serverhub-webtop.sh" "$PANEL_ROOT/bin/serverhub-webtop"
+install -m 0755 "$REPO_DIR/deploy/serverhub-self-update.sh" "$PANEL_ROOT/bin/serverhub-self-update"
 
 echo "==> Sudoers rule"
 install -m 0440 "$REPO_DIR/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub

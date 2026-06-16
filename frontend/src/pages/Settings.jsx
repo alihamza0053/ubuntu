@@ -1,18 +1,61 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import api, { errorMessage } from '../api/client'
+import LiveLog from '../components/LiveLog'
 
-/** Settings: change password, panel key/value settings, DB backup download. */
+/** Settings: change password, panel key/value settings, DB backup, self-update. */
 export default function Settings() {
   const [pw, setPw] = useState({ current_password: '', new_password: '', confirm: '' })
   const [pwMsg, setPwMsg] = useState('')
   const [settings, setSettings] = useState({ panel_port: '', panel_subdomain: '' })
   const [setMsg, setSetMsg] = useState('')
 
+  // Self-update
+  const [upd, setUpd] = useState(null)        // /settings/update/info payload
+  const [updLoading, setUpdLoading] = useState(false)
+  const [updPath, setUpdPath] = useState(null) // WS path while updating
+  const [restarting, setRestarting] = useState(false)
+  const sawDown = useRef(false)
+
   useEffect(() => {
     api.get('/settings').then((res) => {
       setSettings((prev) => ({ ...prev, ...res.data }))
     }).catch(() => {})
   }, [])
+
+  const checkUpdate = useCallback(() => {
+    setUpdLoading(true)
+    api.get('/settings/update/info')
+      .then((res) => setUpd(res.data))
+      .catch((err) => setUpd({ message: errorMessage(err), error: true }))
+      .finally(() => setUpdLoading(false))
+  }, [])
+
+  useEffect(() => { checkUpdate() }, [checkUpdate])
+
+  function startUpdate() {
+    if (!window.confirm(
+      'Update the panel now? It will pull the latest code, rebuild, and ' +
+      'restart the panel. The page will reload when it is back.')) return
+    setUpdPath(null)
+    setTimeout(() => setUpdPath('/ws/settings/update'), 0)
+  }
+
+  // When the update WS closes, the panel is (probably) restarting — poll
+  // /api/health and reload once it has gone down and come back up.
+  function onUpdateClosed() {
+    setRestarting(true)
+    sawDown.current = false
+    const t = setInterval(async () => {
+      try {
+        await api.get('/health', { timeout: 4000 })
+        if (sawDown.current) { clearInterval(t); window.location.reload() }
+      } catch {
+        sawDown.current = true   // panel went down → restart in progress
+      }
+    }, 3000)
+    // Give up after 3 min and just reload
+    setTimeout(() => { clearInterval(t); window.location.reload() }, 180000)
+  }
 
   async function changePassword(e) {
     e.preventDefault()
@@ -103,6 +146,56 @@ export default function Settings() {
           schedules, users).
         </p>
         <button className="btn-secondary" onClick={backupDb}>⬇ Download database backup</button>
+      </div>
+
+      {/* Updates */}
+      <div className="card space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">Updates</h3>
+          <button className="text-xs text-slate-400 hover:text-slate-200"
+            onClick={checkUpdate} disabled={updLoading || !!updPath}>
+            {updLoading ? 'Checking…' : '↻ Check again'}
+          </button>
+        </div>
+
+        {upd && (
+          <p className={`text-sm ${
+            upd.error ? 'text-red-400'
+            : upd.behind > 0 ? 'text-yellow-300'
+            : upd.behind === 0 ? 'text-green-400' : 'text-slate-400'}`}>
+            {upd.message}
+          </p>
+        )}
+        {upd?.current && (
+          <p className="text-xs text-slate-500">Current: <code>{upd.current}</code></p>
+        )}
+        {upd?.src && (
+          <p className="text-xs text-slate-600">Source: <code>{upd.src}</code></p>
+        )}
+
+        {restarting ? (
+          <p className="text-sm text-sky-300">
+            Panel is restarting to finish the update… this page will reload
+            automatically when it's back.
+          </p>
+        ) : (
+          <button className="btn-primary"
+            onClick={startUpdate}
+            disabled={!!updPath || (upd && upd.ready === false)}>
+            {updPath ? 'Updating…' : '⬆ Update now'}
+          </button>
+        )}
+
+        {upd && upd.ready === false && (
+          <p className="text-xs text-slate-500">
+            No source checkout found on the server. The update button redeploys
+            from a git clone / uploaded bundle — set <code>UPDATE_SRC</code> in{' '}
+            <code>backend/.env</code> (default <code>/opt/serverhub-src</code>),
+            then re-run <code>sudo bash deploy/update.sh</code> once.
+          </p>
+        )}
+
+        {updPath && <LiveLog path={updPath} onClose={onUpdateClosed} />}
       </div>
     </div>
   )

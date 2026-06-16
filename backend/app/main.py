@@ -74,6 +74,7 @@ app.include_router(apps.ws_router)            # app install WebSocket
 app.include_router(docker.router)
 app.include_router(docker.ws_router)          # container logs WebSocket
 app.include_router(settings_router.router)
+app.include_router(settings_router.ws_router)  # self-update live-stream WebSocket
 
 
 @app.get("/api/health", tags=["meta"])
