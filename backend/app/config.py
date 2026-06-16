@@ -48,6 +48,11 @@ class Settings:
     # --- Streamlit dashboards ---
     DASHBOARD_PORT_START: int = int(os.getenv("DASHBOARD_PORT_START", "8501"))
 
+    # --- Pipeline ---
+    # After the first pass, re-run any scripts that FAILED, at the end of the
+    # run. Number of extra passes over the still-failing scripts (0 disables).
+    PIPELINE_MAX_RETRIES: int = int(os.getenv("PIPELINE_MAX_RETRIES", "1"))
+
     # --- Executables ---
     PYTHON_BIN: str = os.getenv("PYTHON_BIN", "python3")
     STREAMLIT_BIN: str = os.getenv("STREAMLIT_BIN", "streamlit")

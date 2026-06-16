@@ -1,0 +1,4 @@
+https://yoursite.com
+https://yoursite.com/shop
+https://yoursite.com/product/example
+https://yoursite.com/cart

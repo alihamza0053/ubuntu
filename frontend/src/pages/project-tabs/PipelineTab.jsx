@@ -131,7 +131,8 @@ export default function PipelineTab({ project }) {
         <div className="flex items-center gap-3 flex-wrap">
           <h3 className="font-semibold">Project Pipeline</h3>
           <span className="text-xs text-slate-500">
-            Runs all {info?.scripts?.length ?? 0} code/ script(s) in order, then restarts the dashboard.
+            Runs all {info?.scripts?.length ?? 0} code/ script(s) in order, retries any that fail
+            at the end, then restarts the dashboard.
           </span>
           <div className="ml-auto flex gap-2">
             {running && (
@@ -182,11 +183,17 @@ export default function PipelineTab({ project }) {
                   <tr key={r.filename}>
                     <td className="py-1.5 text-slate-500">{i + 1}</td>
                     <td className="font-mono">{r.filename}</td>
-                    <td>
+                    <td className="space-x-1">
                       <span className={`badge ${r.status === 'SUCCESS'
                         ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
                         {r.status === 'SUCCESS' ? '✓ OK' : `✗ FAILED (exit ${r.exit_code})`}
                       </span>
+                      {r.retried && (
+                        <span className="badge bg-sky-500/15 text-sky-300"
+                          title={`Re-run at the end (${r.attempts} attempts)`}>
+                          ↻ {r.status === 'SUCCESS' ? 'recovered on retry' : 'retried'}
+                        </span>
+                      )}
                     </td>
                     <td className="text-slate-500 text-xs">{fmt(r.finished + 'Z')}</td>
                   </tr>

@@ -141,7 +141,22 @@ async def run_pipeline(project_id: int, on_line=None) -> tuple[str, list]:
 
     results: list = []
     overall = "SUCCESS"
+    stopped = False
+    # Scripts that ended FAILED on the first pass — retried at the end.
+    # Each item: (sid, folder, filename, index-in-results)
+    failed: list[tuple] = []
     _stop_requested.discard(project_id)   # clear any stale stop flag
+
+    async def fwd(line: str):
+        await emit(f"    {line}")
+
+    async def run_one(sid: str, folder: str, filename: str):
+        _current_script[project_id] = sid
+        try:
+            return await run_script(sid, name, folder, filename, on_line=fwd)
+        finally:
+            _current_script.pop(project_id, None)
+
     try:
         log_activity(f"▶ pipeline {name} started ({len(scripts)} script(s))")
         await emit(f"===== pipeline run started: {name} — {len(scripts)} script(s) =====")
@@ -151,39 +166,79 @@ async def run_pipeline(project_id: int, on_line=None) -> tuple[str, list]:
 
         for sid, folder, filename in scripts:
             if project_id in _stop_requested:
-                overall = "STOPPED"
+                stopped = True
                 await emit("[pipeline] ⏹ stopped by user — remaining scripts skipped")
                 break
 
             await emit(f"[pipeline] ▶ running {folder}/{filename}")
-
-            async def fwd(line: str):
-                await emit(f"    {line}")
-
-            _current_script[project_id] = sid
-            try:
-                status, code = await run_script(sid, name, folder, filename, on_line=fwd)
-            finally:
-                _current_script.pop(project_id, None)
+            status, code = await run_one(sid, folder, filename)
 
             results.append({
                 "filename": filename,
                 "folder": folder,
                 "status": status,
                 "exit_code": code,
+                "attempts": 1,
+                "retried": False,
                 "finished": datetime.utcnow().isoformat(),
             })
             if status == "SUCCESS":
                 await emit(f"[pipeline] ✓ {filename} OK")
             elif status == "STOPPED":
-                overall = "STOPPED"
+                stopped = True
                 await emit(f"[pipeline] ⏹ {filename} stopped by user")
                 break
             else:
-                overall = "FAILED"
-                await emit(f"[pipeline] ✗ {filename} FAILED (exit {code})")
+                await emit(f"[pipeline] ✗ {filename} FAILED (exit {code}) — will retry at the end")
+                failed.append((sid, folder, filename, len(results) - 1))
             # Persist after each script so the UI updates live
             _update_run(run_id, status="RUNNING", results=results)
+
+        # --- Retry pass: re-run scripts that failed, at the end of the run ---
+        max_retries = settings.PIPELINE_MAX_RETRIES
+        if not stopped and failed and max_retries > 0:
+            await emit(f"[pipeline] ↻ retrying {len(failed)} failed script(s) "
+                       f"at the end (up to {max_retries} pass(es))")
+            for attempt in range(1, max_retries + 1):
+                if not failed or stopped:
+                    break
+                still_failed: list[tuple] = []
+                for sid, folder, filename, idx in failed:
+                    if project_id in _stop_requested:
+                        stopped = True
+                        await emit("[pipeline] ⏹ stopped by user during retry")
+                        break
+
+                    await emit(f"[pipeline] ↻ retry {attempt}/{max_retries}: {folder}/{filename}")
+                    status, code = await run_one(sid, folder, filename)
+
+                    entry = results[idx]
+                    entry["status"] = status
+                    entry["exit_code"] = code
+                    entry["attempts"] = entry.get("attempts", 1) + 1
+                    entry["retried"] = True
+                    entry["finished"] = datetime.utcnow().isoformat()
+
+                    if status == "SUCCESS":
+                        await emit(f"[pipeline] ✓ {filename} OK on retry {attempt}")
+                    elif status == "STOPPED":
+                        stopped = True
+                        await emit(f"[pipeline] ⏹ {filename} stopped by user")
+                        still_failed.append((sid, folder, filename, idx))
+                        break
+                    else:
+                        await emit(f"[pipeline] ✗ {filename} still FAILED (exit {code})")
+                        still_failed.append((sid, folder, filename, idx))
+                    _update_run(run_id, status="RUNNING", results=results)
+                failed = still_failed
+
+        # Final status: STOPPED wins; otherwise SUCCESS only if everything passed
+        if stopped:
+            overall = "STOPPED"
+        elif all(r["status"] == "SUCCESS" for r in results):
+            overall = "SUCCESS"
+        else:
+            overall = "FAILED"
 
         # Restart the dashboard so it reloads fresh data (skipped if stopped)
         restarted = False
