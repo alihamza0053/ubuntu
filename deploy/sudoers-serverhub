@@ -24,7 +24,11 @@ serverhub ALL=(root) NOPASSWD: /usr/bin/apt-get -y remove *
 
 # --- MySQL management (Phase 4) ---
 # Uses local socket root auth for create/drop/query/import/export.
+# Bare forms (no args) are needed for backup restore (mysql reads SQL on stdin)
+# and full dumps; the wildcard forms cover everything else.
+serverhub ALL=(root) NOPASSWD: /usr/bin/mysql
 serverhub ALL=(root) NOPASSWD: /usr/bin/mysql *
+serverhub ALL=(root) NOPASSWD: /usr/bin/mysqldump
 serverhub ALL=(root) NOPASSWD: /usr/bin/mysqldump *
 
 # --- Apps section: vetted one-click installer (only known slugs) ---

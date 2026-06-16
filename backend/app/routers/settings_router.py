@@ -4,8 +4,8 @@ of the panel SQLite database for backup, and panel self-update.
 """
 from datetime import datetime
 
-from fastapi import (APIRouter, Depends, HTTPException, WebSocket,
-                     WebSocketDisconnect)
+from fastapi import (APIRouter, Depends, File, HTTPException, UploadFile,
+                     WebSocket, WebSocketDisconnect)
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from ..database import get_db
 from ..deps import authenticate_websocket, get_current_user
 from ..models import Setting
 from ..schemas import DetailResponse
+from ..services import backup_service
 from ..services.streaming import run_command, stream_command, tail_file
 
 router = APIRouter(
@@ -57,6 +58,73 @@ def backup_db():
         raise HTTPException(status_code=404, detail="Database file not found")
     return FileResponse(db_path, filename="serverhub-backup.db",
                         media_type="application/octet-stream")
+
+
+# ---------------------------------------------------------------------------
+# Full backup & restore
+# ---------------------------------------------------------------------------
+class BackupCreate(BaseModel):
+    components: list[str]
+
+
+class RestoreRequest(BaseModel):
+    components: list[str]
+
+
+@router.get("/backups")
+def list_backups():
+    """Installable backup components + existing backup archives."""
+    return {
+        "components": backup_service.COMPONENTS,
+        "backups": backup_service.list_backups(),
+    }
+
+
+@router.post("/backups")
+def create_backup(body: BackupCreate):
+    try:
+        return backup_service.create_backup(body.components)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except (RuntimeError, OSError) as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/backups/{name}/download")
+def download_backup(name: str):
+    try:
+        path = backup_service.backup_file_path(name)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return FileResponse(path, filename=name, media_type="application/gzip")
+
+
+@router.delete("/backups/{name}", response_model=DetailResponse)
+def delete_backup(name: str):
+    try:
+        backup_service.delete_backup(name)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return DetailResponse(detail="Backup deleted")
+
+
+@router.post("/backups/import")
+async def import_backup(file: UploadFile = File(...)):
+    data = await file.read()
+    try:
+        return backup_service.save_uploaded(file.filename or "backup.tar.gz", data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/backups/{name}/restore")
+def restore_backup(name: str, body: RestoreRequest):
+    try:
+        return backup_service.restore_backup(name, body.components)
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except (RuntimeError, OSError) as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # ---------------------------------------------------------------------------

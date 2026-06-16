@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import LiveLog from '../components/LiveLog'
+import Backups from '../components/Backups'
 
 /** Settings: change password, panel key/value settings, DB backup, self-update. */
 export default function Settings() {
@@ -87,19 +88,6 @@ export default function Settings() {
     }
   }
 
-  function backupDb() {
-    api.post('/settings/backup-db', null, { responseType: 'blob' })
-      .then((res) => {
-        const url = URL.createObjectURL(res.data)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = 'serverhub-backup.db'
-        a.click()
-        URL.revokeObjectURL(url)
-      })
-      .catch((err) => alert(errorMessage(err)))
-  }
-
   return (
     <div className="space-y-6 max-w-2xl">
       <h2 className="text-2xl font-bold">Settings</h2>
@@ -138,15 +126,8 @@ export default function Settings() {
         <button className="btn-primary" type="submit">Save</button>
       </form>
 
-      {/* Backup */}
-      <div className="card space-y-3">
-        <h3 className="font-semibold">Backup</h3>
-        <p className="text-sm text-slate-500">
-          Download the panel's SQLite database (projects, scripts, websites,
-          schedules, users).
-        </p>
-        <button className="btn-secondary" onClick={backupDb}>⬇ Download database backup</button>
-      </div>
+      {/* Backup & Restore */}
+      <Backups />
 
       {/* Updates */}
       <div className="card space-y-3">
