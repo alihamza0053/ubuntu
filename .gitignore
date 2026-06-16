@@ -1,19 +1,33 @@
+# ───────── ServerHub — ignore secrets, build output & local junk ─────────
+
 # Python
 __pycache__/
 *.pyc
 backend/venv/
+backend/.venv-test/
 backend/.env
 
-# Panel database
+# Panel database & backups
 db/
 *.db
 *.sqlite3
+backend/db-*/
+**/backups/
 
-# Node / frontend
+# Node / frontend build
 frontend/node_modules/
 backend/static/
 
-# Editors / OS
+# Release bundles produced by deploy/package.sh
+dist/
+
+# ⚠️ Private automation scripts (contain credentials) — keep these OUT of the
+# product repo. Put them in a separate PRIVATE repo / the panel's data folder.
+/P2P Custom.py
+/code/
+
+# Editor / OS / tooling
+.claude/
 .vscode/
 .idea/
 .DS_Store
