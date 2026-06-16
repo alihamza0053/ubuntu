@@ -141,7 +141,20 @@ services:
     restart: unless-stopped
     depends_on: [ db ]
     ports: [ "127.0.0.1:$PORT:80" ]
-    environment: { WORDPRESS_DB_HOST: db, WORDPRESS_DB_USER: wordpress, WORDPRESS_DB_PASSWORD: "$DBPW", WORDPRESS_DB_NAME: wordpress }
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: "$DBPW"
+      WORDPRESS_DB_NAME: wordpress
+      # Behind the panel's nginx proxy: trust the forwarded scheme and derive
+      # the site URL from the request host, so CSS/JS always load from the
+      # address you actually use (works over IP, domain, http and https).
+      WORDPRESS_CONFIG_EXTRA: |
+        if (isset(\$\$_SERVER['HTTP_X_FORWARDED_PROTO']) && \$\$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') { \$\$_SERVER['HTTPS'] = 'on'; }
+        if (!empty(\$\$_SERVER['HTTP_HOST'])) {
+          define('WP_HOME', (empty(\$\$_SERVER['HTTPS']) ? 'http' : 'https') . '://' . \$\$_SERVER['HTTP_HOST']);
+          define('WP_SITEURL', (empty(\$\$_SERVER['HTTPS']) ? 'http' : 'https') . '://' . \$\$_SERVER['HTTP_HOST']);
+        }
     volumes: [ "app:/var/www/html" ]
 volumes: { db: {}, app: {} }
 EOF
