@@ -14,7 +14,7 @@ the Python venv + all pip packages — and builds the frontend. Nothing is
 installed by hand.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOURNAME/serverhub/main/deploy/get.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/alihamza0053/ubuntu/main/deploy/get.sh | sudo bash
 ```
 
 That's it. When it finishes, create your admin user and point your domain (the
@@ -23,8 +23,8 @@ the panel in place.**
 
 Override the source if your repo/branch differs:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOURNAME/serverhub/main/deploy/get.sh \
-  | sudo REPO_URL=https://github.com/YOURNAME/serverhub.git BRANCH=main bash
+curl -fsSL https://raw.githubusercontent.com/alihamza0053/serverhub/main/deploy/get.sh \
+  | sudo REPO_URL=https://github.com/alihamza0053/ubuntu.git BRANCH=main bash
 ```
 
 What the one-click does, step by step:
@@ -77,7 +77,7 @@ git rm -r --cached --ignore-unmatch backend/.env backend/static db code "P2P Cus
 git add -A
 git commit -m "ServerHub"
 git branch -M main
-git remote add origin git@github.com:YOURNAME/serverhub.git   # or https URL
+git remote add origin git@github.com:alihamza0053/ubuntu.git   # or https URL
 git push -u origin main
 ```
 
