@@ -149,7 +149,7 @@ def download_log(log_type: str, name: str = "", db: Session = Depends(get_db)):
 @router.websocket("/ws/logs/{log_type}/{name}")
 async def logs_ws(websocket: WebSocket, log_type: str, name: str):
     """Live-tail any log source (nginx/system/supervisor/script)."""
-    user = await authenticate_websocket(websocket)
+    user = await authenticate_websocket(websocket, require="logs")
     if user is None:
         return
     await websocket.accept()

@@ -129,6 +129,14 @@ case "$SLUG" in
     DBPW="$(openssl rand -hex 16 2>/dev/null || head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)"
     case "$SLUG" in
       wordpress)
+        # Raise PHP upload limits (default 2M is tiny for media/themes).
+        cat > uploads.ini <<'INI'
+file_uploads = On
+upload_max_filesize = 64M
+post_max_size = 64M
+max_execution_time = 300
+memory_limit = 256M
+INI
         cat > docker-compose.yml <<EOF
 services:
   db:
@@ -155,7 +163,9 @@ services:
           define('WP_HOME', (empty(\$\$_SERVER['HTTPS']) ? 'http' : 'https') . '://' . \$\$_SERVER['HTTP_HOST']);
           define('WP_SITEURL', (empty(\$\$_SERVER['HTTPS']) ? 'http' : 'https') . '://' . \$\$_SERVER['HTTP_HOST']);
         }
-    volumes: [ "app:/var/www/html" ]
+    volumes:
+      - "app:/var/www/html"
+      - "./uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro"
 volumes: { db: {}, app: {} }
 EOF
         ;;

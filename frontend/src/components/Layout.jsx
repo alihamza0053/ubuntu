@@ -1,24 +1,10 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-
-// All panel sections (every feature is now implemented).
-const NAV = [
-  { to: '/dashboard', label: 'Dashboard', icon: '🏠' },
-  { to: '/projects', label: 'Projects', icon: '🐍' },
-  { to: '/websites', label: 'Websites', icon: '🌐' },
-  { to: '/apps', label: 'Apps', icon: '🧩' },
-  { to: '/docker', label: 'Docker', icon: '🐳' },
-  { to: '/terminal', label: 'Terminal', icon: '💻' },
-  { to: '/logs', label: 'Logs', icon: '📜' },
-  { to: '/files', label: 'Files', icon: '📁' },
-  { to: '/databases', label: 'Databases', icon: '🗄️' },
-  { to: '/nginx', label: 'Nginx', icon: '⚙️' },
-  { to: '/server', label: 'Server', icon: '🖥️' },
-  { to: '/settings', label: 'Settings', icon: '🔧' },
-]
+import { NAV } from '../nav'
 
 export default function Layout() {
-  const { user, logout } = useAuth()
+  const { user, logout, isAdmin, can } = useAuth()
+  const items = NAV.filter((item) => can(item.perm))
 
   return (
     <div className="min-h-screen flex">
@@ -30,7 +16,7 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-          {NAV.map((item) => (
+          {items.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -47,7 +33,10 @@ export default function Layout() {
         </nav>
 
         <div className="px-4 py-3 border-t border-panel-border flex items-center justify-between">
-          <span className="text-sm text-slate-400 truncate">👤 {user?.username}</span>
+          <span className="text-sm text-slate-400 truncate">
+            👤 {user?.username}
+            <span className="ml-1 text-[10px] text-slate-600">{isAdmin ? 'admin' : 'user'}</span>
+          </span>
           <button onClick={logout} className="text-xs text-red-400 hover:text-red-300">
             Logout
           </button>

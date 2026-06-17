@@ -165,7 +165,7 @@ def stop_pipeline_now(project_id: int, db: Session = Depends(get_db)):
 @ws_router.websocket("/ws/pipeline/{project_id}/run")
 async def run_pipeline_ws(websocket: WebSocket, project_id: int):
     """Run the pipeline and stream progress live (✓/✗ markers per script)."""
-    user = await authenticate_websocket(websocket)
+    user = await authenticate_websocket(websocket, require="projects")
     if user is None:
         return
     await websocket.accept()

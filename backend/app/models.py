@@ -13,12 +13,17 @@ from .database import Base
 
 
 class User(Base):
-    """Single admin user (more could be added later)."""
+    """A panel user. Admins have full access; others are limited to the tabs
+    listed in `permissions` (comma-separated keys, see app/permissions.py)."""
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(128))
+    # Admins bypass all permission checks and can manage users.
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Comma-separated allowed tab keys for non-admins (e.g. "projects,logs").
+    permissions: Mapped[str] = mapped_column(Text, default="")
 
 
 class Project(Base):

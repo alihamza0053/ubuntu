@@ -133,7 +133,7 @@ async def apt_ws(websocket: WebSocket, action: str):
     install/remove, ?package=NAME.
       action ∈ update | upgrade | install | remove
     """
-    user = await authenticate_websocket(websocket)
+    user = await authenticate_websocket(websocket, require="server")
     if user is None:
         return
     await websocket.accept()

@@ -78,7 +78,7 @@ async def terminal_ws(websocket: WebSocket):
                {"type": "resize", "cols": N, "rows": N}
       server → {"type": "output", "data": "..."}    terminal output
     """
-    user = await authenticate_websocket(websocket)
+    user = await authenticate_websocket(websocket, require="terminal")
     if user is None:
         return
     await websocket.accept()

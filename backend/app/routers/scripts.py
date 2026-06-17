@@ -85,7 +85,7 @@ async def run_script_ws(websocket: WebSocket, script_id: int):
     Protocol: client connects with ?token=JWT; server sends one text frame
     per output line, then a final frame "[serverhub] status=<SUCCESS|FAILED>".
     """
-    user = await authenticate_websocket(websocket)
+    user = await authenticate_websocket(websocket, require="projects")
     if user is None:
         return
     await websocket.accept()

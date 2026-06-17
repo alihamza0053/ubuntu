@@ -5,6 +5,44 @@ or **upload to a host**, without leaking secrets or shipping junk.
 
 ---
 
+## 🚀 One-click install (online) — no manual steps
+
+Once the source is in a (public) Git repo, a **fresh Ubuntu 22.04+ server** is
+set up end-to-end with a single command. It downloads the code and installs
+**everything** — nginx, supervisor, MySQL, PHP, Certbot, Google Chrome, Node,
+the Python venv + all pip packages — and builds the frontend. Nothing is
+installed by hand.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YOURNAME/serverhub/main/deploy/get.sh | sudo bash
+```
+
+That's it. When it finishes, create your admin user and point your domain (the
+script prints the exact commands). **Re-running the same command later updates
+the panel in place.**
+
+Override the source if your repo/branch differs:
+```bash
+curl -fsSL https://raw.githubusercontent.com/YOURNAME/serverhub/main/deploy/get.sh \
+  | sudo REPO_URL=https://github.com/YOURNAME/serverhub.git BRANCH=main bash
+```
+
+What the one-click does, step by step:
+1. installs `git` if missing,
+2. clones (or refreshes) the repo into `/opt/serverhub-src`,
+3. runs [`deploy/install.sh`](deploy/install.sh) — which installs all OS
+   packages + Python/Node deps and builds the UI (idempotent, safe to re-run).
+
+> **Requirements:** the repo must be **public** (so `curl`/`git clone` can read
+> it without a login). For a private repo, either clone with a token first and
+> run `sudo bash deploy/install.sh`, or attach the token to `REPO_URL`
+> (`https://<TOKEN>@github.com/you/serverhub.git`). Never commit the token.
+>
+> Prefer not to pipe the internet into a root shell unseen? Download and read it
+> first: `curl -fsSL .../deploy/get.sh -o get.sh; less get.sh; sudo bash get.sh`.
+
+---
+
 ## 0. What gets shipped vs. ignored
 
 `.gitignore` is set up so these are **never** committed/bundled:
@@ -93,7 +131,7 @@ sudo bash serverhub-src/deploy/install.sh
 serverhub/
 ├── backend/          FastAPI app (+ requirements.txt, setup_admin.py, .env.example)
 ├── frontend/         React (Vite) source → builds into backend/static/
-├── deploy/           install.sh, update.sh, package.sh, nginx/supervisor/sudoers, app installers
+├── deploy/           get.sh (one-click), install.sh, update.sh, package.sh, nginx/supervisor/sudoers, app installers
 ├── README.md         front page
 ├── DEPLOYMENT.md     install from zero
 ├── UPDATING.md       push changes to a running panel

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from .database import SessionLocal, get_db
 from .models import User
+from .permissions import user_can_tab
 from .security import decode_access_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -34,12 +35,21 @@ def get_current_user(
     return user
 
 
-async def authenticate_websocket(websocket: WebSocket) -> User | None:
+def require_admin(user: User = Depends(get_current_user)) -> User:
+    """Allow only admin users (user management, etc.)."""
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+async def authenticate_websocket(websocket: WebSocket,
+                                 require: str | None = None) -> User | None:
     """
     Authenticate a WebSocket connection via its ?token= query parameter.
 
     Returns the User on success. On failure the socket is closed with
     policy-violation code 1008 and None is returned — callers must bail out.
+    `require`: a tab key the user must be permitted (admins always pass).
     """
     token = websocket.query_params.get("token")
     username = decode_access_token(token) if token else None
@@ -55,5 +65,8 @@ async def authenticate_websocket(websocket: WebSocket) -> User | None:
 
     if user is None:
         await websocket.close(code=1008, reason="Unknown user")
+        return None
+    if require and not user_can_tab(user, require):
+        await websocket.close(code=1008, reason="Permission denied")
         return None
     return user

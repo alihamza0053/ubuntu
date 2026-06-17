@@ -21,8 +21,24 @@ class TokenResponse(BaseModel):
 class UserOut(BaseModel):
     id: int
     username: str
+    is_admin: bool = False
+    permissions: list[str] = []
 
-    model_config = {"from_attributes": True}
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    is_admin: bool = False
+    permissions: list[str] = []
+
+
+class UserUpdate(BaseModel):
+    is_admin: bool | None = None
+    permissions: list[str] | None = None
+
+
+class PasswordReset(BaseModel):
+    new_password: str
 
 
 # ---------- Projects ----------

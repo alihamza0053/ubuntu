@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import { useAuth } from './context/AuthContext'
+import { firstAllowed } from './nav'
 import Apps from './pages/Apps'
 import Databases from './pages/Databases'
 import Docker from './pages/Docker'
@@ -26,7 +27,14 @@ function RequireAuth({ children }) {
   return user ? children : <Navigate to="/login" replace />
 }
 
+/** Per-tab gate: redirect to the user's first allowed tab if not permitted. */
+function Guard({ perm, children }) {
+  const { can } = useAuth()
+  return can(perm) ? children : <Navigate to={firstAllowed(can)} replace />
+}
+
 export default function App() {
+  const { can } = useAuth()
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
@@ -38,23 +46,23 @@ export default function App() {
           </RequireAuth>
         }
       >
-        <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard" element={<Home />} />
-        <Route path="projects" element={<Projects />} />
-        <Route path="projects/:id" element={<ProjectDetail />} />
-        <Route path="websites" element={<Websites />} />
-        <Route path="websites/:id" element={<WebsiteDetail />} />
-        <Route path="apps" element={<Apps />} />
-        <Route path="docker" element={<Docker />} />
-        <Route path="terminal" element={<Terminal />} />
-        <Route path="logs" element={<Logs />} />
-        <Route path="files" element={<Files />} />
-        <Route path="databases" element={<Databases />} />
-        <Route path="nginx" element={<Nginx />} />
-        <Route path="server" element={<Server />} />
-        <Route path="settings" element={<Settings />} />
+        <Route index element={<Navigate to={firstAllowed(can)} replace />} />
+        <Route path="dashboard" element={<Guard perm="dashboard"><Home /></Guard>} />
+        <Route path="projects" element={<Guard perm="projects"><Projects /></Guard>} />
+        <Route path="projects/:id" element={<Guard perm="projects"><ProjectDetail /></Guard>} />
+        <Route path="websites" element={<Guard perm="websites"><Websites /></Guard>} />
+        <Route path="websites/:id" element={<Guard perm="websites"><WebsiteDetail /></Guard>} />
+        <Route path="apps" element={<Guard perm="apps"><Apps /></Guard>} />
+        <Route path="docker" element={<Guard perm="docker"><Docker /></Guard>} />
+        <Route path="terminal" element={<Guard perm="terminal"><Terminal /></Guard>} />
+        <Route path="logs" element={<Guard perm="logs"><Logs /></Guard>} />
+        <Route path="files" element={<Guard perm="files"><Files /></Guard>} />
+        <Route path="databases" element={<Guard perm="databases"><Databases /></Guard>} />
+        <Route path="nginx" element={<Guard perm="nginx"><Nginx /></Guard>} />
+        <Route path="server" element={<Guard perm="server"><Server /></Guard>} />
+        <Route path="settings" element={<Guard perm="settings"><Settings /></Guard>} />
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

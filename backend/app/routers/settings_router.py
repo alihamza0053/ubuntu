@@ -193,7 +193,7 @@ async def update_ws(websocket: WebSocket):
     end (the panel restarts) — that is expected; the update still completes.
     Optional ?backend_only=1 / ?frontend_only=1 / ?no_pull=1 query flags.
     """
-    user = await authenticate_websocket(websocket)
+    user = await authenticate_websocket(websocket, require="settings")
     if user is None:
         return
     await websocket.accept()

@@ -24,6 +24,7 @@ def streamlit_block(domain: str, port: int) -> str:
     return f"""server {{
     listen 80;
     server_name {domain};
+    client_max_body_size 64M;
     location / {{
         proxy_pass http://127.0.0.1:{port};
         proxy_http_version 1.1;

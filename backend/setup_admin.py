@@ -40,9 +40,11 @@ def main() -> int:
         user = db.query(User).filter(User.username == username).first()
         if user:
             user.hashed_password = hash_password(password)
+            user.is_admin = True   # the setup user is always a full admin
             action = "updated"
         else:
-            db.add(User(username=username, hashed_password=hash_password(password)))
+            db.add(User(username=username, hashed_password=hash_password(password),
+                        is_admin=True, permissions=""))
             action = "created"
         db.commit()
     finally:

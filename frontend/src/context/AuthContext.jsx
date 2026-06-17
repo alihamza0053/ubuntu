@@ -33,8 +33,15 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  const isAdmin = !!user?.is_admin
+  // can(perm): admins can do everything; others only their granted tabs.
+  function can(perm) {
+    if (isAdmin) return true
+    return (user?.permissions || []).includes(perm)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, isAdmin, can }}>
       {children}
     </AuthContext.Provider>
   )

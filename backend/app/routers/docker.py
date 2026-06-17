@@ -54,7 +54,7 @@ def prune():
 
 @ws_router.websocket("/ws/docker/containers/{cid}/logs")
 async def container_logs_ws(websocket: WebSocket, cid: str):
-    user = await authenticate_websocket(websocket)
+    user = await authenticate_websocket(websocket, require="docker")
     if user is None:
         return
     await websocket.accept()

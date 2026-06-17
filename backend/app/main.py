@@ -10,11 +10,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .config import settings
-from .database import Base, engine, run_migrations
+from .database import Base, SessionLocal, engine, run_migrations
+from .models import User
+from .permissions import user_can
+from .security import decode_access_token
 from .routers import (apps, auth, dashboard, databases, docker, files, logs,
                       nginx, pipeline, projects, schedules, scripts, server,
                       settings_router, terminal, websites)
@@ -52,6 +56,38 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class PermissionMiddleware(BaseHTTPMiddleware):
+    """
+    Enforce per-tab permissions on HTTP API calls so a non-admin can't reach a
+    section they weren't granted by calling the API directly (the UI hides it,
+    this makes it real). Auth/health and non-API paths pass through; unknown or
+    missing tokens fall through to the route's own 401. WebSockets are checked
+    in authenticate_websocket instead.
+    """
+    async def dispatch(self, request, call_next):
+        path = request.url.path
+        if (path.startswith("/api/")
+                and not path.startswith("/api/auth")
+                and path != "/api/health"):
+            auth = request.headers.get("authorization", "")
+            token = auth[7:] if auth[:7].lower() == "bearer " else None
+            username = decode_access_token(token) if token else None
+            if username:
+                db = SessionLocal()
+                try:
+                    user = db.query(User).filter(User.username == username).first()
+                finally:
+                    db.close()
+                if user and not user_can(user, path, request.method):
+                    return JSONResponse(
+                        {"detail": "You don't have access to this section."},
+                        status_code=403)
+        return await call_next(request)
+
+
+app.add_middleware(PermissionMiddleware)
 
 # --- API + WebSocket routers ---
 app.include_router(auth.router)

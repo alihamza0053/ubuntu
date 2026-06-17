@@ -43,6 +43,19 @@ def run_migrations() -> None:
     from sqlalchemy import inspect, text
 
     insp = inspect(engine)
+
+    # users: per-tab permissions + admin flag (added with multi-user support).
+    # Existing users predate this and must stay full admins so login keeps
+    # working exactly as before.
+    if "users" in insp.get_table_names():
+        ucols = [c["name"] for c in insp.get_columns("users")]
+        with engine.begin() as conn:
+            if "is_admin" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
+                conn.execute(text("UPDATE users SET is_admin = 1"))
+            if "permissions" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT ''"))
+
     if "apps" not in insp.get_table_names():
         return
 

@@ -205,7 +205,7 @@ def uninstall_app(app_id: int, db: Session = Depends(get_db)):
 @ws_router.websocket("/ws/apps/{app_id}/logs")
 async def app_logs_ws(websocket: WebSocket, app_id: int):
     """Live logs for any app kind (file tail for services, docker logs for containers)."""
-    user = await authenticate_websocket(websocket)
+    user = await authenticate_websocket(websocket, require="apps")
     if user is None:
         return
     await websocket.accept()
@@ -237,7 +237,7 @@ async def app_logs_ws(websocket: WebSocket, app_id: int):
 @ws_router.websocket("/ws/apps/{slug}/install")
 async def install_app_ws(websocket: WebSocket, slug: str):
     """Stream the install of a catalog app; register + start it on success."""
-    user = await authenticate_websocket(websocket)
+    user = await authenticate_websocket(websocket, require="apps")
     if user is None:
         return
     await websocket.accept()

@@ -2,9 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import LiveLog from '../components/LiveLog'
 import Backups from '../components/Backups'
+import Users from '../components/Users'
+import { useAuth } from '../context/AuthContext'
 
 /** Settings: change password, panel key/value settings, DB backup, self-update. */
 export default function Settings() {
+  const { isAdmin } = useAuth()
   const [pw, setPw] = useState({ current_password: '', new_password: '', confirm: '' })
   const [pwMsg, setPwMsg] = useState('')
   const [settings, setSettings] = useState({ panel_port: '', panel_subdomain: '' })
@@ -91,6 +94,9 @@ export default function Settings() {
   return (
     <div className="space-y-6 max-w-2xl">
       <h2 className="text-2xl font-bold">Settings</h2>
+
+      {/* User management (admins only) */}
+      {isAdmin && <Users />}
 
       {/* Change password */}
       <form onSubmit={changePassword} className="card space-y-3">
