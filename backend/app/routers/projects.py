@@ -26,7 +26,7 @@ from ..schemas import (DetailResponse, FileInfo, ProjectCreate, ProjectFilesOut,
 class DomainRequest(BaseModel):
     domain: str
 from ..models import NginxConfig
-from ..services import nginx_service, supervisor_service
+from ..services import nginx_service, supervisor_service, venv_service
 from ..services.paths import safe_join, validate_extension, validate_filename
 
 router = APIRouter(
@@ -91,6 +91,7 @@ def project_to_out(project: Project, db: Session, with_status: bool = False) -> 
     if last:
         out.last_script_run = last.last_run
         out.last_script_status = last.last_status
+    out.venv_status = venv_service.status(project.name)
     if with_status:
         # Live supervisor status (one subprocess call per project)
         state, _ = supervisor_service.status(project.name)
@@ -164,6 +165,11 @@ def create_project(body: ProjectCreate, db: Session = Depends(get_db)):
     db.add(project)
     db.commit()
     db.refresh(project)
+
+    # 4. Build the dashboard's Python venv in the background (streamlit + deps),
+    #    so "Start dashboard" works without a manual setup step.
+    venv_service.ensure_async(body.name)
+
     return project_to_out(project, db)
 
 
@@ -172,6 +178,19 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
     project = get_project_or_404(project_id, db)
     sync_scripts(project, db)
     return project_to_out(project, db, with_status=True)
+
+
+@router.post("/{project_id}/build-venv", response_model=DetailResponse)
+def build_venv(project_id: int, db: Session = Depends(get_db)):
+    """(Re)build the dashboard's Python environment in the background."""
+    project = get_project_or_404(project_id, db)
+    if venv_service.is_building(project.name):
+        return DetailResponse(detail="Environment is already being built…")
+    started = venv_service.ensure_async(project.name)
+    if not started and venv_service.is_ready(project.name):
+        return DetailResponse(detail="Environment is already ready")
+    return DetailResponse(detail="Building the dashboard environment "
+                                 "(streamlit + packages)… watch logs/venv-setup.log")
 
 
 @router.delete("/{project_id}", response_model=DetailResponse)

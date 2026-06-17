@@ -11,6 +11,7 @@ export default function DashboardTab({ project, onChanged }) {
   const [logStream, setLogStream] = useState(null) // 'out' | 'err' | null
   const [domain, setDomain] = useState(project.domain || '')
   const [domainMsg, setDomainMsg] = useState('')
+  const [venv, setVenv] = useState(project.venv_status || 'MISSING')
 
   async function refreshStatus() {
     try {
@@ -22,10 +23,39 @@ export default function DashboardTab({ project, onChanged }) {
     }
   }
 
+  async function refreshVenv() {
+    try {
+      const res = await api.get(`/projects/${project.id}`)
+      setVenv(res.data.venv_status)
+      return res.data.venv_status
+    } catch { /* ignore */ }
+  }
+
+  async function buildVenv() {
+    try {
+      const res = await api.post(`/projects/${project.id}/build-venv`)
+      setVenv('BUILDING')
+      alert(res.data.detail)
+    } catch (err) {
+      alert(errorMessage(err))
+    }
+  }
+
   useEffect(() => {
     refreshStatus()
+    refreshVenv()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id])
+
+  // While the env is building, poll until it's ready.
+  useEffect(() => {
+    if (venv !== 'BUILDING') return
+    const t = setInterval(async () => {
+      if ((await refreshVenv()) === 'READY') clearInterval(t)
+    }, 4000)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [venv])
 
   async function action(name) {
     setBusy(true)
@@ -81,10 +111,26 @@ export default function DashboardTab({ project, onChanged }) {
           </a>
         </div>
 
+        {/* Dashboard Python environment status */}
+        {venv === 'BUILDING' && (
+          <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-600/40 text-sm text-amber-200">
+            ⏳ Preparing the dashboard's Python environment (installing streamlit + packages)…
+            you can start it once this finishes. Progress is in <span className="font-mono">logs/venv-setup.log</span>.
+          </div>
+        )}
+        {venv === 'MISSING' && (
+          <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-600/40 text-sm text-red-200 flex items-center gap-3 flex-wrap">
+            <span>⚠️ The dashboard environment isn't built yet, so Start would fail.</span>
+            <button className="btn-secondary" onClick={buildVenv}>⚙ Build environment</button>
+          </div>
+        )}
+
         <div className="mt-4 flex gap-2 flex-wrap">
-          <button className="btn-primary" disabled={busy} onClick={() => action('start')}>▶ Start</button>
+          <button className="btn-primary" disabled={busy || venv !== 'READY'}
+            title={venv !== 'READY' ? 'Dashboard environment is not ready yet' : ''}
+            onClick={() => action('start')}>▶ Start</button>
           <button className="btn-secondary" disabled={busy} onClick={() => action('stop')}>⏹ Stop</button>
-          <button className="btn-secondary" disabled={busy} onClick={() => action('restart')}>🔄 Restart</button>
+          <button className="btn-secondary" disabled={busy || venv !== 'READY'} onClick={() => action('restart')}>🔄 Restart</button>
           <button className="btn-secondary" onClick={refreshStatus}>↻ Refresh status</button>
         </div>
 

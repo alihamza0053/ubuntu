@@ -87,6 +87,8 @@ class ProjectOut(BaseModel):
     last_script_run: datetime | None = None
     last_script_status: str | None = None
     next_scheduled_run: datetime | None = None
+    # Dashboard venv state: READY / BUILDING / MISSING
+    venv_status: str = "MISSING"
 
     model_config = {"from_attributes": True}
 
