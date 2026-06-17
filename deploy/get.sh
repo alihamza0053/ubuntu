@@ -7,14 +7,14 @@
 # dependency (nginx, supervisor, mysql, php, certbot, Google Chrome, Node,
 # Python venv + pip packages) and builds the frontend. No manual setup.
 #
-#   curl -fsSL https://raw.githubusercontent.com/YOURNAME/serverhub/main/deploy/get.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/alihamza0053/ubuntu/main/deploy/get.sh | sudo bash
 #
 # Override defaults with env vars, e.g.:
-#   curl -fsSL .../get.sh | sudo REPO_URL=https://github.com/me/serverhub.git BRANCH=main bash
+#   curl -fsSL .../get.sh | sudo REPO_URL=https://github.com/alihamza0053/ubuntu.git BRANCH=main bash
 # ============================================================
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/YOURNAME/serverhub.git}"
+REPO_URL="${REPO_URL:-https://github.com/alihamza0053/ubuntu.git}"
 BRANCH="${BRANCH:-main}"
 SRC="${SRC:-/opt/serverhub-src}"
 
