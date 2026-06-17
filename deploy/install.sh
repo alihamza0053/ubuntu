@@ -118,6 +118,10 @@ supervisorctl restart serverhub || supervisorctl start serverhub
 echo "==> Nginx site for the panel"
 cp "$REPO_DIR/deploy/nginx-panel.conf" /etc/nginx/sites-available/serverhub
 ln -sf /etc/nginx/sites-available/serverhub /etc/nginx/sites-enabled/serverhub
+# Remove the stock "Welcome to nginx" default site — otherwise it acts as the
+# default_server and Certbot can attach certs to it instead of the panel,
+# leaving the domain showing the nginx welcome page.
+rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
 echo
