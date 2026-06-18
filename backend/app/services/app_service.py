@@ -96,9 +96,9 @@ CATALOG: dict[str, dict] = {
         "websocket": True,
     },
     "webtop": {
-        "name": "Web Browser (Chrome)",
-        "description": "A real Chrome desktop streamed to your browser via noVNC. "
-                       "Heavy (runs a virtual display) — best on 2 GB+ RAM.",
+        "name": "Web Browser (Chrome, legacy/slow)",
+        "description": "A full Chrome desktop via noVNC. Heavier & slower — prefer "
+                       "the Chromium/Firefox (KasmVNC) browsers above.",
         "icon": "🌐",
         "kind": "service",
         "bin": "/srv/serverhub/bin/serverhub-webtop",
@@ -111,6 +111,51 @@ CATALOG: dict[str, dict] = {
         "description": "Headless Chrome for Selenium scripts (no web UI).",
         "icon": "🌐",
         "kind": "tool",
+    },
+    "chromium": {
+        "name": "Chromium Browser",
+        "description": "A full Chromium browser streamed to your tab over KasmVNC — "
+                       "fast & smooth, much better than the noVNC desktop. Needs Docker.",
+        "icon": "🧭",
+        "kind": "docker", "websocket": True,
+        "image": "lscr.io/linuxserver/chromium:latest", "container_port": 3000,
+        "username": "abc", "secret_env": "PASSWORD",
+        "env": {"PUID": "1000", "PGID": "1000", "TZ": "Etc/UTC", "CUSTOM_USER": "abc"},
+        "run_args": ["--shm-size=1g", "--security-opt", "seccomp=unconfined",
+                     "-v", "app_chromium_config:/config"],
+        "pw_change": "env_recreate",   # PASSWORD (web login) is read from env each start
+    },
+    "firefox": {
+        "name": "Firefox Browser",
+        "description": "A full Firefox browser streamed to your tab over KasmVNC — "
+                       "fast & smooth. Needs Docker.",
+        "icon": "🦊",
+        "kind": "docker", "websocket": True,
+        "image": "lscr.io/linuxserver/firefox:latest", "container_port": 3000,
+        "username": "abc", "secret_env": "PASSWORD",
+        "env": {"PUID": "1000", "PGID": "1000", "TZ": "Etc/UTC", "CUSTOM_USER": "abc"},
+        "run_args": ["--shm-size=1g", "--security-opt", "seccomp=unconfined",
+                     "-v", "app_firefox_config:/config"],
+        "pw_change": "env_recreate",
+    },
+    "neko-brave": {
+        "name": "Brave Browser (Neko, smoothest)",
+        "description": "Brave streamed over WebRTC (Neko) — the smoothest remote "
+                       "browser, like watching a video. Needs Docker AND an open "
+                       "UDP port range 52000-52100 in your firewall.",
+        "icon": "🦁",
+        "kind": "docker", "websocket": True,
+        "image": "m1k1o/neko:brave", "container_port": 8080,
+        "username": "neko", "secret_env": "NEKO_PASSWORD",
+        # No NEKO_ICELITE: let Neko discover its public IP via STUN, so WebRTC
+        # works on both directly-addressed and NAT'd (AWS/GCP) servers.
+        "env": {"NEKO_SCREEN": "1280x720@30",
+                "NEKO_PASSWORD_ADMIN": "{secret}",
+                "NEKO_EPR": "52000-52100"},
+        "run_args": ["--shm-size=2g",
+                     "-p", "52000-52100:52000-52100/udp",
+                     "-v", "app_neko_brave_data:/home/neko"],
+        "pw_change": "env_recreate",   # NEKO_PASSWORD is read from env each start
     },
 
     # ---- Docker engine (prerequisite for the docker apps below) ----
@@ -453,7 +498,7 @@ CATEGORIES = [
     ("Monitoring", ["portainer", "grafana", "glances", "uptime-kuma",
                     "metabase", "dozzle", "homer"]),
     ("Notifications", ["gotify", "ntfy"]),
-    ("Browsers & Misc", ["webtop", "google-chrome", "supabase"]),
+    ("Browsers & Misc", ["chromium", "firefox", "neko-brave", "webtop", "google-chrome", "supabase"]),
 ]
 
 _CATEGORY_OF = {slug: cat for cat, slugs in CATEGORIES for slug in slugs}
