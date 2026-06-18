@@ -174,6 +174,22 @@ CATALOG: dict[str, dict] = {
                      "--stop-timeout", "120",
                      "-v", "app_windows_storage:/storage"],
     },
+    "tiny10": {
+        "name": "Tiny10 (light Windows 10)",
+        "description": "A debloated, lightweight Windows 10 desktop in your browser "
+                       "(QEMU) — much lighter than full Windows. Good for Python & "
+                       "small apps. Needs Docker, ideally KVM. ~4 GB RAM for Chrome.",
+        "icon": "🪟",
+        "kind": "docker", "websocket": True,
+        "image": "dockurr/windows", "container_port": 8006,
+        "kvm": True,   # panel adds /dev/kvm if present, else falls back to KVM=N
+        "username": "admin", "secret_env": "PASSWORD",
+        "env": {"VERSION": "tiny10", "USERNAME": "admin",
+                "RAM_SIZE": "4G", "CPU_CORES": "4", "DISK_SIZE": "32G"},
+        "run_args": ["--device=/dev/net/tun", "--cap-add", "NET_ADMIN",
+                     "--stop-timeout", "120",
+                     "-v", "app_tiny10_storage:/storage"],
+    },
 
     # ---- Docker engine (prerequisite for the docker apps below) ----
     "docker": {
@@ -515,7 +531,7 @@ CATEGORIES = [
     ("Monitoring", ["portainer", "grafana", "glances", "uptime-kuma",
                     "metabase", "dozzle", "homer"]),
     ("Notifications", ["gotify", "ntfy"]),
-    ("Browsers & Misc", ["chromium", "firefox", "neko-brave", "windows", "webtop", "google-chrome", "supabase"]),
+    ("Browsers & Misc", ["chromium", "firefox", "neko-brave", "tiny10", "windows", "webtop", "google-chrome", "supabase"]),
 ]
 
 _CATEGORY_OF = {slug: cat for cat, slugs in CATEGORIES for slug in slugs}
