@@ -170,10 +170,10 @@ CATALOG: dict[str, dict] = {
         "username": "admin", "secret_env": "PASSWORD",
         "env": {"VERSION": "10", "USERNAME": "admin",
                 "RAM_SIZE": "8G", "CPU_CORES": "4", "DISK_SIZE": "64G"},
-        # RDP on localhost:3390 (faster than noVNC) — reach via an SSH tunnel.
+        # RDP exposed on :3390 (faster than noVNC). PUBLIC — lock to your IP.
         "run_args": ["--device=/dev/net/tun", "--cap-add", "NET_ADMIN",
                      "--stop-timeout", "120",
-                     "-p", "127.0.0.1:3390:3389/tcp",
+                     "-p", "3390:3389/tcp",
                      "-v", "app_windows_storage:/storage"],
     },
     "tiny10": {
@@ -188,12 +188,26 @@ CATALOG: dict[str, dict] = {
         "username": "admin", "secret_env": "PASSWORD",
         "env": {"VERSION": "tiny10", "USERNAME": "admin",
                 "RAM_SIZE": "4G", "CPU_CORES": "4", "DISK_SIZE": "32G"},
-        # RDP on localhost:3389 (much faster than the noVNC viewer) — reach it
-        # via an SSH tunnel, or change to "-p 3389:3389/tcp" to expose publicly.
+        # RDP exposed on :3389 (faster than noVNC). PUBLIC — lock it to your IP
+        # in the firewall (see the docs) since open RDP gets attacked.
         "run_args": ["--device=/dev/net/tun", "--cap-add", "NET_ADMIN",
                      "--stop-timeout", "120",
-                     "-p", "127.0.0.1:3389:3389/tcp",
+                     "-p", "3389:3389/tcp",
                      "-v", "app_tiny10_storage:/storage"],
+    },
+    "guacamole": {
+        "name": "Guacamole (browser remote desktop)",
+        "description": "HTML5 remote desktop in your browser — open the Windows VM "
+                       "over RDP, far smoother than noVNC. After logging in, add one "
+                       "RDP connection to host.docker.internal:3389. Needs Docker.",
+        "icon": "🖥️",
+        "kind": "docker", "websocket": True,
+        # All-in-one image (guacd + guacamole + postgres). Default login
+        # guacadmin / guacadmin — change it on first sign-in.
+        "image": "flcontainers/guacamole:latest", "container_port": 8080,
+        "username": "guacadmin",
+        "run_args": ["--add-host=host.docker.internal:host-gateway",
+                     "-v", "app_guacamole_config:/config"],
     },
 
     # ---- Docker engine (prerequisite for the docker apps below) ----
@@ -536,7 +550,7 @@ CATEGORIES = [
     ("Monitoring", ["portainer", "grafana", "glances", "uptime-kuma",
                     "metabase", "dozzle", "homer"]),
     ("Notifications", ["gotify", "ntfy"]),
-    ("Browsers & Misc", ["chromium", "firefox", "neko-brave", "tiny10", "windows", "webtop", "google-chrome", "supabase"]),
+    ("Browsers & Misc", ["chromium", "firefox", "neko-brave", "tiny10", "windows", "guacamole", "webtop", "google-chrome", "supabase"]),
 ]
 
 _CATEGORY_OF = {slug: cat for cat, slugs in CATEGORIES for slug in slugs}
