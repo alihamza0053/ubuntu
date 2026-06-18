@@ -169,7 +169,7 @@ CATALOG: dict[str, dict] = {
         "kvm": True,   # panel adds /dev/kvm if present, else falls back to KVM=N
         "username": "admin", "secret_env": "PASSWORD",
         "env": {"VERSION": "10", "USERNAME": "admin",
-                "RAM_SIZE": "4G", "CPU_CORES": "2", "DISK_SIZE": "64G"},
+                "RAM_SIZE": "8G", "CPU_CORES": "4", "DISK_SIZE": "64G"},
         "run_args": ["--device=/dev/net/tun", "--cap-add", "NET_ADMIN",
                      "--stop-timeout", "120",
                      "-v", "app_windows_storage:/storage"],
