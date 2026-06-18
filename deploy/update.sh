@@ -102,6 +102,10 @@ if [ -f "$PANEL_ROOT/backend/.env" ]; then
   fi
 fi
 
+# 4d. Let the panel user read this (root-owned) checkout without git's
+# "dubious ownership" error, so the in-panel "Check for updates" works.
+sudo -u "$PANEL_USER" git config --global --add safe.directory "$SRC" 2>/dev/null || true
+
 # 5. Ownership + restart
 echo "==> Fixing ownership"
 chown -R "$PANEL_USER:$PANEL_USER" "$PANEL_ROOT"

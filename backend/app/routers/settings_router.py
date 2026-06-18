@@ -157,31 +157,41 @@ async def update_info():
         return info
     info["git"] = True
 
+    # The repo is usually cloned by root (get.sh/update.sh) while the panel runs
+    # as `serverhub`; without safe.directory, git aborts with "dubious ownership"
+    # and the panel could never see updates. Credential helper off so a private
+    # remote can't block on a password prompt (the timeout is the backstop).
+    git = ["git", "-c", f"safe.directory={src}", "-c", "credential.helper=",
+           "-C", str(src)]
+
     # Current commit
-    code, out = await run_command(
-        ["git", "-C", str(src), "log", "-1", "--format=%h %s"], timeout=15)
+    code, out = await run_command([*git, "log", "-1", "--format=%h %s"], timeout=15)
     info["current"] = out.strip() if code == 0 else "unknown"
 
-    # Fetch + how many commits behind the upstream branch
     behind = None
-    # -c credential helpers off so a private remote can't block on a prompt;
-    # the timeout is the backstop.
-    fcode, _ = await run_command(
-        ["git", "-c", "credential.helper=", "-C", str(src), "fetch", "--quiet"],
-        timeout=20)
+    available = False
+    fcode, ferr = await run_command([*git, "fetch", "--quiet"], timeout=40)
     if fcode == 0:
-        bcode, bout = await run_command(
-            ["git", "-C", str(src), "rev-list", "--count", "HEAD..@{u}"],
-            timeout=15)
-        if bcode == 0 and bout.strip().isdigit():
-            behind = int(bout.strip())
+        lc, local = await run_command([*git, "rev-parse", "HEAD"], timeout=15)
+        rc, remote = await run_command([*git, "rev-parse", "@{u}"], timeout=15)
+        if lc == 0 and rc == 0:
+            available = local.strip() != remote.strip()
+            bc, bout = await run_command(
+                [*git, "rev-list", "--count", "HEAD..@{u}"], timeout=15)
+            if bc == 0 and bout.strip().isdigit():
+                behind = int(bout.strip())
+        if available and not behind:
+            behind = 1   # shallow clone: exact count may be unavailable
     info["behind"] = behind
-    if behind is None:
-        info["message"] = "Couldn't check the remote (no upstream or no network)."
-    elif behind == 0:
-        info["message"] = "Panel is up to date."
+
+    if fcode != 0:
+        info["message"] = ("Couldn't reach the remote (check the panel's network "
+                           "or repo access).")
+    elif available:
+        info["message"] = (f"{behind} update(s) available." if behind
+                           else "Update available.")
     else:
-        info["message"] = f"{behind} update(s) available."
+        info["message"] = "Panel is up to date."
     return info
 
 
