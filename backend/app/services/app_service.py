@@ -170,8 +170,10 @@ CATALOG: dict[str, dict] = {
         "username": "admin", "secret_env": "PASSWORD",
         "env": {"VERSION": "10", "USERNAME": "admin",
                 "RAM_SIZE": "8G", "CPU_CORES": "4", "DISK_SIZE": "64G"},
+        # RDP on localhost:3390 (faster than noVNC) — reach via an SSH tunnel.
         "run_args": ["--device=/dev/net/tun", "--cap-add", "NET_ADMIN",
                      "--stop-timeout", "120",
+                     "-p", "127.0.0.1:3390:3389/tcp",
                      "-v", "app_windows_storage:/storage"],
     },
     "tiny10": {
@@ -186,8 +188,11 @@ CATALOG: dict[str, dict] = {
         "username": "admin", "secret_env": "PASSWORD",
         "env": {"VERSION": "tiny10", "USERNAME": "admin",
                 "RAM_SIZE": "4G", "CPU_CORES": "4", "DISK_SIZE": "32G"},
+        # RDP on localhost:3389 (much faster than the noVNC viewer) — reach it
+        # via an SSH tunnel, or change to "-p 3389:3389/tcp" to expose publicly.
         "run_args": ["--device=/dev/net/tun", "--cap-add", "NET_ADMIN",
                      "--stop-timeout", "120",
+                     "-p", "127.0.0.1:3389:3389/tcp",
                      "-v", "app_tiny10_storage:/storage"],
     },
 
