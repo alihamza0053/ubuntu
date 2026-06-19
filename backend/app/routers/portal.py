@@ -54,20 +54,14 @@ def _authed_project(project_name: str, credentials: HTTPBasicCredentials | None,
     project = db.query(Project).filter(Project.name == project_name).first()
     if project is None or not (project.portal_username and project.portal_password_hash):
         # Don't reveal whether the project exists; portal simply isn't available.
-        log.warning("portal: project=%r not found or portal disabled", project_name)
         raise HTTPException(status_code=404, detail="Upload portal not available")
     if credentials is None:
-        log.warning("portal: project=%r no credentials supplied", project_name)
         raise UNAUTHORIZED
     user_ok = secrets.compare_digest(credentials.username, project.portal_username)
     pass_ok = verify_password(credentials.password, project.portal_password_hash)
     if not (user_ok and pass_ok):
-        # Diagnostic (no passwords logged) — shows which half failed.
-        log.warning("portal: auth FAILED project=%r recv_user=%r stored_user=%r "
-                    "user_ok=%s pass_ok=%s", project_name, credentials.username,
-                    project.portal_username, user_ok, pass_ok)
+        log.warning("portal: auth rejected for project=%r", project_name)
         raise UNAUTHORIZED
-    log.info("portal: auth OK project=%r user=%r", project_name, credentials.username)
     return project
 
 

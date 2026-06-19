@@ -40,16 +40,26 @@ def streamlit_block(domain: str, port: int) -> str:
 """
 
 
+def _cert_paths(domain: str) -> tuple[str, str] | None:
+    """Return (fullchain, privkey) if a Let's Encrypt cert exists for `domain`."""
+    base = Path(f"/etc/letsencrypt/live/{domain}")
+    fullchain, privkey = base / "fullchain.pem", base / "privkey.pem"
+    if fullchain.exists() and privkey.exists():
+        return str(fullchain), str(privkey)
+    return None
+
+
 def project_block(domain: str, port: int, project: str, panel_port: int) -> str:
     """
     A project's nginx block: the Streamlit dashboard at / (websocket-capable),
     plus the per-project public upload portal at /onedrivefiles/ proxied to the
     panel backend (which password-protects it per project).
+
+    SSL-aware: if a Let's Encrypt cert already exists for the domain, emit an
+    HTTPS server (and redirect HTTP → HTTPS) so regenerating this block never
+    wipes the certificate config certbot added.
     """
-    return f"""server {{
-    listen 80;
-    server_name {domain};
-    client_max_body_size 1024M;
+    locations = f"""    client_max_body_size 1024M;
 
     # Public, password-protected upload portal (panel-hosted)
     location = /onedrivefiles {{ return 301 /onedrivefiles/; }}
@@ -59,6 +69,7 @@ def project_block(domain: str, port: int, project: str, panel_port: int) -> str:
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
         client_max_body_size 1024M;
     }}
 
@@ -72,7 +83,32 @@ def project_block(domain: str, port: int, project: str, panel_port: int) -> str:
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 3600s;
-    }}
+    }}"""
+
+    cert = _cert_paths(domain)
+    if not cert:
+        # No cert yet — plain HTTP block (certbot adds SSL when you click SSL).
+        return f"server {{\n    listen 80;\n    server_name {domain};\n{locations}\n}}\n"
+
+    fullchain, privkey = cert
+    ssl_opts = ""
+    if Path("/etc/letsencrypt/options-ssl-nginx.conf").exists():
+        ssl_opts += "    include /etc/letsencrypt/options-ssl-nginx.conf;\n"
+    if Path("/etc/letsencrypt/ssl-dhparams.pem").exists():
+        ssl_opts += "    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;\n"
+
+    return f"""server {{
+    listen 80;
+    server_name {domain};
+    location / {{ return 301 https://$host$request_uri; }}
+}}
+
+server {{
+    listen 443 ssl;
+    server_name {domain};
+    ssl_certificate {fullchain};
+    ssl_certificate_key {privkey};
+{ssl_opts}{locations}
 }}
 """
 
