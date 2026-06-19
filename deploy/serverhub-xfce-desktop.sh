@@ -32,6 +32,14 @@ cleanup() {
 }
 trap cleanup TERM INT
 
+# 0. KasmVNC must be installed (the `vncserver` wrapper). Fail loudly if not —
+#    otherwise the desktop never binds and nginx returns 502.
+if ! command -v vncserver >/dev/null 2>&1; then
+  echo "ERROR: KasmVNC ('vncserver') is not installed. Re-install the app, or run:" >&2
+  echo "  sudo bash /opt/serverhub-src/deploy/serverhub-app-install.sh xfce-desktop" >&2
+  exit 1
+fi
+
 # 1. Apply the web password the panel set (KasmVNC reads ~/.kasmpasswd).
 printf '%s\n%s\n' "$PW" "$PW" | asuser kasmvncpasswd -u "$U" -w >/dev/null 2>&1 || true
 
@@ -49,7 +57,24 @@ asuser vncserver "$DISPLAY_NUM" \
 
 sleep 2
 
-# 4. Foreground: follow the session log so Supervisor tracks a live process and
+# 4. Verify KasmVNC actually bound the port — if not, surface the logs and exit
+#    non-zero so Supervisor shows FATAL (instead of a fake "RUNNING").
+bound=""
+for _ in $(seq 1 15); do
+  if ss -ltn 2>/dev/null | grep -q ":${PORT} "; then bound=1; break; fi
+  sleep 1
+done
+if [ -z "$bound" ]; then
+  echo "ERROR: KasmVNC did not start listening on 127.0.0.1:${PORT}." >&2
+  echo "----- /tmp/serverhub-kasm.log -----" >&2
+  cat /tmp/serverhub-kasm.log >&2 2>/dev/null || true
+  echo "----- KasmVNC session log -----" >&2
+  cat "$H/.vnc/"*"${DISPLAY_NUM}.log" >&2 2>/dev/null || true
+  asuser vncserver -kill "$DISPLAY_NUM" >/dev/null 2>&1 || true
+  exit 1
+fi
+
+# 5. Foreground: follow the session log so Supervisor tracks a live process and
 #    forwards signals; the trap above cleans up the desktop on stop.
 LOG="$(ls -1 "$H/.vnc/"*"${DISPLAY_NUM}.log" 2>/dev/null | head -1)"
 exec tail -F "${LOG:-/tmp/serverhub-kasm.log}"

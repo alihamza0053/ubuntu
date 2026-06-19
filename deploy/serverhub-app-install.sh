@@ -110,22 +110,26 @@ CFG
       apt-get install -y "$TMP" || true
       rm -f "$TMP"
     fi
-    # KasmVNC server (.deb matched to the Ubuntu codename) — the fast web VNC.
+    # KasmVNC server (.deb matched to the Ubuntu/Debian codename) — the fast web VNC.
     if ! command -v vncserver >/dev/null && ! command -v kasmvncserver >/dev/null; then
       . /etc/os-release
       CODENAME="${VERSION_CODENAME:-jammy}"
-      KVER="1.3.4"
       TMP="$(mktemp --suffix=.deb)"
-      URL="https://github.com/kasmtech/KasmVNC/releases/download/v${KVER}/kasmvncserver_${CODENAME}_${KVER}_amd64.deb"
+      # Ask the GitHub API for the latest release asset matching this codename,
+      # so we don't have to hard-code a version that may not exist.
+      URL="$(curl -fsSL https://api.github.com/repos/kasmtech/KasmVNC/releases/latest \
+            | grep -oE "https://[^\"]*kasmvncserver_${CODENAME}_[^\"]*_amd64\.deb" | head -1)"
+      [ -z "$URL" ] && URL="https://github.com/kasmtech/KasmVNC/releases/download/v1.3.4/kasmvncserver_${CODENAME}_1.3.4_amd64.deb"
       echo "Downloading KasmVNC: $URL"
       if wget -qO "$TMP" "$URL"; then
-        apt-get install -y "$TMP" || true
+        apt-get install -y "$TMP" || apt-get install -fy
       else
-        echo "!! Could not fetch the KasmVNC .deb for '$CODENAME'. Check the latest"
-        echo "   release at https://github.com/kasmtech/KasmVNC/releases and adjust KVER/CODENAME."
+        echo "!! Could not fetch a KasmVNC .deb for codename '$CODENAME'."
+        echo "   See https://github.com/kasmtech/KasmVNC/releases for the right asset."
       fi
       rm -f "$TMP"
     fi
+    command -v vncserver >/dev/null || echo "!! WARNING: 'vncserver' (KasmVNC) is NOT installed — the desktop won't start."
     # Dedicated desktop user (XFCE must not run as root).
     id kasm >/dev/null 2>&1 || useradd -m -s /bin/bash kasm
     usermod -aG ssl-cert kasm 2>/dev/null || true
