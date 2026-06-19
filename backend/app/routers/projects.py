@@ -439,13 +439,18 @@ def set_portal_auth(project_id: int, body: PortalAuthRequest, db: Session = Depe
                             detail="Username required and password must be at least 4 characters")
     project.portal_username = username
     project.portal_password_hash = hash_password(body.password)
+    # Persist the credentials FIRST so a later nginx hiccup can't lose them.
+    db.commit()
     # Make sure the upload folder exists.
     (project_root(project) / "onedrivefiles").mkdir(parents=True, exist_ok=True)
     # If a domain is already assigned, refresh its nginx block so the portal
-    # location is present (older blocks predate this feature).
+    # location is present (older blocks predate this feature). Best-effort.
     if project.domain:
-        _write_project_site(project, project.domain)
-    db.commit()
+        try:
+            _write_project_site(project, project.domain)
+        except HTTPException:
+            return DetailResponse(detail="Credentials saved, but updating nginx failed — "
+                                         "re-assign the project's domain to apply.")
     return DetailResponse(detail="Upload portal enabled — share <domain>/onedrivefiles/")
 
 
