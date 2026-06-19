@@ -20,6 +20,7 @@ and pastes the redirect URL back, and the client finishes and exits.
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -33,6 +34,9 @@ MONITOR_INTERVAL = 300
 
 # Module-level handle for an in-progress authorization (single-flight).
 _auth: dict = {"proc": None, "resp": None, "tmp": None}
+
+# Whether a background resync is currently running.
+_resync: dict = {"running": False}
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +72,9 @@ def status() -> dict:
     return {
         "installed": installed,
         "authorized": installed and is_authorized(),
-        "monitor": monitor_status() if installed else "STOPPED",
+        "monitor": "RESYNCING" if _resync["running"] else (
+            monitor_status() if installed else "STOPPED"),
+        "resyncing": _resync["running"],
         "sync_dir": str(settings.ONEDRIVE_ROOT),
     }
 
@@ -194,3 +200,44 @@ def control(action: str) -> str:
     if "ERROR" in out and "already started" not in out:
         raise HTTPException(status_code=500, detail=f"supervisorctl {action}: {out}")
     return out
+
+
+def resync() -> str:
+    """
+    Run a one-time full resync, then resume the monitor. Needed after enabling
+    shared-item syncing (the client refuses scope changes without --resync).
+    Runs in the background; the monitor is stopped during the resync and
+    restarted afterward.
+    """
+    if not is_installed():
+        raise HTTPException(status_code=400, detail="OneDrive client is not installed yet")
+    if not is_authorized():
+        raise HTTPException(status_code=400, detail="Authorize OneDrive first")
+    if _resync["running"]:
+        return "A resync is already running…"
+
+    log_path = settings.SUPERVISOR_LOG_DIR / "onedrive-resync.log"
+
+    def _run() -> None:
+        try:
+            supervisor_service.run_supervisorctl("stop", PROGRAM)
+            with open(log_path, "w", encoding="utf-8") as log:
+                subprocess.run(
+                    [binary(), *_confdir_args(), "--download-only",
+                     "--synchronize", "--resync", "--resync-auth"],
+                    stdout=log, stderr=subprocess.STDOUT, timeout=3600,
+                )
+        except Exception:
+            pass
+        finally:
+            _resync["running"] = False
+            # Always bring the live monitor back up.
+            try:
+                write_monitor_program()
+                supervisor_service.run_supervisorctl("restart", PROGRAM)
+            except Exception:
+                pass
+
+    _resync["running"] = True
+    threading.Thread(target=_run, daemon=True).start()
+    return "Resync started — pulling all files incl. shared items (watch the monitor status)"

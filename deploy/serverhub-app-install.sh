@@ -41,16 +41,32 @@ case "$SLUG" in
 
   onedrive)
     echo "==> Installing OneDrive client (abraunegg)"
+    # Work/School "Shared with me" support (sync_business_shared_items) needs
+    # client >= 2.5. Ubuntu's apt package is often older, so prefer the
+    # maintainer's OpenSuSE Build Service repo for a current build; fall back to
+    # apt if the repo can't be reached.
     if ! command -v onedrive >/dev/null; then
+      . /etc/os-release 2>/dev/null || true
+      REPO="home:/npreining:/debian-ubuntu-onedrive/xUbuntu_${VERSION_ID}"
+      KEY_URL="https://download.opensuse.org/repositories/${REPO}/Release.key"
+      LIST_URL="https://download.opensuse.org/repositories/${REPO}/"
+      if curl -fsSL "$KEY_URL" | gpg --dearmor 2>/dev/null \
+           | tee /usr/share/keyrings/obs-onedrive.gpg >/dev/null; then
+        echo "deb [signed-by=/usr/share/keyrings/obs-onedrive.gpg] $LIST_URL ./" \
+          > /etc/apt/sources.list.d/onedrive.list
+        apt-get update || true
+      fi
       apt-get install -y onedrive
     fi
     # Sync target (a managed root the panel browses) + the client's confdir,
     # both owned by the panel user so auth + monitor share one token.
     mkdir -p /srv/onedrive /srv/serverhub/onedrive
-    # Read-only base config; authorization + the monitor are started from the panel.
+    # Read-only base config. sync_business_shared_items pulls Work/School items
+    # that others shared with you (needs a one-time --resync, done from the panel).
     cat > /srv/serverhub/onedrive/config <<'CFG'
 sync_dir = "/srv/onedrive"
 monitor_interval = "300"
+sync_business_shared_items = "true"
 CFG
     chown -R serverhub:serverhub /srv/onedrive /srv/serverhub/onedrive
     onedrive --version || true

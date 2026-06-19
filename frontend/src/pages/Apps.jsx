@@ -430,6 +430,19 @@ function OneDriveSetup() {
     }
   }
 
+  async function resync() {
+    if (!window.confirm('Full resync re-checks the whole drive and pulls shared '
+      + 'items. This can take a while. Continue?')) return
+    setMsg('')
+    try {
+      const r = await api.post('/onedrive/resync')
+      setMsg(r.data.detail)
+      setTimeout(refresh, 1500)
+    } catch (err) {
+      setMsg(errorMessage(err))
+    }
+  }
+
   if (!status) return <p className="mt-3 text-sm text-slate-500">Loading…</p>
 
   return (
@@ -483,10 +496,19 @@ function OneDriveSetup() {
           )}
         </div>
       ) : (
-        <div className="flex flex-wrap gap-2">
-          <button className="btn-secondary" onClick={() => monitor('start')}>▶ Start</button>
-          <button className="btn-secondary" onClick={() => monitor('stop')}>⏹ Stop</button>
-          <button className="btn-secondary" onClick={() => monitor('restart')}>🔄 Sync now</button>
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <button className="btn-secondary" onClick={() => monitor('start')}>▶ Start</button>
+            <button className="btn-secondary" onClick={() => monitor('stop')}>⏹ Stop</button>
+            <button className="btn-secondary" onClick={() => monitor('restart')}>🔄 Sync now</button>
+            <button className="btn-secondary" disabled={status.resyncing} onClick={resync}>
+              {status.resyncing ? '⏳ Resyncing…' : '⬇ Pull shared items (resync)'}
+            </button>
+          </div>
+          <p className="text-xs text-slate-500">
+            Files others shared with you (Work/School) only appear after a one-time
+            <b> resync</b>.
+          </p>
         </div>
       )}
 

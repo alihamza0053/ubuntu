@@ -52,3 +52,11 @@ def monitor(action: str):
     out = onedrive_service.control(action)
     log_activity(f"onedrive monitor {action}")
     return DetailResponse(detail=out or f"monitor {action}")
+
+
+@router.post("/resync", response_model=DetailResponse)
+def resync():
+    """Full resync (needed to pull Work/School 'Shared with me' items)."""
+    out = onedrive_service.resync()
+    log_activity("onedrive resync started")
+    return DetailResponse(detail=out)
