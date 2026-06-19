@@ -56,6 +56,14 @@ def run_migrations() -> None:
             if "permissions" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT ''"))
 
+    # projects: per-project OneDrive subfolder mapping (added with the OneDrive
+    # integration). Existing projects get NULL (no folder mapped yet).
+    if "projects" in insp.get_table_names():
+        pcols = [c["name"] for c in insp.get_columns("projects")]
+        if "onedrive_path" not in pcols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN onedrive_path VARCHAR(512)"))
+
     if "apps" not in insp.get_table_names():
         return
 

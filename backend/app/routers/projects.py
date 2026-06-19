@@ -27,7 +27,8 @@ class DomainRequest(BaseModel):
     domain: str
 from ..models import NginxConfig
 from ..services import nginx_service, supervisor_service, venv_service
-from ..services.paths import safe_join, validate_extension, validate_filename
+from ..services.paths import (ensure_within, safe_join, validate_extension,
+                              validate_filename)
 
 router = APIRouter(
     prefix="/api/projects",
@@ -308,6 +309,77 @@ def delete_file(
     path.unlink()
     sync_scripts(project, db)  # drop the script row if a .py was removed
     return DetailResponse(detail=f"Deleted {folder}/{filename}")
+
+
+# ---------- OneDrive (read-only synced files) ----------
+
+class OneDrivePathRequest(BaseModel):
+    # Subfolder relative to ONEDRIVE_ROOT this project reads from ("" = root).
+    path: str
+
+
+def _onedrive_base(project: Project) -> Path:
+    """Absolute path of this project's mapped OneDrive folder."""
+    rel = (project.onedrive_path or "").strip("/")
+    base = settings.ONEDRIVE_ROOT / rel if rel else settings.ONEDRIVE_ROOT
+    return ensure_within(settings.ONEDRIVE_ROOT, base)
+
+
+@router.put("/{project_id}/onedrive-path", response_model=DetailResponse)
+def set_onedrive_path(project_id: int, body: OneDrivePathRequest,
+                      db: Session = Depends(get_db)):
+    """Map this project to a OneDrive subfolder (relative to ONEDRIVE_ROOT)."""
+    project = get_project_or_404(project_id, db)
+    rel = body.path.strip().strip("/")
+    # Validate the target stays inside the OneDrive root (rejects ../ escapes).
+    ensure_within(settings.ONEDRIVE_ROOT, settings.ONEDRIVE_ROOT / rel if rel
+                  else settings.ONEDRIVE_ROOT)
+    project.onedrive_path = rel or None
+    db.commit()
+    return DetailResponse(detail=f"OneDrive folder set to '{rel or '(root)'}'")
+
+
+@router.get("/{project_id}/onedrive")
+def list_onedrive(project_id: int, subpath: str = Query(""),
+                  db: Session = Depends(get_db)):
+    """List the project's mapped OneDrive folder (dirs + files), navigable."""
+    project = get_project_or_404(project_id, db)
+    base = _onedrive_base(project)
+    sub = subpath.strip().strip("/")
+    target = ensure_within(base, base / sub if sub else base)
+
+    if not settings.ONEDRIVE_ROOT.exists():
+        return {"mapped": project.onedrive_path, "subpath": sub, "parent": None,
+                "available": False, "entries": []}
+    if not target.is_dir():
+        raise HTTPException(status_code=404, detail="OneDrive folder not found yet")
+
+    entries = []
+    for entry in sorted(target.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower())):
+        st = entry.stat()
+        entries.append({
+            "name": entry.name,
+            "is_dir": entry.is_dir(),
+            "size": st.st_size,
+            "modified": datetime.utcfromtimestamp(st.st_mtime),
+            "rel": f"{sub}/{entry.name}" if sub else entry.name,
+        })
+    parent = sub.rsplit("/", 1)[0] if "/" in sub else ("" if sub else None)
+    return {"mapped": project.onedrive_path, "subpath": sub, "parent": parent,
+            "available": True, "entries": entries}
+
+
+@router.get("/{project_id}/onedrive/download")
+def download_onedrive(project_id: int, path: str = Query(...),
+                      db: Session = Depends(get_db)):
+    """Download one file from the project's mapped OneDrive folder."""
+    project = get_project_or_404(project_id, db)
+    base = _onedrive_base(project)
+    rel = path.strip().strip("/")
+    target = ensure_within(base, base / rel)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(target, filename=target.name)
 
 
 # ---------- Domain & SSL ----------

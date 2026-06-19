@@ -40,6 +40,12 @@ class Settings:
     WEBSITES_ROOT: Path = _env_path("WEBSITES_ROOT", "/srv/websites")
     NGINX_CONFIGS_ROOT: Path = _env_path("NGINX_CONFIGS_ROOT", "/srv/nginx-configs")
 
+    # --- OneDrive sync (read-only into /srv/onedrive; one company account) ---
+    # The onedrive client syncs here; projects map to a subfolder of it.
+    ONEDRIVE_ROOT: Path = _env_path("ONEDRIVE_ROOT", "/srv/onedrive")
+    # The onedrive client's config/token directory (owned by the panel user).
+    ONEDRIVE_CONFDIR: Path = _env_path("ONEDRIVE_CONFDIR", "/srv/serverhub/onedrive")
+
     # --- Supervisor (Streamlit dashboard process manager) ---
     SUPERVISOR_CONF_DIR: Path = _env_path("SUPERVISOR_CONF_DIR", "/srv/serverhub/supervisor.d")
     SUPERVISOR_LOG_DIR: Path = _env_path("SUPERVISOR_LOG_DIR", "/var/log/supervisor")

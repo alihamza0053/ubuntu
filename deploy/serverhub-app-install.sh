@@ -39,6 +39,23 @@ case "$SLUG" in
     echo "Ready — it downloads on first start."
     ;;
 
+  onedrive)
+    echo "==> Installing OneDrive client (abraunegg)"
+    if ! command -v onedrive >/dev/null; then
+      apt-get install -y onedrive
+    fi
+    # Sync target (a managed root the panel browses) + the client's confdir,
+    # both owned by the panel user so auth + monitor share one token.
+    mkdir -p /srv/onedrive /srv/serverhub/onedrive
+    # Read-only base config; authorization + the monitor are started from the panel.
+    cat > /srv/serverhub/onedrive/config <<'CFG'
+sync_dir = "/srv/onedrive"
+monitor_interval = "300"
+CFG
+    chown -R serverhub:serverhub /srv/onedrive /srv/serverhub/onedrive
+    onedrive --version || true
+    ;;
+
   syncthing)
     echo "==> Installing Syncthing"
     apt-get install -y syncthing

@@ -37,6 +37,8 @@ class Project(Base):
     # Cached status string: RUNNING / STOPPED / ERROR / UNKNOWN
     dashboard_status: Mapped[str] = mapped_column(String(16), default="STOPPED")
     domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # OneDrive subfolder (relative to ONEDRIVE_ROOT) this project reads from.
+    onedrive_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     scripts: Mapped[list["Script"]] = relationship(

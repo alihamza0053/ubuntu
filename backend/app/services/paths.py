@@ -33,6 +33,7 @@ def allowed_roots() -> list[Path]:
         settings.PROJECTS_ROOT.resolve(),
         settings.WEBSITES_ROOT.resolve(),
         settings.NGINX_CONFIGS_ROOT.resolve(),
+        settings.ONEDRIVE_ROOT.resolve(),
     ]
 
 

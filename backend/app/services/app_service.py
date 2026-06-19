@@ -64,6 +64,14 @@ CATALOG: dict[str, dict] = {
         "use_password": False,
         "websocket": True,
     },
+    "onedrive": {
+        "name": "OneDrive (file sync)",
+        "description": "Sync a Microsoft OneDrive account into /srv/onedrive so "
+                       "projects can read files others update. Read-only by default — "
+                       "authorize it, then map a folder in each project's OneDrive tab.",
+        "icon": "☁️",
+        "kind": "tool",
+    },
     "syncthing": {
         "name": "Syncthing",
         "description": "Continuous file synchronization with a web UI.",
@@ -540,7 +548,7 @@ CATEGORIES = [
     ("Database UIs", ["adminer", "phpmyadmin", "pgadmin"]),
     ("Developer", ["code-server", "gitea", "n8n", "nodered", "jupyterlab"]),
     ("CMS & CRM", ["wordpress", "joomla", "ghost", "espocrm"]),
-    ("Files & Sync", ["filebrowser", "nextcloud", "syncthing"]),
+    ("Files & Sync", ["onedrive", "filebrowser", "nextcloud", "syncthing"]),
     ("Media & Library", ["jellyfin", "navidrome", "audiobookshelf", "calibre-web",
                          "kavita", "qbittorrent"]),
     ("Productivity", ["vaultwarden", "trilium", "memos", "vikunja", "mealie",

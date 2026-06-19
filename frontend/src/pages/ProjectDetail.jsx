@@ -6,6 +6,7 @@ import DashboardTab from './project-tabs/DashboardTab'
 import DataFilesTab from './project-tabs/DataFilesTab'
 import EditorTab from './project-tabs/EditorTab'
 import FilesTab from './project-tabs/FilesTab'
+import OneDriveTab from './project-tabs/OneDriveTab'
 import OverviewTab from './project-tabs/OverviewTab'
 import PipelineTab from './project-tabs/PipelineTab'
 import SchedulerTab from './project-tabs/SchedulerTab'
@@ -20,6 +21,7 @@ const TABS = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'scheduler', label: 'Scheduler' },
   { key: 'data', label: 'Data Files' },
+  { key: 'onedrive', label: 'OneDrive' },
 ]
 
 export default function ProjectDetail() {
@@ -88,6 +90,7 @@ export default function ProjectDetail() {
       {tab === 'dashboard' && <DashboardTab project={project} onChanged={refresh} />}
       {tab === 'scheduler' && <SchedulerTab project={project} />}
       {tab === 'data' && <DataFilesTab project={project} files={files} onChanged={refresh} />}
+      {tab === 'onedrive' && <OneDriveTab project={project} />}
     </div>
   )
 }

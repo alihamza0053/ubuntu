@@ -20,8 +20,8 @@ from .models import User
 from .permissions import user_can
 from .security import decode_access_token
 from .routers import (apps, auth, dashboard, databases, docker, files, logs,
-                      nginx, pipeline, projects, schedules, scripts, server,
-                      settings_router, terminal, websites)
+                      nginx, onedrive, pipeline, projects, schedules, scripts,
+                      server, settings_router, terminal, websites)
 from .services import pipeline_service, scheduler_service
 
 # Create any missing tables on startup (idempotent), then run column migrations
@@ -107,6 +107,7 @@ app.include_router(server.router)
 app.include_router(server.ws_router)          # apt live-stream WebSocket
 app.include_router(apps.router)
 app.include_router(apps.ws_router)            # app install WebSocket
+app.include_router(onedrive.router)           # OneDrive setup (under the Apps tab)
 app.include_router(docker.router)
 app.include_router(docker.ws_router)          # container logs WebSocket
 app.include_router(settings_router.router)

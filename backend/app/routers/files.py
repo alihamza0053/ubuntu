@@ -64,7 +64,8 @@ def browse(path: str = Query("", description="Directory to list; defaults to /sr
     """
     if not path:
         roots = []
-        for root in (settings.PROJECTS_ROOT, settings.WEBSITES_ROOT, settings.NGINX_CONFIGS_ROOT):
+        for root in (settings.PROJECTS_ROOT, settings.WEBSITES_ROOT,
+                     settings.NGINX_CONFIGS_ROOT, settings.ONEDRIVE_ROOT):
             roots.append({
                 "name": root.name, "is_dir": True, "size": 0,
                 "modified": datetime.utcnow(), "path": str(root),
