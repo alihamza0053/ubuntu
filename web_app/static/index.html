@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoTab Studio - Browser Automation Dashboard</title>
+    <!-- Google Fonts: Inter & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3z"></path><path d="M3 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3z"></path><path d="M9 3h6v18H9z"></path></svg>
+                </div>
+                <h2>AutoTab <span>Studio</span></h2>
+            </div>
+            
+            <div class="system-status-card">
+                <div class="status-indicator">
+                    <span class="status-dot pulse-idle" id="statusDot"></span>
+                    <span id="statusText">System Idle</span>
+                </div>
+                <div class="active-session-info" id="activeSessionInfo" style="display: none;">
+                    <small>Session:</small>
+                    <span id="currentSessionId">-</span>
+                </div>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="dashboard">
+                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+                    Dashboard
+                </button>
+                <button class="nav-item" data-tab="configuration">
+                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Configuration
+                </button>
+                <button class="nav-item" data-tab="gallery">
+                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                    Screenshots
+                </button>
+                <button class="nav-item" data-tab="history">
+                    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    Run History
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <small>AutoTab Studio v1.0.0</small>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="content">
+            <!-- Top Header -->
+            <header class="content-header">
+                <h1 id="pageTitle">Dashboard</h1>
+                <div class="header-actions">
+                    <div class="progress-container" id="globalProgressBarContainer" style="opacity: 0;">
+                        <span class="progress-text" id="progressPctText">0%</span>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" id="progressFill"></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-run" id="btnRunAction">
+                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        <span>Run Session</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- TAB 1: DASHBOARD -->
+            <section class="tab-content active" id="tab-dashboard">
+                <!-- Metrics Grid -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-icon success">
+                            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                        </div>
+                        <div class="metric-data">
+                            <h3>Success Rate</h3>
+                            <div class="value" id="metricSuccessRate">-</div>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-icon primary">
+                            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                        </div>
+                        <div class="metric-data">
+                            <h3>Tabs Processed</h3>
+                            <div class="value" id="metricTotalTabs">-</div>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-icon warning">
+                            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 16 10 16 12 21 16 9 20 16 21 16"></polyline></svg>
+                        </div>
+                        <div class="metric-data">
+                            <h3>Total Scrolls</h3>
+                            <div class="value" id="metricTotalScrolls">-</div>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-icon info">
+                            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-2 2c-1.11 0-2-.89-2-2v-4H7l-2 2V8l2 2h4V6c0-1.11.89-2 2-2l2 2v4h4l2-2v8l-2-2h-4v4z"></path></svg>
+                        </div>
+                        <div class="metric-data">
+                            <h3>Clicks Clicked</h3>
+                            <div class="value" id="metricTotalClicks">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Monitor Panel -->
+                <div class="dashboard-panel">
+                    <div class="panel-header">
+                        <div class="panel-title-wrapper">
+                            <span class="live-dot animate-pulse"></span>
+                            <h2>Live Execution Terminal</h2>
+                        </div>
+                        <div class="panel-actions">
+                            <button class="btn btn-secondary btn-small" id="btnClearLogs">Clear Log Screen</button>
+                        </div>
+                    </div>
+                    <div class="terminal-container">
+                        <div class="terminal-body" id="terminalLog">
+                            <div class="log-line system-msg">[System] Ready for browser automation execution. Click 'Run Session' to begin.</div>
+                        </div>
+                    </div>
+                    <div class="terminal-footer">
+                        <div class="current-task-indicator" id="currentTaskInfo">
+                            <span class="label">Current URL:</span>
+                            <span class="val" id="currentUrlVal">None</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 2: CONFIGURATION -->
+            <section class="tab-content" id="tab-configuration">
+                <form id="configForm" class="config-grid-layout" onsubmit="event.preventDefault();">
+                    <!-- Column 1: Config Parameters -->
+                    <div class="config-panel">
+                        <h2 class="section-title">Automation Settings</h2>
+                        
+                        <div class="form-group">
+                            <label for="num_tabs">Tabs per Link</label>
+                            <input type="number" id="num_tabs" min="1" max="10" value="1">
+                            <small class="form-help">Number of concurrent or sequential browser tabs to launch per URL.</small>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <div class="custom-toggle-wrapper">
+                                <input type="checkbox" id="incognito" class="custom-toggle">
+                                <label for="incognito" class="toggle-slider"></label>
+                            </div>
+                            <div class="checkbox-label">
+                                <label for="incognito">Incognito Mode</label>
+                                <small>Launch Chrome in a clean, private window.</small>
+                            </div>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <div class="custom-toggle-wrapper">
+                                <input type="checkbox" id="random_scroll" class="custom-toggle">
+                                <label for="random_scroll" class="toggle-slider"></label>
+                            </div>
+                            <div class="checkbox-label">
+                                <label for="random_scroll">Random Scrolling</label>
+                                <small>Simulate realistic mouse scrolling gestures on load.</small>
+                            </div>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <div class="custom-toggle-wrapper">
+                                <input type="checkbox" id="random_click" class="custom-toggle">
+                                <label for="random_click" class="toggle-slider"></label>
+                            </div>
+                            <div class="checkbox-label">
+                                <label for="random_click">Random Clicking</label>
+                                <small>Find safe, empty coordinates to click to simulate active engagement.</small>
+                            </div>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <div class="custom-toggle-wrapper">
+                                <input type="checkbox" id="capture_screenshots" class="custom-toggle">
+                                <label for="capture_screenshots" class="toggle-slider"></label>
+                            </div>
+                            <div class="checkbox-label">
+                                <label for="capture_screenshots">Capture Screenshots</label>
+                                <small>Save screenshots to verify page structure and rendering.</small>
+                            </div>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <div class="custom-toggle-wrapper">
+                                <input type="checkbox" id="auto_close" class="custom-toggle">
+                                <label for="auto_close" class="toggle-slider"></label>
+                            </div>
+                            <div class="checkbox-label">
+                                <label for="auto_close">Auto-Close Browsers</label>
+                                <small>Automatically close browser windows once complete.</small>
+                            </div>
+                        </div>
+
+                        <div class="form-group" id="closeAfterGroup">
+                            <label for="close_after_seconds">Close After (Seconds)</label>
+                            <input type="number" id="close_after_seconds" min="1" max="300" value="5">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="action_delay">Action Delay (Seconds): <span id="actionDelayVal">2</span>s</label>
+                            <input type="range" id="action_delay" min="0" max="10" step="0.5" value="2">
+                            <small class="form-help">Pause duration after tab loads before performing scroll or clicks.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="delay_after_scroll">Scroll-to-Click Delay (Seconds): <span id="scrollDelayVal">2</span>s</label>
+                            <input type="range" id="delay_after_scroll" min="0" max="10" step="0.5" value="2">
+                            <small class="form-help">Pause duration after scrolling completes before clicking commences.</small>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <div class="custom-toggle-wrapper">
+                                <input type="checkbox" id="randomize_order" class="custom-toggle">
+                                <label for="randomize_order" class="toggle-slider"></label>
+                            </div>
+                            <div class="checkbox-label">
+                                <label for="randomize_order">Shuffle URLs</label>
+                                <small>Randomize list ordering before launching.</small>
+                            </div>
+                        </div>
+
+                        <div class="checkbox-group" style="display:none;">
+                            <input type="checkbox" id="use_selenium" checked>
+                        </div>
+
+                        <div class="form-actions-sticky">
+                            <button type="button" class="btn btn-primary" id="btnSaveConfig">Save Configuration</button>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Target Link Manager -->
+                    <div class="config-panel">
+                        <div class="link-manager-header">
+                            <h2 class="section-title">Manage Target URLs</h2>
+                            <button type="button" class="btn btn-secondary btn-small" id="btnClearUrls">Clear All</button>
+                        </div>
+                        
+                        <div class="url-input-block">
+                            <input type="url" id="urlInput" placeholder="https://example.com" class="input-url">
+                            <button type="button" class="btn btn-secondary" id="btnAddUrl">Add URL</button>
+                        </div>
+
+                        <div class="url-list-container">
+                            <div class="url-list-header">
+                                <span>URLs (<span id="urlCount">0</span>)</span>
+                            </div>
+                            <ul class="url-list" id="urlList">
+                                <!-- Dynamic URL list items go here -->
+                            </ul>
+                        </div>
+                    </div>
+                </form>
+            </section>
+
+            <!-- TAB 3: SCREENSHOTS -->
+            <section class="tab-content" id="tab-gallery">
+                <div class="gallery-wrapper">
+                    <div class="gallery-toolbar">
+                        <h2>Execution Gallery</h2>
+                        <button class="btn btn-secondary btn-small" id="btnRefreshGallery">Refresh</button>
+                    </div>
+                    <div id="galleryContainer" class="gallery-sessions">
+                        <!-- Dynamic sessions loaded here -->
+                        <div class="no-data-gallery">
+                            <svg viewBox="0 0 24 24" width="48" height="48" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                            <p>No screenshots captured yet. Ensure "Capture Screenshots" is enabled in settings and run a session.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 4: RUN HISTORY -->
+            <section class="tab-content" id="tab-history">
+                <div class="history-wrapper">
+                    <div class="history-toolbar">
+                        <h2>Run History Log</h2>
+                        <button class="btn btn-secondary btn-small" id="btnRefreshHistory">Refresh Log</button>
+                    </div>
+                    <div class="table-container">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th>Date & Time</th>
+                                    <th>Session ID</th>
+                                    <th>Total Links</th>
+                                    <th>Tabs (Success / Fail)</th>
+                                    <th>Scrolls Done</th>
+                                    <th>Clicks Done</th>
+                                    <th>Screenshots</th>
+                                    <th>Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <!-- Dynamic rows loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Lightbox Overlay for Image View -->
+    <div class="lightbox" id="lightbox">
+        <div class="lightbox-overlay" id="lightboxOverlay"></div>
+        <div class="lightbox-content">
+            <button class="btn-close-lightbox" id="btnExitLightbox">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+            <img src="" id="lightboxImg" alt="Screenshot Zoom">
+            <div class="lightbox-caption" id="lightboxCaption">Screenshot</div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="main.js"></script>
+</body>
+</html>

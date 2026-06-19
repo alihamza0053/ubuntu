@@ -40,6 +40,43 @@ def streamlit_block(domain: str, port: int) -> str:
 """
 
 
+def project_block(domain: str, port: int, project: str, panel_port: int) -> str:
+    """
+    A project's nginx block: the Streamlit dashboard at / (websocket-capable),
+    plus the per-project public upload portal at /onedrivefiles/ proxied to the
+    panel backend (which password-protects it per project).
+    """
+    return f"""server {{
+    listen 80;
+    server_name {domain};
+    client_max_body_size 1024M;
+
+    # Public, password-protected upload portal (panel-hosted)
+    location = /onedrivefiles {{ return 301 /onedrivefiles/; }}
+    location /onedrivefiles/ {{
+        proxy_pass http://127.0.0.1:{panel_port}/portal/{project}/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 1024M;
+    }}
+
+    location / {{
+        proxy_pass http://127.0.0.1:{port};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+    }}
+}}
+"""
+
+
 def react_block(domain: str, folder: str) -> str:
     return f"""server {{
     listen 80;

@@ -39,6 +39,10 @@ class Project(Base):
     domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # OneDrive subfolder (relative to ONEDRIVE_ROOT) this project reads from.
     onedrive_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Public upload portal credentials (served at <domain>/onedrivefiles/).
+    # Both set = portal enabled. Password is bcrypt-hashed.
+    portal_username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    portal_password_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     scripts: Mapped[list["Script"]] = relationship(
@@ -151,6 +155,21 @@ class App(Base):
     domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Optional access secret (e.g. code-server password) shown to the admin
     secret: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Proxy(Base):
+    """
+    A reverse proxy: route a domain to a local service (127.0.0.1:port) — e.g.
+    a Docker container or a uvicorn/Flask/Node app you run yourself. The panel
+    generates the nginx proxy block and (optionally) issues SSL.
+    """
+    __tablename__ = "proxies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    upstream_port: Mapped[int] = mapped_column(Integer)
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

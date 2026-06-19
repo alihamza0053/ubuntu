@@ -82,6 +82,7 @@ class ProjectOut(BaseModel):
     dashboard_status: str
     domain: str | None
     onedrive_path: str | None = None
+    portal_username: str | None = None
     created_at: datetime
     # Extra computed fields for dashboard cards
     file_counts: dict[str, int] = {}

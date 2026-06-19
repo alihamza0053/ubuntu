@@ -60,9 +60,13 @@ def run_migrations() -> None:
     # integration). Existing projects get NULL (no folder mapped yet).
     if "projects" in insp.get_table_names():
         pcols = [c["name"] for c in insp.get_columns("projects")]
-        if "onedrive_path" not in pcols:
-            with engine.begin() as conn:
+        with engine.begin() as conn:
+            if "onedrive_path" not in pcols:
                 conn.execute(text("ALTER TABLE projects ADD COLUMN onedrive_path VARCHAR(512)"))
+            if "portal_username" not in pcols:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN portal_username VARCHAR(64)"))
+            if "portal_password_hash" not in pcols:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN portal_password_hash VARCHAR(128)"))
 
     if "apps" not in insp.get_table_names():
         return

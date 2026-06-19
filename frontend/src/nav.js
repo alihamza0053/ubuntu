@@ -4,6 +4,7 @@ export const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: '🏠', perm: 'dashboard' },
   { to: '/projects', label: 'Projects', icon: '🐍', perm: 'projects' },
   { to: '/websites', label: 'Websites', icon: '🌐', perm: 'websites' },
+  { to: '/proxies', label: 'Proxies', icon: '🔀', perm: 'proxies' },
   { to: '/apps', label: 'Apps', icon: '🧩', perm: 'apps' },
   { to: '/docker', label: 'Docker', icon: '🐳', perm: 'docker' },
   { to: '/terminal', label: 'Terminal', icon: '💻', perm: 'terminal' },

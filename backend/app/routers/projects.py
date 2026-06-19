@@ -26,6 +26,7 @@ from ..schemas import (DetailResponse, FileInfo, ProjectCreate, ProjectFilesOut,
 class DomainRequest(BaseModel):
     domain: str
 from ..models import NginxConfig
+from ..security import hash_password
 from ..services import nginx_service, supervisor_service, venv_service
 from ..services.paths import (ensure_within, safe_join, validate_extension,
                               validate_filename)
@@ -400,19 +401,62 @@ def _upsert_nginx_config(db: Session, entity_type: str, entity_id: int,
     db.commit()
 
 
+def _write_project_site(project: Project, domain: str) -> str:
+    """(Re)write the project's nginx block (dashboard + /onedrivefiles/ portal)."""
+    slug = f"project-{project.name}"
+    content = nginx_service.project_block(
+        domain=domain, port=project.dashboard_port,
+        project=project.name, panel_port=settings.PANEL_PORT,
+    )
+    return str(nginx_service.write_site(slug, content))
+
+
 @router.post("/{project_id}/assign-domain", response_model=DetailResponse)
 def assign_domain(project_id: int, body: DomainRequest, db: Session = Depends(get_db)):
-    """Generate the Streamlit nginx proxy block for this project's dashboard."""
+    """Generate the project's nginx block (dashboard + upload portal) and reload."""
     project = get_project_or_404(project_id, db)
-    slug = f"project-{project.name}"
-    content = nginx_service.build_block(
-        "streamlit", domain=body.domain, port=project.dashboard_port
-    )
-    config_path = nginx_service.write_site(slug, content)
+    config_path = _write_project_site(project, body.domain)
     project.domain = body.domain
-    _upsert_nginx_config(db, "project", project.id, str(config_path), body.domain)
+    _upsert_nginx_config(db, "project", project.id, config_path, body.domain)
     db.commit()
     return DetailResponse(detail=f"Domain {body.domain} assigned and nginx reloaded")
+
+
+# ---------- Upload portal (per-project, password-protected) ----------
+
+class PortalAuthRequest(BaseModel):
+    username: str
+    password: str
+
+
+@router.put("/{project_id}/portal-auth", response_model=DetailResponse)
+def set_portal_auth(project_id: int, body: PortalAuthRequest, db: Session = Depends(get_db)):
+    """Enable/update the project's upload portal username + password."""
+    project = get_project_or_404(project_id, db)
+    username = body.username.strip()
+    if not username or len(body.password) < 4:
+        raise HTTPException(status_code=400,
+                            detail="Username required and password must be at least 4 characters")
+    project.portal_username = username
+    project.portal_password_hash = hash_password(body.password)
+    # Make sure the upload folder exists.
+    (project_root(project) / "onedrivefiles").mkdir(parents=True, exist_ok=True)
+    # If a domain is already assigned, refresh its nginx block so the portal
+    # location is present (older blocks predate this feature).
+    if project.domain:
+        _write_project_site(project, project.domain)
+    db.commit()
+    return DetailResponse(detail="Upload portal enabled — share <domain>/onedrivefiles/")
+
+
+@router.delete("/{project_id}/portal-auth", response_model=DetailResponse)
+def disable_portal_auth(project_id: int, db: Session = Depends(get_db)):
+    """Disable the upload portal (clears its credentials)."""
+    project = get_project_or_404(project_id, db)
+    project.portal_username = None
+    project.portal_password_hash = None
+    db.commit()
+    return DetailResponse(detail="Upload portal disabled")
 
 
 @router.post("/{project_id}/ssl", response_model=DetailResponse)

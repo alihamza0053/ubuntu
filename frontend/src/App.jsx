@@ -12,6 +12,7 @@ import Logs from './pages/Logs'
 import Nginx from './pages/Nginx'
 import ProjectDetail from './pages/ProjectDetail'
 import Projects from './pages/Projects'
+import Proxies from './pages/Proxies'
 import Server from './pages/Server'
 import Settings from './pages/Settings'
 import Terminal from './pages/Terminal'
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="projects/:id" element={<Guard perm="projects"><ProjectDetail /></Guard>} />
         <Route path="websites" element={<Guard perm="websites"><Websites /></Guard>} />
         <Route path="websites/:id" element={<Guard perm="websites"><WebsiteDetail /></Guard>} />
+        <Route path="proxies" element={<Guard perm="proxies"><Proxies /></Guard>} />
         <Route path="apps" element={<Guard perm="apps"><Apps /></Guard>} />
         <Route path="docker" element={<Guard perm="docker"><Docker /></Guard>} />
         <Route path="terminal" element={<Guard perm="terminal"><Terminal /></Guard>} />

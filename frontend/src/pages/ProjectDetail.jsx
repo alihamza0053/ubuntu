@@ -11,6 +11,7 @@ import OverviewTab from './project-tabs/OverviewTab'
 import PipelineTab from './project-tabs/PipelineTab'
 import SchedulerTab from './project-tabs/SchedulerTab'
 import ScriptsTab from './project-tabs/ScriptsTab'
+import UploadPortalTab from './project-tabs/UploadPortalTab'
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -22,6 +23,7 @@ const TABS = [
   { key: 'scheduler', label: 'Scheduler' },
   { key: 'data', label: 'Data Files' },
   { key: 'onedrive', label: 'OneDrive' },
+  { key: 'portal', label: 'Upload Portal' },
 ]
 
 export default function ProjectDetail() {
@@ -91,6 +93,7 @@ export default function ProjectDetail() {
       {tab === 'scheduler' && <SchedulerTab project={project} />}
       {tab === 'data' && <DataFilesTab project={project} files={files} onChanged={refresh} />}
       {tab === 'onedrive' && <OneDriveTab project={project} />}
+      {tab === 'portal' && <UploadPortalTab project={project} onChanged={refresh} />}
     </div>
   )
 }
