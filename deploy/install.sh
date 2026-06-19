@@ -96,6 +96,7 @@ echo "==> Apps installer + helpers"
 mkdir -p "$PANEL_ROOT/bin" "$PANEL_ROOT/apps" "$PANEL_ROOT/backups"
 install -m 0755 "$REPO_DIR/deploy/serverhub-app-install.sh" "$PANEL_ROOT/bin/serverhub-app-install"
 install -m 0755 "$REPO_DIR/deploy/serverhub-webtop.sh" "$PANEL_ROOT/bin/serverhub-webtop"
+install -m 0755 "$REPO_DIR/deploy/serverhub-xfce-desktop.sh" "$PANEL_ROOT/bin/serverhub-xfce-desktop"
 install -m 0755 "$REPO_DIR/deploy/serverhub-self-update.sh" "$PANEL_ROOT/bin/serverhub-self-update"
 
 echo "==> Sudoers rule"

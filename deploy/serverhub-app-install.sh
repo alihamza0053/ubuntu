@@ -95,6 +95,60 @@ CFG
     /srv/serverhub/apps/jupyterlab/venv/bin/pip install jupyterlab
     ;;
 
+  xfce-desktop)
+    echo "==> Installing Linux Desktop (XFCE + KasmVNC) — no Docker"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update || true
+    # Full XFCE desktop + terminal + file manager + dbus + a browser.
+    apt-get install -y xfce4 xfce4-terminal xfce4-goodies thunar dbus-x11 \
+      xterm fonts-dejavu ca-certificates wget curl firefox || \
+      apt-get install -y xfce4 xfce4-terminal thunar dbus-x11 xterm wget curl
+    # Google Chrome (.deb, snap-free) so there's a fast modern browser too.
+    if ! command -v google-chrome >/dev/null; then
+      TMP="$(mktemp --suffix=.deb)"
+      wget -qO "$TMP" https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+      apt-get install -y "$TMP" || true
+      rm -f "$TMP"
+    fi
+    # KasmVNC server (.deb matched to the Ubuntu codename) — the fast web VNC.
+    if ! command -v vncserver >/dev/null && ! command -v kasmvncserver >/dev/null; then
+      . /etc/os-release
+      CODENAME="${VERSION_CODENAME:-jammy}"
+      KVER="1.3.4"
+      TMP="$(mktemp --suffix=.deb)"
+      URL="https://github.com/kasmtech/KasmVNC/releases/download/v${KVER}/kasmvncserver_${CODENAME}_${KVER}_amd64.deb"
+      echo "Downloading KasmVNC: $URL"
+      if wget -qO "$TMP" "$URL"; then
+        apt-get install -y "$TMP" || true
+      else
+        echo "!! Could not fetch the KasmVNC .deb for '$CODENAME'. Check the latest"
+        echo "   release at https://github.com/kasmtech/KasmVNC/releases and adjust KVER/CODENAME."
+      fi
+      rm -f "$TMP"
+    fi
+    # Dedicated desktop user (XFCE must not run as root).
+    id kasm >/dev/null 2>&1 || useradd -m -s /bin/bash kasm
+    usermod -aG ssl-cert kasm 2>/dev/null || true
+    install -d -o kasm -g kasm /home/kasm/.vnc
+    # XFCE as the desktop session.
+    cat > /home/kasm/.vnc/xstartup <<'XS'
+#!/bin/sh
+unset SESSION_MANAGER DBUS_SESSION_BUS_ADDRESS
+export XDG_SESSION_TYPE=x11
+exec dbus-launch --exit-with-session startxfce4
+XS
+    chmod +x /home/kasm/.vnc/xstartup
+    # Serve plain HTTP/WS on localhost (nginx fronts it with SSL).
+    cat > /home/kasm/.vnc/kasmvnc.yaml <<'YML'
+network:
+  interface: 127.0.0.1
+  ssl:
+    require_ssl: false
+YML
+    chown -R kasm:kasm /home/kasm/.vnc
+    echo "XFCE + KasmVNC ready. Start it from the panel; set/change the password there."
+    ;;
+
   webtop)
     echo "==> Installing Web Browser desktop (Xvfb + noVNC + Google Chrome)"
     apt-get install -y xvfb x11vnc novnc websockify fluxbox wget

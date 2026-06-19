@@ -103,6 +103,19 @@ CATALOG: dict[str, dict] = {
         "use_token": True,
         "websocket": True,
     },
+    "xfce-desktop": {
+        "name": "Linux Desktop (XFCE + KasmVNC)",
+        "description": "A full, fast XFCE Linux desktop in your browser — file manager, "
+                       "terminal, Chrome & Firefox. Streamed via KasmVNC (much smoother "
+                       "than noVNC). No Docker, no extra firewall ports.",
+        "icon": "🖥️",
+        "kind": "service",
+        "bin": "/srv/serverhub/bin/serverhub-xfce-desktop",
+        "run": "{bin} {port}",
+        "use_password": True,
+        "username": "kasm",
+        "websocket": True,
+    },
     "webtop": {
         "name": "Web Browser (Chrome, legacy/slow)",
         "description": "A full Chrome desktop via noVNC. Heavier & slower — prefer "
@@ -558,7 +571,7 @@ CATEGORIES = [
     ("Monitoring", ["portainer", "grafana", "glances", "uptime-kuma",
                     "metabase", "dozzle", "homer"]),
     ("Notifications", ["gotify", "ntfy"]),
-    ("Browsers & Misc", ["chromium", "firefox", "neko-brave", "tiny10", "windows", "guacamole", "webtop", "google-chrome", "supabase"]),
+    ("Browsers & Misc", ["xfce-desktop", "chromium", "firefox", "neko-brave", "tiny10", "windows", "guacamole", "webtop", "google-chrome", "supabase"]),
 ]
 
 _CATEGORY_OF = {slug: cat for cat, slugs in CATEGORIES for slug in slugs}

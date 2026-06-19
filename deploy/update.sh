@@ -88,6 +88,7 @@ if [ -f "$SRC/deploy/serverhub-app-install.sh" ]; then
   mkdir -p "$PANEL_ROOT/bin" "$PANEL_ROOT/apps"
   install -m 0755 "$SRC/deploy/serverhub-app-install.sh" "$PANEL_ROOT/bin/serverhub-app-install"
   [ -f "$SRC/deploy/serverhub-webtop.sh" ] && install -m 0755 "$SRC/deploy/serverhub-webtop.sh" "$PANEL_ROOT/bin/serverhub-webtop"
+  [ -f "$SRC/deploy/serverhub-xfce-desktop.sh" ] && install -m 0755 "$SRC/deploy/serverhub-xfce-desktop.sh" "$PANEL_ROOT/bin/serverhub-xfce-desktop"
   [ -f "$SRC/deploy/serverhub-self-update.sh" ] && install -m 0755 "$SRC/deploy/serverhub-self-update.sh" "$PANEL_ROOT/bin/serverhub-self-update"
   install -m 0440 "$SRC/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub
   visudo -c >/dev/null
