@@ -7,6 +7,7 @@ const FOLDERS = [
   { name: 'allscripts', endpoint: 'upload-script', params: { folder: 'allscripts' }, hint: 'Helper scripts' },
   { name: 'data', endpoint: 'upload-data', params: {}, hint: 'Excel / CSV data' },
   { name: 'dashboard', endpoint: 'upload-dashboard', params: {}, hint: 'Streamlit app (app.py)' },
+  { name: 'onedrivefiles', readOnly: true, hint: 'Uploaded via the upload portal' },
 ]
 
 // Extensions that open in the Monaco editor on click
@@ -75,15 +76,18 @@ function FolderPanel({ project, folder, files, onChanged, onOpenFile }) {
       .catch((err) => alert(errorMessage(err)))
   }
 
+  const readOnly = folder.readOnly
   return (
     <div
       className={`card ${dragOver ? 'border-sky-500 bg-sky-500/5' : ''}`}
       onDragOver={(e) => {
+        if (readOnly) return
         e.preventDefault()
         setDragOver(true)
       }}
       onDragLeave={() => setDragOver(false)}
       onDrop={(e) => {
+        if (readOnly) return
         e.preventDefault()
         setDragOver(false)
         upload([...e.dataTransfer.files])
@@ -94,23 +98,29 @@ function FolderPanel({ project, folder, files, onChanged, onOpenFile }) {
           <h4 className="font-mono font-semibold text-sky-300">{folder.name}/</h4>
           <p className="text-xs text-slate-500">{folder.hint}</p>
         </div>
-        <button className="btn-secondary" disabled={busy} onClick={() => inputRef.current?.click()}>
-          {busy ? 'Uploading…' : '⬆ Upload'}
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            upload([...e.target.files])
-            e.target.value = ''
-          }}
-        />
+        {!readOnly && (
+          <>
+            <button className="btn-secondary" disabled={busy} onClick={() => inputRef.current?.click()}>
+              {busy ? 'Uploading…' : '⬆ Upload'}
+            </button>
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                upload([...e.target.files])
+                e.target.value = ''
+              }}
+            />
+          </>
+        )}
       </div>
 
       {files.length === 0 ? (
-        <p className="text-sm text-slate-600 py-3 text-center">empty — drop files here</p>
+        <p className="text-sm text-slate-600 py-3 text-center">
+          {readOnly ? 'no files uploaded yet' : 'empty — drop files here'}
+        </p>
       ) : (
         <ul className="divide-y divide-panel-border">
           {files.map((file) => (

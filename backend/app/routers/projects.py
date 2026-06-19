@@ -226,7 +226,7 @@ def list_files(project_id: int, db: Session = Depends(get_db)):
     project = get_project_or_404(project_id, db)
     return ProjectFilesOut(folders={
         folder: list_folder(project, folder)
-        for folder in ("code", "allscripts", "data", "dashboard", "logs")
+        for folder in ("code", "allscripts", "data", "dashboard", "logs", "onedrivefiles")
     })
 
 
@@ -285,7 +285,7 @@ async def upload_data(project_id: int, files: list[UploadFile],
 @router.get("/{project_id}/download")
 def download_file(
     project_id: int,
-    folder: str = Query(..., pattern="^(code|allscripts|data|dashboard|logs)$"),
+    folder: str = Query(..., pattern="^(code|allscripts|data|dashboard|logs|onedrivefiles)$"),
     filename: str = Query(...),
     db: Session = Depends(get_db),
 ):
@@ -299,7 +299,7 @@ def download_file(
 @router.delete("/{project_id}/files", response_model=DetailResponse)
 def delete_file(
     project_id: int,
-    folder: str = Query(..., pattern="^(code|allscripts|data|dashboard|logs)$"),
+    folder: str = Query(..., pattern="^(code|allscripts|data|dashboard|logs|onedrivefiles)$"),
     filename: str = Query(...),
     db: Session = Depends(get_db),
 ):
