@@ -4,6 +4,7 @@ const TYPE_STYLES = {
   react: 'bg-sky-500/15 text-sky-400',
   php: 'bg-violet-500/15 text-violet-400',
   html: 'bg-orange-500/15 text-orange-400',
+  python: 'bg-emerald-500/15 text-emerald-400',
 }
 
 /** Home / Websites grid card for one website. */
@@ -35,11 +36,21 @@ export default function WebsiteCard({ site, onDelete }) {
           <dt className="text-slate-500">Database</dt>
           <dd className="text-slate-300">{site.db_name || '—'}</dd>
         </div>
+        {site.type === 'python' && (
+          <div className="flex justify-between">
+            <dt className="text-slate-500">Service</dt>
+            <dd className={site.status === 'RUNNING' ? 'text-green-400' : 'text-slate-400'}>
+              {site.status || 'STOPPED'}
+            </dd>
+          </div>
+        )}
       </dl>
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button className="btn-secondary" onClick={() => navigate(`/websites/${site.id}?tab=files`)}>📁 Files</button>
-        <button className="btn-secondary" onClick={() => navigate(`/websites/${site.id}?tab=editor`)}>🔧 Edit</button>
+        {site.type === 'python' && (
+          <button className="btn-secondary" onClick={() => navigate(`/websites/${site.id}?tab=run`)}>▶ Run</button>
+        )}
         <button className="btn-secondary" onClick={() => navigate(`/websites/${site.id}?tab=database`)}>🗄 Database</button>
         {onDelete && (
           <button className="btn-secondary text-red-400" onClick={() => onDelete(site)}>🗑</button>

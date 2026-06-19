@@ -68,6 +68,17 @@ def run_migrations() -> None:
             if "portal_password_hash" not in pcols:
                 conn.execute(text("ALTER TABLE projects ADD COLUMN portal_password_hash VARCHAR(128)"))
 
+    # websites: run-it-yourself Python web services (added with the "python" type).
+    if "websites" in insp.get_table_names():
+        wcols = [c["name"] for c in insp.get_columns("websites")]
+        with engine.begin() as conn:
+            if "run_command" not in wcols:
+                conn.execute(text("ALTER TABLE websites ADD COLUMN run_command VARCHAR(512)"))
+            if "port" not in wcols:
+                conn.execute(text("ALTER TABLE websites ADD COLUMN port INTEGER"))
+            if "status" not in wcols:
+                conn.execute(text("ALTER TABLE websites ADD COLUMN status VARCHAR(16) DEFAULT 'STOPPED'"))
+
     if "apps" not in insp.get_table_names():
         return
 

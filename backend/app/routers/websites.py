@@ -6,23 +6,26 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
+from fastapi import (APIRouter, Depends, HTTPException, Query, UploadFile,
+                     WebSocket, WebSocketDisconnect)
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
-from ..database import get_db
-from ..deps import get_current_user
+from ..database import SessionLocal, get_db
+from ..deps import authenticate_websocket, get_current_user
 from ..models import NginxConfig, Website
 from ..schemas import DetailResponse, FileInfo
-from ..services import nginx_service, website_service
+from ..services import nginx_service, webapp_service, website_service
+from ..services.streaming import tail_file
 
 router = APIRouter(
     prefix="/api/websites",
     tags=["websites"],
     dependencies=[Depends(get_current_user)],
 )
+ws_router = APIRouter(tags=["websites"])   # logs WS authenticates via ?token=
 
-VALID_TYPES = {"react", "php", "html"}
+VALID_TYPES = {"react", "php", "html", "python"}
 
 
 class WebsiteCreate(BaseModel):
@@ -63,11 +66,19 @@ def get_website_or_404(website_id: int, db: Session) -> Website:
 
 
 def _to_out(site: Website) -> dict:
-    return {
+    out = {
         "id": site.id, "name": site.name, "type": site.type,
         "folder_path": site.folder_path, "domain": site.domain,
         "db_name": site.db_name, "created_at": site.created_at,
+        "run_command": site.run_command, "port": site.port, "status": site.status,
     }
+    if site.type == "python":
+        try:
+            out["status"] = webapp_service.status(site.name)
+        except Exception:
+            pass
+        out["env_status"] = webapp_service.env_status(site.name)
+    return out
 
 
 @router.get("")
@@ -82,6 +93,9 @@ def create_website(body: WebsiteCreate, db: Session = Depends(get_db)):
     root = website_service.website_root(body.name)
     root.mkdir(parents=True, exist_ok=True)
     site = Website(name=body.name, type=body.type, folder_path=str(root), db_name=body.db_name)
+    if body.type == "python":
+        site.port = webapp_service.allocate_port(db)
+        site.run_command = webapp_service.default_run_command()
     db.add(site)
     db.commit()
     db.refresh(site)
@@ -97,6 +111,11 @@ def get_website(website_id: int, db: Session = Depends(get_db)):
 def delete_website(website_id: int, delete_files: bool = Query(False),
                    db: Session = Depends(get_db)):
     site = get_website_or_404(website_id, db)
+    if site.type == "python":
+        try:
+            webapp_service.remove_program(site.name)
+        except HTTPException:
+            pass
     nginx_service.remove_site(f"website-{site.name}")
     db.query(NginxConfig).filter(
         NginxConfig.entity_type == "website", NginxConfig.entity_id == site.id
@@ -176,7 +195,13 @@ def assign_domain(website_id: int, body: DomainRequest, db: Session = Depends(ge
     """Generate the nginx block matching the website type and reload."""
     site = get_website_or_404(website_id, db)
     slug = f"website-{site.name}"
-    content = nginx_service.build_block(site.type, domain=body.domain, folder=site.name)
+    if site.type == "python":
+        if not site.port:
+            raise HTTPException(status_code=400, detail="This app has no port yet")
+        # Reverse-proxy the domain to the app's localhost port.
+        content = nginx_service.streamlit_block(domain=body.domain, port=site.port)
+    else:
+        content = nginx_service.build_block(site.type, domain=body.domain, folder=site.name)
     config_path = nginx_service.write_site(slug, content)
     site.domain = body.domain
 
@@ -199,3 +224,80 @@ def website_ssl(website_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Assign a domain first")
     nginx_service.request_ssl(site.domain)
     return DetailResponse(detail=f"SSL issued for {site.domain}")
+
+
+# ---------------------------------------------------------------------------
+# Python web-service ("python" type): deps, run command, start/stop, logs
+# ---------------------------------------------------------------------------
+class RunCommandRequest(BaseModel):
+    run_command: str
+
+
+def _require_python(site: Website) -> None:
+    if site.type != "python":
+        raise HTTPException(status_code=400, detail="Only Python websites can be run")
+
+
+@router.post("/{website_id}/install-deps", response_model=DetailResponse)
+def install_deps(website_id: int, db: Session = Depends(get_db)):
+    """Build the venv and pip-install requirements.txt in the background."""
+    site = get_website_or_404(website_id, db)
+    _require_python(site)
+    started = webapp_service.build_env_async(site.name)
+    if not started:
+        return DetailResponse(detail="Already installing… watch the setup log")
+    return DetailResponse(detail="Installing dependencies… watch the setup log")
+
+
+@router.put("/{website_id}/run-command", response_model=DetailResponse)
+def set_run_command(website_id: int, body: RunCommandRequest, db: Session = Depends(get_db)):
+    site = get_website_or_404(website_id, db)
+    _require_python(site)
+    site.run_command = body.run_command.strip()
+    db.commit()
+    # Refresh the supervisor program if it already exists.
+    if webapp_service.config_path(site.name).exists():
+        webapp_service.write_program(site)
+    return DetailResponse(detail="Run command saved")
+
+
+@router.post("/{website_id}/action/{action}", response_model=DetailResponse)
+def control_app(website_id: int, action: str, db: Session = Depends(get_db)):
+    site = get_website_or_404(website_id, db)
+    _require_python(site)
+    out = webapp_service.control(site, action)
+    site.status = webapp_service.status(site.name)
+    db.commit()
+    return DetailResponse(detail=out or f"{action} {site.name}")
+
+
+@ws_router.websocket("/ws/websites/{website_id}/logs")
+async def website_logs_ws(websocket: WebSocket, website_id: int, source: str = "app"):
+    """Live logs: source=app (the running service) or source=setup (deps install)."""
+    user = await authenticate_websocket(websocket, require="websites")
+    if user is None:
+        return
+    await websocket.accept()
+
+    db = SessionLocal()
+    try:
+        site = db.get(Website, website_id)
+    finally:
+        db.close()
+    if site is None:
+        await websocket.send_text("[serverhub] website not found")
+        await websocket.close()
+        return
+
+    path = (webapp_service.setup_log_path(site.name) if source == "setup"
+            else webapp_service.log_path(site.name, "out"))
+
+    async def send(line: str):
+        await websocket.send_text(line)
+
+    try:
+        await tail_file(path, send, backlog=200)
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    except Exception:
+        pass

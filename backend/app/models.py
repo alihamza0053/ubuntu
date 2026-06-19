@@ -76,9 +76,15 @@ class Website(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True)
     folder_path: Mapped[str] = mapped_column(String(255))
-    type: Mapped[str] = mapped_column(String(16))  # react / php / html
+    type: Mapped[str] = mapped_column(String(16))  # react / php / html / python
     domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     db_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # --- "python" type only: a run-it-yourself web service ---
+    # Start command (with a {port} placeholder), the localhost port it runs on,
+    # and the cached supervisor status.
+    run_command: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="STOPPED")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

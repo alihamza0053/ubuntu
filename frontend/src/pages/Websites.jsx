@@ -74,6 +74,7 @@ export default function Websites() {
                 <option value="html">Static HTML/CSS/JS</option>
                 <option value="react">React (build → dist/)</option>
                 <option value="php">PHP</option>
+                <option value="python">Python (FastAPI/Flask) — upload &amp; run</option>
               </select>
             </div>
             <input className="input" placeholder="linked database name (optional)" value={form.db_name}

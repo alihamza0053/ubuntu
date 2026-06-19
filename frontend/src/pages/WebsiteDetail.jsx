@@ -3,13 +3,24 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api, { errorMessage } from '../api/client'
 import EditorModal from '../components/EditorModal'
 import LiveLog from '../components/LiveLog'
+import StatusBadge from '../components/StatusBadge'
 
-const TABS = [
+const BASE_TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'files', label: 'Files' },
   { key: 'database', label: 'Database' },
   { key: 'domain', label: 'Domain & SSL' },
 ]
+
+// Python apps get a "Run" tab (between Files and Database).
+function tabsFor(type) {
+  if (type !== 'python') return BASE_TABS
+  return [
+    BASE_TABS[0], BASE_TABS[1],
+    { key: 'run', label: 'Run' },
+    BASE_TABS[2], BASE_TABS[3],
+  ]
+}
 
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`
@@ -69,7 +80,7 @@ export default function WebsiteDetail() {
       </div>
 
       <div className="flex gap-1 border-b border-panel-border overflow-x-auto">
-        {TABS.map((t) => (
+        {tabsFor(site.type).map((t) => (
           <button key={t.key} onClick={() => setSearchParams({ tab: t.key })}
             className={`px-4 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${
               tab === t.key ? 'border-sky-400 text-sky-300' : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -86,9 +97,18 @@ export default function WebsiteDetail() {
             <div className="flex justify-between"><dt className="text-slate-500">Folder</dt><dd className="font-mono break-all">{site.folder_path}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">Domain</dt><dd>{site.domain || '—'}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">Database</dt><dd>{site.db_name || '—'}</dd></div>
+            {site.type === 'python' && (
+              <>
+                <div className="flex justify-between"><dt className="text-slate-500">Port</dt><dd className="font-mono">127.0.0.1:{site.port}</dd></div>
+                <div className="flex justify-between items-center"><dt className="text-slate-500">Status</dt><dd><StatusBadge status={site.status} /></dd></div>
+              </>
+            )}
           </dl>
         </div>
       )}
+
+      {/* Run (python apps) */}
+      {tab === 'run' && <RunTab site={site} onChanged={refresh} />}
 
       {/* Files */}
       {tab === 'files' && (
@@ -203,6 +223,104 @@ function DatabaseTab({ site, onChanged }) {
           No databases exist yet — create one on the Databases page, then link it here.
         </p>
       )}
+    </div>
+  )
+}
+
+/** Python web-service controls: deps, run command, start/stop, logs. */
+function RunTab({ site, onChanged }) {
+  const [cmd, setCmd] = useState(site.run_command || '')
+  const [msg, setMsg] = useState('')
+  const [setupWs, setSetupWs] = useState(null)
+  const [showAppLogs, setShowAppLogs] = useState(false)
+
+  async function saveCmd() {
+    setMsg('')
+    try {
+      const r = await api.put(`/websites/${site.id}/run-command`, { run_command: cmd })
+      setMsg(r.data.detail)
+      onChanged()
+    } catch (err) { setMsg(errorMessage(err)) }
+  }
+
+  async function installDeps() {
+    setMsg('')
+    try {
+      const r = await api.post(`/websites/${site.id}/install-deps`)
+      setMsg(r.data.detail)
+      setSetupWs(null)
+      setTimeout(() => setSetupWs(`/ws/websites/${site.id}/logs?source=setup`), 0)
+      onChanged()
+    } catch (err) { setMsg(errorMessage(err)) }
+  }
+
+  async function action(name) {
+    setMsg('')
+    try {
+      const r = await api.post(`/websites/${site.id}/action/${name}`)
+      setMsg(r.data.detail)
+      onChanged()
+    } catch (err) { setMsg(errorMessage(err)) }
+  }
+
+  const envBadge = {
+    READY: 'bg-green-500/15 text-green-400',
+    BUILDING: 'bg-yellow-500/15 text-yellow-400',
+    MISSING: 'bg-slate-500/15 text-slate-400',
+  }[site.env_status] || 'bg-slate-500/15 text-slate-400'
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <div className="card space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h3 className="font-semibold">Service</h3>
+          <div className="flex items-center gap-2">
+            <span className={`badge ${envBadge}`}>deps: {site.env_status || 'MISSING'}</span>
+            <StatusBadge status={site.status} />
+          </div>
+        </div>
+        <p className="text-xs text-slate-500">
+          Upload your app in the <b>Files</b> tab (a .zip with your code + requirements.txt),
+          then install deps and start it. It runs on <span className="font-mono">127.0.0.1:{site.port}</span>;
+          assign a domain to reach it.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-secondary" onClick={installDeps}>📦 Install deps</button>
+          <button className="btn-secondary" onClick={() => action('start')}>▶ Start</button>
+          <button className="btn-secondary" onClick={() => action('stop')}>⏹ Stop</button>
+          <button className="btn-secondary" onClick={() => action('restart')}>🔄 Restart</button>
+          <button className="btn-secondary" onClick={() => setShowAppLogs((v) => !v)}>📜 Logs</button>
+        </div>
+        {setupWs && (
+          <div>
+            <p className="text-xs text-slate-500 mb-1">Dependency install</p>
+            <LiveLog path={setupWs} />
+          </div>
+        )}
+        {showAppLogs && (
+          <div>
+            <p className="text-xs text-slate-500 mb-1">App logs</p>
+            <LiveLog path={`/ws/websites/${site.id}/logs?source=app`} />
+          </div>
+        )}
+      </div>
+
+      <div className="card space-y-2">
+        <h3 className="font-semibold">Run command</h3>
+        <p className="text-xs text-slate-500">
+          Use <span className="font-mono">{'{port}'}</span> for the port. The app’s venv is on PATH,
+          so <span className="font-mono">uvicorn</span>/<span className="font-mono">gunicorn</span>/<span className="font-mono">python</span> resolve to it.
+        </p>
+        <input className="input font-mono text-sm" value={cmd} onChange={(e) => setCmd(e.target.value)} />
+        <div className="flex gap-2">
+          <button className="btn-primary" onClick={saveCmd}>Save</button>
+          <button className="btn-secondary" onClick={() => setCmd('uvicorn app_server:app --host 127.0.0.1 --port {port}')}>
+            Reset default
+          </button>
+        </div>
+      </div>
+
+      {msg && <p className="text-sm text-slate-300 break-words">{msg}</p>}
     </div>
   )
 }

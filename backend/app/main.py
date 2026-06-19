@@ -99,6 +99,7 @@ app.include_router(schedules.router)
 app.include_router(pipeline.router)
 app.include_router(pipeline.ws_router)        # pipeline live-stream WebSocket
 app.include_router(websites.router)
+app.include_router(websites.ws_router)        # python web-service logs WebSocket
 app.include_router(proxies.router)
 app.include_router(databases.router)
 app.include_router(nginx.router)
