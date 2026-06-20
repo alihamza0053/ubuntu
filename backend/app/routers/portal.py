@@ -218,7 +218,7 @@ _PAGE_TEMPLATE = """<!doctype html>
  const dt=new DataTransfer();
  function human(n){ if(n<1024)return n+' B'; if(n<1048576)return (n/1024).toFixed(1)+' KB'; return (n/1048576).toFixed(1)+' MB'; }
  function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
- function sync(){ input.files=dt.files; render(); }
+ function sync(){ try{ input.files=dt.files; }catch(e){} render(); }
  function render(){
    const fs=Array.from(dt.files);
    chips.innerHTML=fs.map((f,i)=>`<div class="chip"><span class="nm">${esc(f.name)}</span><span class="sz">${human(f.size)}</span><button type="button" class="x" data-i="${i}" title="Remove">✕</button></div>`).join('');

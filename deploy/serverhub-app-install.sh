@@ -96,12 +96,14 @@ CFG
     ;;
 
   xfce-desktop)
-    echo "==> Installing Linux Desktop (XFCE + noVNC) — no Docker"
+    echo "==> Installing Linux Desktop (XFCE, modern) — no Docker"
     export DEBIAN_FRONTEND=noninteractive
     apt-get update || true
-    # Full XFCE desktop + the proven noVNC streaming stack (Xvfb/x11vnc/novnc).
+    # Full XFCE + the proven noVNC streaming stack + a MODERN look:
+    # Arc-Dark theme, Papirus icons, Noto fonts, and a Plank dock.
     apt-get install -y xfce4 xfce4-terminal xfce4-goodies thunar dbus-x11 \
-      xvfb x11vnc novnc websockify xterm fonts-dejavu ca-certificates wget curl firefox || \
+      xvfb x11vnc novnc websockify xterm fonts-dejavu fonts-noto-core ca-certificates \
+      wget curl firefox arc-theme papirus-icon-theme plank || \
       apt-get install -y xfce4 xfce4-terminal thunar dbus-x11 xvfb x11vnc novnc websockify
     # Google Chrome (.deb, snap-free) so there's a fast modern browser too.
     if ! command -v google-chrome >/dev/null; then
@@ -113,10 +115,42 @@ CFG
     # Dedicated desktop user (XFCE must not run as root).
     id kasm >/dev/null 2>&1 || useradd -m -s /bin/bash kasm
     install -d -o kasm -g kasm /home/kasm/.vnc
+    # --- Modern look: Arc-Dark + Papirus icons + Noto font + Plank dock ---
+    install -d -o kasm -g kasm /home/kasm/.config/xfce4/xfconf/xfce-perchannel-xml
+    cat > /home/kasm/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml <<'XS'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xsettings" version="1.0">
+  <property name="Net" type="empty">
+    <property name="ThemeName" type="string" value="Arc-Dark"/>
+    <property name="IconThemeName" type="string" value="Papirus-Dark"/>
+  </property>
+  <property name="Gtk" type="empty">
+    <property name="FontName" type="string" value="Noto Sans 10"/>
+  </property>
+</channel>
+XS
+    cat > /home/kasm/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml <<'XW'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfwm4" version="1.0">
+  <property name="general" type="empty">
+    <property name="theme" type="string" value="Arc-Dark"/>
+    <property name="title_font" type="string" value="Noto Sans Bold 10"/>
+  </property>
+</channel>
+XW
+    install -d -o kasm -g kasm /home/kasm/.config/autostart
+    cat > /home/kasm/.config/autostart/plank.desktop <<'PL'
+[Desktop Entry]
+Type=Application
+Name=Plank
+Exec=plank
+X-GNOME-Autostart-enabled=true
+PL
+    chown -R kasm:kasm /home/kasm/.config
     for b in Xvfb x11vnc websockify startxfce4; do
       command -v "$b" >/dev/null || echo "!! WARNING: '$b' missing — the desktop may not start."
     done
-    echo "XFCE + noVNC ready. Start it from the panel; set/change the password there."
+    echo "XFCE (Arc-Dark + Papirus + Plank dock) ready. Start it from the panel."
     ;;
 
   webtop)

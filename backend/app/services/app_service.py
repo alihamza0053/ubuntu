@@ -114,10 +114,11 @@ CATALOG: dict[str, dict] = {
         "websocket": True,
     },
     "xfce-desktop": {
-        "name": "Linux Desktop (XFCE)",
-        "description": "A full XFCE Linux desktop in your browser — file manager, terminal, "
+        "name": "Linux Desktop (XFCE, modern)",
+        "description": "A polished XFCE Linux desktop in your browser — dark Arc theme, "
+                       "Papirus icons and a macOS-style dock, with a file manager, terminal, "
                        "Chrome & Firefox. Streamed over the reliable noVNC stack (works on "
-                       "plain HTTP and HTTPS). No Docker, no extra firewall ports.",
+                       "HTTP and HTTPS). No Docker, no extra firewall ports.",
         "icon": "🖥️",
         "kind": "service",
         "bin": "/srv/serverhub/bin/serverhub-xfce-desktop",
@@ -453,6 +454,16 @@ CATALOG: dict[str, dict] = {
         "image": "jellyfin/jellyfin:latest",
         "run_args": ["-v", "app_jellyfin_config:/config", "-v", "/srv:/media:ro"],
     },
+    "emby": {
+        "name": "Emby (media player)",
+        "description": "Play your videos, music & photos in the browser — a polished "
+                       "media player/server (Jellyfin's parent). Reads your files from /srv; "
+                       "add a library at /media/... after setup.",
+        "icon": "🎞️", "kind": "docker", "websocket": True, "container_port": 8096,
+        "image": "lscr.io/linuxserver/emby:latest",
+        "env": {"PUID": "1000", "PGID": "1000", "TZ": "Etc/UTC"},
+        "run_args": ["-v", "app_emby_config:/config", "-v", "/srv:/media:ro"],
+    },
     "qbittorrent": {
         "name": "qBittorrent", "description": "Torrent client with a web UI.",
         "icon": "🌀", "kind": "docker", "container_port": 8080,
@@ -522,7 +533,7 @@ CATEGORIES = [
     ("Developer", ["code-server", "gitea", "n8n", "nodered", "jupyterlab"]),
     ("CMS & CRM", ["wordpress", "joomla", "ghost", "espocrm"]),
     ("Files & Sync", ["onedrive", "filebrowser", "nextcloud", "syncthing"]),
-    ("Media & Library", ["jellyfin", "navidrome", "audiobookshelf", "calibre-web",
+    ("Media & Library", ["jellyfin", "emby", "navidrome", "audiobookshelf", "calibre-web",
                          "kavita", "qbittorrent"]),
     ("Productivity", ["vaultwarden", "trilium", "memos", "vikunja", "mealie",
                       "actual", "grocy", "freshrss"]),
