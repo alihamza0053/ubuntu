@@ -41,11 +41,31 @@ def streamlit_block(domain: str, port: int) -> str:
 
 
 def _cert_paths(domain: str) -> tuple[str, str] | None:
-    """Return (fullchain, privkey) if a Let's Encrypt cert exists for `domain`."""
-    base = Path(f"/etc/letsencrypt/live/{domain}")
-    fullchain, privkey = base / "fullchain.pem", base / "privkey.pem"
-    if fullchain.exists() and privkey.exists():
-        return str(fullchain), str(privkey)
+    """
+    Return (fullchain, privkey) if a Let's Encrypt cert exists for `domain`.
+
+    /etc/letsencrypt/live is root-only, and the panel runs as the unprivileged
+    `serverhub` user — so a direct stat raises PermissionError (Python 3.12 no
+    longer swallows it). We try the filesystem first, then fall back to scanning
+    the panel-owned nginx configs (which we CAN read) for a reference to the
+    cert — that's how we know SSL was already issued without root access.
+    """
+    fullchain = f"/etc/letsencrypt/live/{domain}/fullchain.pem"
+    privkey = f"/etc/letsencrypt/live/{domain}/privkey.pem"
+    try:
+        if Path(fullchain).exists() and Path(privkey).exists():
+            return fullchain, privkey
+        return None
+    except OSError:
+        pass  # can't stat /etc/letsencrypt as serverhub — use the fallback
+
+    # Fallback: a managed config already referencing this cert ⇒ it exists.
+    try:
+        for conf in settings.NGINX_CONFIGS_ROOT.glob("*.conf"):
+            if fullchain in conf.read_text(encoding="utf-8", errors="ignore"):
+                return fullchain, privkey
+    except OSError:
+        pass
     return None
 
 
