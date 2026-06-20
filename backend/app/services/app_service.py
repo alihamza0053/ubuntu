@@ -215,6 +215,23 @@ CATALOG: dict[str, dict] = {
                      "-p", "3389:3389/tcp",
                      "-v", "app_tiny10_storage:/storage"],
     },
+    "macos": {
+        "name": "macOS (VM)",
+        "description": "A macOS desktop in your browser (QEMU via dockur/macos). REQUIRES "
+                       "KVM (/dev/kvm) — it will not realistically run without hardware "
+                       "virtualization. Heavy: 4 GB+ RAM, 64 GB+ disk, a modern CPU. First "
+                       "boot downloads & installs macOS (slow). NOTE: Apple's licence only "
+                       "permits macOS on Apple hardware — running it elsewhere violates it.",
+        "icon": "🍎",
+        "kind": "docker", "websocket": True,
+        "image": "dockurr/macos", "container_port": 8006,
+        "kvm": True,   # panel adds /dev/kvm if present, else falls back to KVM=N (unusable)
+        "env": {"VERSION": "13", "RAM_SIZE": "8G", "CPU_CORES": "4", "DISK_SIZE": "64G"},
+        # /dev/net/tun + NET_ADMIN for the VM's networking; data persists in a volume.
+        "run_args": ["--device=/dev/net/tun", "--cap-add", "NET_ADMIN",
+                     "--stop-timeout", "120",
+                     "-v", "app_macos_storage:/storage"],
+    },
     "guacamole": {
         "name": "Guacamole (browser remote desktop)",
         "description": "HTML5 remote desktop in your browser — open the Windows VM "
@@ -570,7 +587,7 @@ CATEGORIES = [
     ("Monitoring", ["portainer", "grafana", "glances", "uptime-kuma",
                     "metabase", "dozzle", "homer"]),
     ("Notifications", ["gotify", "ntfy"]),
-    ("Browsers & Misc", ["xfce-desktop", "chromium", "firefox", "neko-brave", "tiny10", "windows", "guacamole", "webtop", "google-chrome", "supabase"]),
+    ("Browsers & Misc", ["xfce-desktop", "chromium", "firefox", "neko-brave", "tiny10", "windows", "macos", "guacamole", "webtop", "google-chrome", "supabase"]),
 ]
 
 _CATEGORY_OF = {slug: cat for cat, slugs in CATEGORIES for slug in slugs}
