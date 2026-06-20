@@ -52,6 +52,7 @@ def _to_out(app: App, live_status: bool = False) -> dict:
         "name": app.name, "kind": app.kind, "multi": entry.get("multi", False),
         "port": app.port, "domain": app.domain, "status": app.status,
         "secret": app.secret, "icon": entry.get("icon", "📦"),
+        "image": app.image,
         "websocket": entry.get("websocket", False),
         "username": entry.get("username"),
         "web_ui": entry.get("web_ui", True),
@@ -89,6 +90,7 @@ def catalog(db: Session = Depends(get_db)):
              "category": app_service.category_of(slug),
              "web_ui": e.get("web_ui", True)}
             for slug, e in app_service.CATALOG.items()
+            if slug != "custom"   # driven by the "run any image" form, not a card
         ],
     }
 
@@ -256,6 +258,24 @@ async def install_app_ws(websocket: WebSocket, slug: str):
             sudo_blocked["hit"] = True
         await websocket.send_text(line)
 
+    # Custom image: image + container port (+ optional env) come from the form.
+    custom: dict = {}
+    if slug == "custom":
+        img = (websocket.query_params.get("image", "") or "").strip()
+        cport = (websocket.query_params.get("container_port", "") or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9][\w./:@-]*", img) or not cport.isdigit():
+            await send("[serverhub] Provide a valid image name and a numeric container port.")
+            await websocket.close()
+            return
+        env_map = {}
+        for line in (websocket.query_params.get("env", "") or "").splitlines():
+            line = line.strip()
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                if k.strip():
+                    env_map[k.strip()] = v.strip()
+        custom = {"image": img, "container_port": int(cport), "env": env_map}
+
     # Docker / compose apps need the Docker engine first
     if kind in ("docker", "compose") and not app_service.docker_ready():
         await send("[serverhub] Docker isn't installed/running yet.")
@@ -292,7 +312,8 @@ async def install_app_ws(websocket: WebSocket, slug: str):
     await send(f"[serverhub] installing {entry['name']} (instance: {instance}) …")
     try:
         if kind in ("docker",):  # single-container: pull the image
-            code = await stream_command(["sudo", "-n", "docker", "pull", entry["image"]], send)
+            pull_image = custom.get("image") or entry["image"]
+            code = await stream_command(["sudo", "-n", "docker", "pull", pull_image], send)
         elif kind == "compose" and multi:
             # Multi compose: the installer writes a per-instance stack on this port
             code = await stream_command(app_service.installer_cmd(slug, instance, port), send)
@@ -322,6 +343,13 @@ async def install_app_ws(websocket: WebSocket, slug: str):
                   port=port, status="STOPPED")
         if entry.get("use_password") or entry.get("use_token") or entry.get("secret_env"):
             app.secret = app_service.new_password()
+        if custom:   # custom-image app: persist its image/port/env
+            app.image = custom["image"]
+            app.container_port = custom["container_port"]
+            app.name = f"{custom['image']} — {instance}"
+            if custom["env"]:
+                import json as _json
+                app.env_json = _json.dumps(custom["env"])
         db.add(app)
         db.commit()
         db.refresh(app)

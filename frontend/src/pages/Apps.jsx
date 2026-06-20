@@ -20,6 +20,8 @@ export default function Apps() {
   const [installed, setInstalled] = useState([])
   const [installWs, setInstallWs] = useState(null) // WS path during an install
   const [query, setQuery] = useState('')
+  const [showCustom, setShowCustom] = useState(false)
+  const [custom, setCustom] = useState({ name: '', image: '', container_port: '', env: '' })
 
   const refresh = useCallback(() => {
     api.get('/apps/catalog').then((res) => {
@@ -53,6 +55,22 @@ export default function Apps() {
     setTimeout(() => setInstallWs(path), 0)
   }
 
+  function runCustom(e) {
+    e.preventDefault()
+    if (!custom.image.trim() || !custom.container_port) {
+      alert('Image and container port are required')
+      return
+    }
+    const qs = new URLSearchParams({
+      name: custom.name.trim(),
+      image: custom.image.trim(),
+      container_port: String(custom.container_port),
+      env: custom.env,
+    })
+    setInstallWs(null)
+    setTimeout(() => setInstallWs(`/ws/apps/custom/install?${qs.toString()}`), 0)
+  }
+
   // Group catalog by category (filtered by the search query) in defined order
   const grouped = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -79,6 +97,53 @@ export default function Apps() {
           <pre className="mt-2 bg-black text-slate-300 text-xs p-2 rounded">cd /opt/serverhub-src && sudo bash deploy/update.sh</pre>
         </div>
       )}
+
+      {/* Run any Docker Hub image */}
+      <div className="card">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h3 className="font-semibold">🐳 Run any Docker image</h3>
+            <p className="text-xs text-slate-500">
+              Pull any Docker Hub image and run it on a port (you can run several).
+              Needs the Docker Engine app.
+            </p>
+          </div>
+          <button className="btn-secondary" onClick={() => setShowCustom((v) => !v)}>
+            {showCustom ? 'Close' : '＋ New container'}
+          </button>
+        </div>
+        {showCustom && (
+          <form onSubmit={runCustom} className="mt-3 grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Image *</label>
+              <input className="input font-mono" placeholder="e.g. nginx:latest or user/app:tag"
+                value={custom.image} onChange={(e) => setCustom({ ...custom, image: e.target.value })} required />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Container port *</label>
+              <input className="input" type="number" placeholder="e.g. 80"
+                value={custom.container_port} onChange={(e) => setCustom({ ...custom, container_port: e.target.value })} required />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Name (optional)</label>
+              <input className="input" placeholder="my-app"
+                value={custom.name} onChange={(e) => setCustom({ ...custom, name: e.target.value })} />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs text-slate-400 mb-1">Environment variables (optional, one KEY=value per line)</label>
+              <textarea className="input font-mono text-sm h-20" placeholder={'TZ=UTC\nFOO=bar'}
+                value={custom.env} onChange={(e) => setCustom({ ...custom, env: e.target.value })} />
+            </div>
+            <div className="sm:col-span-2 flex items-center gap-2">
+              <button type="submit" className="btn-primary" disabled={!dockerReady}>⬇ Pull &amp; run</button>
+              {!dockerReady && <span className="text-xs text-yellow-500">Install the Docker Engine app first</span>}
+              <span className="text-xs text-slate-600">
+                The container’s port is proxied to localhost; assign a domain after it’s running.
+              </span>
+            </div>
+          </form>
+        )}
+      </div>
 
       {/* Live install output */}
       {installWs && (

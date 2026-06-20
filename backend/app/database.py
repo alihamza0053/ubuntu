@@ -89,6 +89,14 @@ def run_migrations() -> None:
         if "instance" not in cols:
             conn.execute(text("ALTER TABLE apps ADD COLUMN instance VARCHAR(96)"))
             conn.execute(text("UPDATE apps SET instance = slug WHERE instance IS NULL"))
+        # custom-image apps: image + container port + extra env (added with the
+        # "run any Docker image" feature).
+        if "image" not in cols:
+            conn.execute(text("ALTER TABLE apps ADD COLUMN image VARCHAR(255)"))
+        if "container_port" not in cols:
+            conn.execute(text("ALTER TABLE apps ADD COLUMN container_port INTEGER"))
+        if "env_json" not in cols:
+            conn.execute(text("ALTER TABLE apps ADD COLUMN env_json TEXT"))
         # slug must no longer be UNIQUE (multiple instances share a slug)
         for idx in indexes:
             if idx.get("column_names") == ["slug"] and idx.get("unique"):

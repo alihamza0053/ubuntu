@@ -161,6 +161,11 @@ class App(Base):
     domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Optional access secret (e.g. code-server password) shown to the admin
     secret: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Custom-image apps (slug == "custom"): the Docker image + container port to
+    # run, plus extra env vars (JSON {KEY: VALUE}). NULL for catalog apps.
+    image: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    container_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    env_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

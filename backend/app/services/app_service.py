@@ -10,6 +10,7 @@ The actual package install is performed by a vetted root helper script
 (deploy/serverhub-app-install.sh) invoked through a single restricted sudo
 rule, so the panel never runs arbitrary commands as root.
 """
+import json
 import secrets
 import subprocess
 from pathlib import Path
@@ -29,6 +30,15 @@ INSTALLER = "/srv/serverhub/bin/serverhub-app-install"
 # apps; {port} and {bin} are substituted. The install steps themselves live in
 # the root helper script keyed by the same slug.
 CATALOG: dict[str, dict] = {
+    # Special: "run any Docker Hub image". The image/port/env are per-instance
+    # (stored on the App row), so this isn't shown as a catalog card — the Apps
+    # page drives it with a form. Multi-instance.
+    "custom": {
+        "name": "Custom image",
+        "description": "Run any Docker Hub image.",
+        "icon": "📦",
+        "kind": "docker", "multi": True, "websocket": True,
+    },
     "code-server": {
         "name": "VS Code (code-server)",
         "description": "Full VS Code in your browser — edit code on the server.",
@@ -161,90 +171,24 @@ CATALOG: dict[str, dict] = {
     "neko-brave": {
         "name": "Brave Browser (Neko, smoothest)",
         "description": "Brave streamed over WebRTC (Neko) — the smoothest remote "
-                       "browser, like watching a video. Needs Docker AND an open "
-                       "UDP port range 52000-52100 in your firewall.",
+                       "browser, like watching a video. Needs Docker AND UDP ports "
+                       "52000-52019 open in your firewall (UFW + cloud provider).",
         "icon": "🦁",
         "kind": "docker", "websocket": True,
         "image": "m1k1o/neko:brave", "container_port": 8080,
         "username": "neko", "secret_env": "NEKO_PASSWORD",
-        # No NEKO_ICELITE: let Neko discover its public IP via STUN, so WebRTC
-        # works on both directly-addressed and NAT'd (AWS/GCP) servers.
+        # The panel injects NEKO_NAT1TO1=<server public IP> at create time, and
+        # ICE-lite makes the server the controlling agent — the reliable cloud
+        # config. A small EPR range publishes fast (100 ports often fails).
+        "nat1to1": True,
         "env": {"NEKO_SCREEN": "1280x720@30",
                 "NEKO_PASSWORD_ADMIN": "{secret}",
-                "NEKO_EPR": "52000-52100"},
+                "NEKO_EPR": "52000-52019",
+                "NEKO_ICELITE": "1"},
         "run_args": ["--shm-size=2g",
-                     "-p", "52000-52100:52000-52100/udp",
+                     "-p", "52000-52019:52000-52019/udp",
                      "-v", "app_neko_brave_data:/home/neko"],
         "pw_change": "env_recreate",   # NEKO_PASSWORD is read from env each start
-    },
-    "windows": {
-        "name": "Windows 10 (VM)",
-        "description": "A full Windows 10 desktop in your browser (QEMU). Heavy: "
-                       "needs 4 GB+ RAM, 64 GB disk, Docker, and ideally KVM for "
-                       "usable speed (without it, it runs but is slow). You must "
-                       "own a valid Windows license.",
-        "icon": "🪟",
-        "kind": "docker", "websocket": True,
-        "image": "dockurr/windows", "container_port": 8006,
-        "kvm": True,   # panel adds /dev/kvm if present, else falls back to KVM=N
-        "username": "admin", "secret_env": "PASSWORD",
-        "env": {"VERSION": "10", "USERNAME": "admin",
-                "RAM_SIZE": "8G", "CPU_CORES": "4", "DISK_SIZE": "64G"},
-        # RDP exposed on :3390 (faster than noVNC). PUBLIC — lock to your IP.
-        "run_args": ["--device=/dev/net/tun", "--cap-add", "NET_ADMIN",
-                     "--stop-timeout", "120",
-                     "-p", "3390:3389/tcp",
-                     "-v", "app_windows_storage:/storage"],
-    },
-    "tiny10": {
-        "name": "Tiny10 (light Windows 10)",
-        "description": "A debloated, lightweight Windows 10 desktop in your browser "
-                       "(QEMU) — much lighter than full Windows. Good for Python & "
-                       "small apps. Needs Docker, ideally KVM. ~4 GB RAM for Chrome.",
-        "icon": "🪟",
-        "kind": "docker", "websocket": True,
-        "image": "dockurr/windows", "container_port": 8006,
-        "kvm": True,   # panel adds /dev/kvm if present, else falls back to KVM=N
-        "username": "admin", "secret_env": "PASSWORD",
-        "env": {"VERSION": "tiny10", "USERNAME": "admin",
-                "RAM_SIZE": "4G", "CPU_CORES": "4", "DISK_SIZE": "32G"},
-        # RDP exposed on :3389 (faster than noVNC). PUBLIC — lock it to your IP
-        # in the firewall (see the docs) since open RDP gets attacked.
-        "run_args": ["--device=/dev/net/tun", "--cap-add", "NET_ADMIN",
-                     "--stop-timeout", "120",
-                     "-p", "3389:3389/tcp",
-                     "-v", "app_tiny10_storage:/storage"],
-    },
-    "macos": {
-        "name": "macOS (VM)",
-        "description": "A macOS desktop in your browser (QEMU via dockur/macos). REQUIRES "
-                       "KVM (/dev/kvm) — it will not realistically run without hardware "
-                       "virtualization. Heavy: 4 GB+ RAM, 64 GB+ disk, a modern CPU. First "
-                       "boot downloads & installs macOS (slow). NOTE: Apple's licence only "
-                       "permits macOS on Apple hardware — running it elsewhere violates it.",
-        "icon": "🍎",
-        "kind": "docker", "websocket": True,
-        "image": "dockurr/macos", "container_port": 8006,
-        "kvm": True,   # panel adds /dev/kvm if present, else falls back to KVM=N (unusable)
-        "env": {"VERSION": "13", "RAM_SIZE": "8G", "CPU_CORES": "4", "DISK_SIZE": "64G"},
-        # /dev/net/tun + NET_ADMIN for the VM's networking; data persists in a volume.
-        "run_args": ["--device=/dev/net/tun", "--cap-add", "NET_ADMIN",
-                     "--stop-timeout", "120",
-                     "-v", "app_macos_storage:/storage"],
-    },
-    "guacamole": {
-        "name": "Guacamole (browser remote desktop)",
-        "description": "HTML5 remote desktop in your browser — open the Windows VM "
-                       "over RDP, far smoother than noVNC. After logging in, add one "
-                       "RDP connection to host.docker.internal:3389. Needs Docker.",
-        "icon": "🖥️",
-        "kind": "docker", "websocket": True,
-        # All-in-one image (guacd + guacamole + postgres). Default login
-        # guacadmin / guacadmin — change it on first sign-in.
-        "image": "flcontainers/guacamole:latest", "container_port": 8080,
-        "username": "guacadmin",
-        "run_args": ["--add-host=host.docker.internal:host-gateway",
-                     "-v", "app_guacamole_config:/config"],
     },
 
     # ---- Docker engine (prerequisite for the docker apps below) ----
@@ -587,7 +531,7 @@ CATEGORIES = [
     ("Monitoring", ["portainer", "grafana", "glances", "uptime-kuma",
                     "metabase", "dozzle", "homer"]),
     ("Notifications", ["gotify", "ntfy"]),
-    ("Browsers & Misc", ["xfce-desktop", "chromium", "firefox", "neko-brave", "tiny10", "windows", "macos", "guacamole", "webtop", "google-chrome", "supabase"]),
+    ("Browsers & Misc", ["xfce-desktop", "chromium", "firefox", "neko-brave", "webtop", "google-chrome", "supabase"]),
 ]
 
 _CATEGORY_OF = {slug: cat for cat, slugs in CATEGORIES for slug in slugs}
@@ -791,19 +735,54 @@ def _docker(*args: str, timeout: int = 300) -> subprocess.CompletedProcess:
     return subprocess.run([*DOCKER, *args], capture_output=True, text=True, timeout=timeout)
 
 
+def public_ip() -> str | None:
+    """Best-effort detection of the server's public IPv4 (for WebRTC NAT)."""
+    import urllib.request
+    for url in ("https://api.ipify.org", "https://ifconfig.me/ip", "https://icanhazip.com"):
+        try:
+            with urllib.request.urlopen(url, timeout=5) as r:
+                ip = r.read().decode().strip()
+            parts = ip.split(".")
+            if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
+                return ip
+        except Exception:
+            continue
+    return None
+
+
 def docker_run(app) -> None:
     """(Re)create and start a single-container app."""
     entry = get_catalog_entry(app.slug)
     cname = container_name(app.instance)
     _docker("rm", "-f", cname, timeout=60)   # replace any existing container
 
+    # Custom-image apps carry their image/port/env on the App row; catalog apps
+    # take them from the catalog entry.
+    image = app.image or entry.get("image")
+    container_port = app.container_port or entry.get("container_port")
+    if not image or not container_port:
+        raise HTTPException(status_code=400, detail="App has no image/port to run")
+
     fmt = dict(port=app.port, secret=app.secret or "", instance=app.instance)
     cmd = ["run", "-d", "--name", cname, "--restart", "unless-stopped",
-           "-p", f"127.0.0.1:{app.port}:{entry['container_port']}"]
+           "-p", f"127.0.0.1:{app.port}:{container_port}"]
     for k, v in entry.get("env", {}).items():
         cmd += ["-e", f"{k}={str(v).format(**fmt)}"]
+    # Extra env from a custom-image app.
+    if app.env_json:
+        try:
+            for k, v in json.loads(app.env_json).items():
+                cmd += ["-e", f"{k}={v}"]
+        except (ValueError, AttributeError):
+            pass
     if entry.get("secret_env") and app.secret:
         cmd += ["-e", f"{entry['secret_env']}={app.secret}"]
+    # WebRTC apps (Neko): tell it the server's public IP so the video stream can
+    # actually connect (otherwise you get a black screen behind cloud NAT).
+    if entry.get("nat1to1"):
+        ip = public_ip()
+        if ip:
+            cmd += ["-e", f"NEKO_NAT1TO1={ip}"]
     # KVM-based apps (Windows VM): use hardware acceleration when /dev/kvm
     # exists, otherwise fall back to slow software emulation so it still runs.
     if entry.get("kvm"):
@@ -812,7 +791,7 @@ def docker_run(app) -> None:
         else:
             cmd += ["-e", "KVM=N"]
     cmd += [str(a).format(**fmt) for a in entry.get("run_args", [])]
-    cmd.append(entry["image"])
+    cmd.append(image)
     cmd += entry.get("command", [])   # optional args after the image (e.g. ntfy serve)
 
     result = _docker(*cmd)
