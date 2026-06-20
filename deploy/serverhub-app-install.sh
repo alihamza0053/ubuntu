@@ -96,13 +96,13 @@ CFG
     ;;
 
   xfce-desktop)
-    echo "==> Installing Linux Desktop (XFCE + KasmVNC) — no Docker"
+    echo "==> Installing Linux Desktop (XFCE + noVNC) — no Docker"
     export DEBIAN_FRONTEND=noninteractive
     apt-get update || true
-    # Full XFCE desktop + terminal + file manager + dbus + a browser.
+    # Full XFCE desktop + the proven noVNC streaming stack (Xvfb/x11vnc/novnc).
     apt-get install -y xfce4 xfce4-terminal xfce4-goodies thunar dbus-x11 \
-      xterm fonts-dejavu ca-certificates wget curl firefox || \
-      apt-get install -y xfce4 xfce4-terminal thunar dbus-x11 xterm wget curl
+      xvfb x11vnc novnc websockify xterm fonts-dejavu ca-certificates wget curl firefox || \
+      apt-get install -y xfce4 xfce4-terminal thunar dbus-x11 xvfb x11vnc novnc websockify
     # Google Chrome (.deb, snap-free) so there's a fast modern browser too.
     if ! command -v google-chrome >/dev/null; then
       TMP="$(mktemp --suffix=.deb)"
@@ -110,47 +110,13 @@ CFG
       apt-get install -y "$TMP" || true
       rm -f "$TMP"
     fi
-    # KasmVNC server (.deb matched to the Ubuntu/Debian codename) — the fast web VNC.
-    if ! command -v vncserver >/dev/null && ! command -v kasmvncserver >/dev/null; then
-      . /etc/os-release
-      CODENAME="${VERSION_CODENAME:-jammy}"
-      TMP="$(mktemp --suffix=.deb)"
-      # Ask the GitHub API for the latest release asset matching this codename,
-      # so we don't have to hard-code a version that may not exist.
-      URL="$(curl -fsSL https://api.github.com/repos/kasmtech/KasmVNC/releases/latest \
-            | grep -oE "https://[^\"]*kasmvncserver_${CODENAME}_[^\"]*_amd64\.deb" | head -1)"
-      [ -z "$URL" ] && URL="https://github.com/kasmtech/KasmVNC/releases/download/v1.3.4/kasmvncserver_${CODENAME}_1.3.4_amd64.deb"
-      echo "Downloading KasmVNC: $URL"
-      if wget -qO "$TMP" "$URL"; then
-        apt-get install -y "$TMP" || apt-get install -fy
-      else
-        echo "!! Could not fetch a KasmVNC .deb for codename '$CODENAME'."
-        echo "   See https://github.com/kasmtech/KasmVNC/releases for the right asset."
-      fi
-      rm -f "$TMP"
-    fi
-    command -v vncserver >/dev/null || echo "!! WARNING: 'vncserver' (KasmVNC) is NOT installed — the desktop won't start."
     # Dedicated desktop user (XFCE must not run as root).
     id kasm >/dev/null 2>&1 || useradd -m -s /bin/bash kasm
-    usermod -aG ssl-cert kasm 2>/dev/null || true
     install -d -o kasm -g kasm /home/kasm/.vnc
-    # XFCE as the desktop session.
-    cat > /home/kasm/.vnc/xstartup <<'XS'
-#!/bin/sh
-unset SESSION_MANAGER DBUS_SESSION_BUS_ADDRESS
-export XDG_SESSION_TYPE=x11
-exec dbus-launch --exit-with-session startxfce4
-XS
-    chmod +x /home/kasm/.vnc/xstartup
-    # Serve plain HTTP/WS on localhost (nginx fronts it with SSL).
-    cat > /home/kasm/.vnc/kasmvnc.yaml <<'YML'
-network:
-  interface: 127.0.0.1
-  ssl:
-    require_ssl: false
-YML
-    chown -R kasm:kasm /home/kasm/.vnc
-    echo "XFCE + KasmVNC ready. Start it from the panel; set/change the password there."
+    for b in Xvfb x11vnc websockify startxfce4; do
+      command -v "$b" >/dev/null || echo "!! WARNING: '$b' missing — the desktop may not start."
+    done
+    echo "XFCE + noVNC ready. Start it from the panel; set/change the password there."
     ;;
 
   webtop)

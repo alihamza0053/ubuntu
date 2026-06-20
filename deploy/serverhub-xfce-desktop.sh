@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # ============================================================
-# ServerHub — "Linux Desktop (XFCE + KasmVNC)" app.
+# ServerHub — "Linux Desktop (XFCE)" app.
 #
-# A full, fast XFCE desktop streamed to the browser via KasmVNC (no Docker,
-# no extra UDP ports — plain HTTP/WebSocket that nginx fronts with SSL).
+# A full XFCE desktop streamed to the browser via the proven Xvfb + x11vnc +
+# noVNC stack (the same pipeline the webtop app uses). No Docker, no KasmVNC —
+# noVNC authenticates with a simple VNC password over the WebSocket, so it works
+# over plain HTTP *and* HTTPS with no secure-cookie login loop.
 #
-# Supervisor runs this as one foreground process; the KasmVNC X server + the
-# XFCE session run under the unprivileged `kasm` user and are torn down on stop
-# (the app program uses stopasgroup/killasgroup, plus the trap below).
+# Supervisor runs websockify in the foreground; the display, XFCE session and
+# VNC server run in the background under the unprivileged `kasm` user and are
+# torn down on stop (stopasgroup/killasgroup + the trap below).
 #
-# The web login password comes from the panel via the PASSWORD env var
-# (use_password app) and is (re)applied on every start.
+# The VNC password comes from the panel via the PASSWORD env var (use_password
+# app) and is (re)applied on every start.
 #
 # Usage: serverhub-xfce-desktop <port>
 # ============================================================
@@ -19,62 +21,57 @@ set -u
 PORT="${1:-8700}"
 U=kasm
 H="/home/$U"
-DISPLAY_NUM=":1"
+DISP=":1"
+VNCPORT=5901
 PW="${PASSWORD:-changeme}"
 
-asuser() { runuser -u "$U" -- env HOME="$H" "$@"; }
+asuser() { runuser -u "$U" -- env HOME="$H" DISPLAY="$DISP" "$@"; }
 
 cleanup() {
-  asuser vncserver -kill "$DISPLAY_NUM" >/dev/null 2>&1 || true
-  pkill -u "$U" -f "Xvnc $DISPLAY_NUM" 2>/dev/null || true
-  pkill -u "$U" xfce4-session 2>/dev/null || true
+  pkill -u "$U" -f "Xvfb $DISP" 2>/dev/null || true
+  pkill -u "$U" -f "x11vnc.*$VNCPORT" 2>/dev/null || true
+  pkill -u "$U" -f "xfce4-session" 2>/dev/null || true
+  pkill -u "$U" -f "websockify.*$PORT" 2>/dev/null || true
   exit 0
 }
 trap cleanup TERM INT
 
-# 0. KasmVNC must be installed (the `vncserver` wrapper). Fail loudly if not —
-#    otherwise the desktop never binds and nginx returns 502.
-if ! command -v vncserver >/dev/null 2>&1; then
-  echo "ERROR: KasmVNC ('vncserver') is not installed. Re-install the app, or run:" >&2
-  echo "  sudo bash /opt/serverhub-src/deploy/serverhub-app-install.sh xfce-desktop" >&2
-  exit 1
-fi
-
-# 1. Apply the web password the panel set (KasmVNC reads ~/.kasmpasswd).
-printf '%s\n%s\n' "$PW" "$PW" | asuser kasmvncpasswd -u "$U" -w >/dev/null 2>&1 || true
-
-# 2. Clear any stale session/lock from a previous run.
-asuser vncserver -kill "$DISPLAY_NUM" >/dev/null 2>&1 || true
-pkill -u "$U" -f "Xvnc $DISPLAY_NUM" 2>/dev/null || true
+# 0. Clear any stragglers from a previous run.
+pkill -u "$U" -f "Xvfb $DISP" 2>/dev/null || true
+pkill -u "$U" -f "x11vnc.*$VNCPORT" 2>/dev/null || true
+pkill -u "$U" -f "websockify.*$PORT" 2>/dev/null || true
 rm -f /tmp/.X1-lock "/tmp/.X11-unix/X1" 2>/dev/null || true
 sleep 1
 
-# 3. Start KasmVNC (the X server + web server) bound to localhost on PORT.
-#    SSL is disabled in ~/.vnc/kasmvnc.yaml (the installer) — nginx adds HTTPS.
-asuser vncserver "$DISPLAY_NUM" \
-  -websocketPort "$PORT" -interface 127.0.0.1 \
-  -depth 24 -geometry 1440x810 >/tmp/serverhub-kasm.log 2>&1 || true
+# 1. VNC password file from the panel password.
+install -d -o "$U" -g "$U" "$H/.vnc"
+asuser x11vnc -storepasswd "$PW" "$H/.vnc/passwd" >/dev/null 2>&1 || true
+chown "$U:$U" "$H/.vnc/passwd" 2>/dev/null || true
 
+# 2. Virtual display.
+asuser Xvfb "$DISP" -screen 0 1440x810x24 -nolisten tcp >/tmp/serverhub-desktop-x.log 2>&1 &
 sleep 2
 
-# 4. Verify KasmVNC actually bound the port — if not, surface the logs and exit
-#    non-zero so Supervisor shows FATAL (instead of a fake "RUNNING").
-bound=""
+# 3. Full XFCE desktop session on that display.
+asuser dbus-launch --exit-with-session startxfce4 >/tmp/serverhub-desktop-xfce.log 2>&1 &
+sleep 2
+
+# 4. Password-protected VNC server bound to localhost.
+asuser x11vnc -display "$DISP" -rfbauth "$H/.vnc/passwd" -forever -shared \
+  -rfbport "$VNCPORT" -localhost -noxdamage >/tmp/serverhub-desktop-vnc.log 2>&1 &
+sleep 1
+
+# 5. Make sure the VNC server actually came up — else fail loudly (FATAL).
+up=""
 for _ in $(seq 1 15); do
-  if ss -ltn 2>/dev/null | grep -q ":${PORT} "; then bound=1; break; fi
+  if ss -ltn 2>/dev/null | grep -q ":${VNCPORT} "; then up=1; break; fi
   sleep 1
 done
-if [ -z "$bound" ]; then
-  echo "ERROR: KasmVNC did not start listening on 127.0.0.1:${PORT}." >&2
-  echo "----- /tmp/serverhub-kasm.log -----" >&2
-  cat /tmp/serverhub-kasm.log >&2 2>/dev/null || true
-  echo "----- KasmVNC session log -----" >&2
-  cat "$H/.vnc/"*"${DISPLAY_NUM}.log" >&2 2>/dev/null || true
-  asuser vncserver -kill "$DISPLAY_NUM" >/dev/null 2>&1 || true
-  exit 1
+if [ -z "$up" ]; then
+  echo "ERROR: the desktop (Xvfb/x11vnc) did not start. Recent logs:" >&2
+  cat /tmp/serverhub-desktop-*.log >&2 2>/dev/null || true
+  cleanup
 fi
 
-# 5. Foreground: follow the session log so Supervisor tracks a live process and
-#    forwards signals; the trap above cleans up the desktop on stop.
-LOG="$(ls -1 "$H/.vnc/"*"${DISPLAY_NUM}.log" 2>/dev/null | head -1)"
-exec tail -F "${LOG:-/tmp/serverhub-kasm.log}"
+# 6. Foreground: serve the noVNC web client on PORT and proxy to the VNC server.
+exec websockify --web=/usr/share/novnc 127.0.0.1:"$PORT" 127.0.0.1:"$VNCPORT"

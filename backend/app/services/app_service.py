@@ -104,16 +104,15 @@ CATALOG: dict[str, dict] = {
         "websocket": True,
     },
     "xfce-desktop": {
-        "name": "Linux Desktop (XFCE + KasmVNC)",
-        "description": "A full, fast XFCE Linux desktop in your browser — file manager, "
-                       "terminal, Chrome & Firefox. Streamed via KasmVNC (much smoother "
-                       "than noVNC). No Docker, no extra firewall ports.",
+        "name": "Linux Desktop (XFCE)",
+        "description": "A full XFCE Linux desktop in your browser — file manager, terminal, "
+                       "Chrome & Firefox. Streamed over the reliable noVNC stack (works on "
+                       "plain HTTP and HTTPS). No Docker, no extra firewall ports.",
         "icon": "🖥️",
         "kind": "service",
         "bin": "/srv/serverhub/bin/serverhub-xfce-desktop",
         "run": "{bin} {port}",
         "use_password": True,
-        "username": "kasm",
         "websocket": True,
     },
     "webtop": {
