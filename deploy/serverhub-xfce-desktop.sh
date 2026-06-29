@@ -8,7 +8,7 @@
 # over plain HTTP *and* HTTPS with no secure-cookie login loop.
 #
 # Supervisor runs websockify in the foreground; the display, XFCE session and
-# VNC server run in the background under the unprivileged `kasm` user and are
+# VNC server run in the background under the unprivileged `ali` user and are
 # torn down on stop (stopasgroup/killasgroup + the trap below).
 #
 # The VNC password comes from the panel via the PASSWORD env var (use_password
@@ -19,7 +19,7 @@
 set -u
 
 PORT="${1:-8700}"
-U=kasm
+U=ali
 H="/home/$U"
 DISP=":1"
 VNCPORT=5901

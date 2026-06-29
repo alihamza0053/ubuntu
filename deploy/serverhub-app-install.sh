@@ -115,11 +115,11 @@ CFG
     # Serve the noVNC client at "/" (else the root shows a bare directory listing).
     [ -f /usr/share/novnc/vnc.html ] && ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html
     # Dedicated desktop user (XFCE must not run as root).
-    id kasm >/dev/null 2>&1 || useradd -m -s /bin/bash kasm
-    install -d -o kasm -g kasm /home/kasm/.vnc
+    id ali >/dev/null 2>&1 || useradd -m -s /bin/bash ali
+    install -d -o ali -g ali /home/ali/.vnc
     # --- Modern look: Arc-Dark + Papirus icons + Noto font + Plank dock ---
-    install -d -o kasm -g kasm /home/kasm/.config/xfce4/xfconf/xfce-perchannel-xml
-    cat > /home/kasm/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml <<'XS'
+    install -d -o ali -g ali /home/ali/.config/xfce4/xfconf/xfce-perchannel-xml
+    cat > /home/ali/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml <<'XS'
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xsettings" version="1.0">
   <property name="Net" type="empty">
@@ -131,7 +131,7 @@ CFG
   </property>
 </channel>
 XS
-    cat > /home/kasm/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml <<'XW'
+    cat > /home/ali/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml <<'XW'
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfwm4" version="1.0">
   <property name="general" type="empty">
@@ -140,15 +140,15 @@ XS
   </property>
 </channel>
 XW
-    install -d -o kasm -g kasm /home/kasm/.config/autostart
-    cat > /home/kasm/.config/autostart/plank.desktop <<'PL'
+    install -d -o ali -g ali /home/ali/.config/autostart
+    cat > /home/ali/.config/autostart/plank.desktop <<'PL'
 [Desktop Entry]
 Type=Application
 Name=Plank
 Exec=plank
 X-GNOME-Autostart-enabled=true
 PL
-    chown -R kasm:kasm /home/kasm/.config
+    chown -R ali:ali /home/ali/.config
     for b in Xvfb x11vnc websockify startxfce4; do
       command -v "$b" >/dev/null || echo "!! WARNING: '$b' missing — the desktop may not start."
     done
@@ -169,12 +169,38 @@ PL
     # Let the desktop user run the Android emulator (needs KVM hardware).
     if [ -e /dev/kvm ]; then
       groupadd -f kvm
-      id kasm >/dev/null 2>&1 && usermod -aG kvm kasm 2>/dev/null || true
+      id ali >/dev/null 2>&1 && usermod -aG kvm ali 2>/dev/null || true
       echo "KVM present — the emulator can use hardware acceleration."
     else
       echo "Note: no /dev/kvm — the emulator won't run, but the IDE + builds work."
     fi
     echo "Done. Open the 'Linux Desktop (XFCE)' app and launch Android Studio from the menu."
+    ;;
+
+  git-github)
+    echo "==> Installing Git + GitHub CLI (gh)"
+    apt-get install -y git curl || true
+    # Official GitHub CLI apt repo.
+    if ! command -v gh >/dev/null 2>&1; then
+      install -m 0755 -d /usr/share/keyrings
+      curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        | tee /usr/share/keyrings/githubcli-archive-keyring.gpg >/dev/null
+      chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list
+      apt-get update || true
+      apt-get install -y gh || true
+    fi
+    git --version || true
+    gh --version || true
+    echo ""
+    echo "=================================================================="
+    echo " Git + GitHub CLI installed."
+    echo " Connect your GitHub account: open a terminal in the desktop and run"
+    echo "     gh auth login          (choose GitHub.com -> HTTPS -> login with a browser)"
+    echo "     gh auth setup-git      (so 'git push' uses your GitHub login)"
+    echo " After that, push from VS Code / Android Studio / terminal normally."
+    echo "=================================================================="
     ;;
 
   flutter)
@@ -188,7 +214,7 @@ PL
       git -C "$FLUTTER_DIR" pull --ff-only 2>/dev/null || true
     fi
     # Flutter caches the Dart SDK inside its own dir, so the desktop user needs to own it.
-    if id kasm >/dev/null 2>&1; then chown -R kasm:kasm "$FLUTTER_DIR"; fi
+    if id ali >/dev/null 2>&1; then chown -R ali:ali "$FLUTTER_DIR"; fi
     git config --global --add safe.directory "$FLUTTER_DIR" 2>/dev/null || true
     # Put flutter/dart on PATH.
     ln -sf "$FLUTTER_DIR/bin/flutter" /usr/local/bin/flutter

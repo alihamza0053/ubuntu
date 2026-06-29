@@ -113,6 +113,14 @@ CATALOG: dict[str, dict] = {
         "use_token": True,
         "websocket": True,
     },
+    "git-github": {
+        "name": "Git + GitHub CLI",
+        "description": "Install git and the GitHub CLI (gh) so you can push code from "
+                       "VS Code / Android Studio / the terminal. After installing, run "
+                       "'gh auth login' once in the desktop terminal to connect GitHub.",
+        "icon": "🐙",
+        "kind": "tool",
+    },
     "flutter": {
         "name": "Flutter SDK",
         "description": "Flutter SDK for building apps, installed to /opt/flutter. The "
@@ -547,7 +555,7 @@ CATALOG: dict[str, dict] = {
 CATEGORIES = [
     ("Infrastructure", ["docker", "postgres", "mariadb", "redis", "mongo"]),
     ("Database UIs", ["adminer", "phpmyadmin", "pgadmin"]),
-    ("Developer", ["code-server", "android-studio", "flutter", "gitea", "n8n", "nodered", "jupyterlab"]),
+    ("Developer", ["code-server", "android-studio", "flutter", "git-github", "gitea", "n8n", "nodered", "jupyterlab"]),
     ("CMS & CRM", ["wordpress", "joomla", "ghost", "espocrm"]),
     ("Files & Sync", ["onedrive", "filebrowser", "nextcloud", "syncthing"]),
     ("Media & Library", ["jellyfin", "emby", "navidrome", "audiobookshelf", "calibre-web",
