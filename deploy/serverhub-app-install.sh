@@ -153,6 +153,28 @@ PL
     echo "XFCE (Arc-Dark + Papirus + Plank dock) ready. Start it from the panel."
     ;;
 
+  android-studio)
+    echo "==> Installing Android Studio (full IDE) for the Linux Desktop"
+    command -v snap >/dev/null 2>&1 || apt-get install -y snapd
+    systemctl enable --now snapd 2>/dev/null || true
+    # Large 'classic' snap — always the current Android Studio release.
+    if snap install android-studio --classic; then
+      echo "Android Studio snap installed."
+    else
+      echo "!! snap install failed. Make sure snapd is running (systemctl status snapd)."
+      exit 1
+    fi
+    # Let the desktop user run the Android emulator (needs KVM hardware).
+    if [ -e /dev/kvm ]; then
+      groupadd -f kvm
+      id kasm >/dev/null 2>&1 && usermod -aG kvm kasm 2>/dev/null || true
+      echo "KVM present — the emulator can use hardware acceleration."
+    else
+      echo "Note: no /dev/kvm — the emulator won't run, but the IDE + builds work."
+    fi
+    echo "Done. Open the 'Linux Desktop (XFCE)' app and launch Android Studio from the menu."
+    ;;
+
   webtop)
     echo "==> Installing Web Browser desktop (Xvfb + noVNC + Google Chrome)"
     apt-get install -y xvfb x11vnc novnc websockify fluxbox wget

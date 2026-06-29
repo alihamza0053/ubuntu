@@ -113,6 +113,15 @@ CATALOG: dict[str, dict] = {
         "use_token": True,
         "websocket": True,
     },
+    "android-studio": {
+        "name": "Android Studio (IDE)",
+        "description": "The full Android Studio IDE, installed (via snap) into the Linux "
+                       "Desktop (XFCE) app — launch it from the desktop's menu. Heavy: "
+                       "~8 GB+ RAM and ~15 GB disk; the emulator needs KVM. Install the "
+                       "Linux Desktop app first.",
+        "icon": "🤖",
+        "kind": "tool",
+    },
     "xfce-desktop": {
         "name": "Linux Desktop (XFCE, modern)",
         "description": "A polished XFCE Linux desktop in your browser — dark Arc theme, "
@@ -530,7 +539,7 @@ CATALOG: dict[str, dict] = {
 CATEGORIES = [
     ("Infrastructure", ["docker", "postgres", "mariadb", "redis", "mongo"]),
     ("Database UIs", ["adminer", "phpmyadmin", "pgadmin"]),
-    ("Developer", ["code-server", "gitea", "n8n", "nodered", "jupyterlab"]),
+    ("Developer", ["code-server", "android-studio", "gitea", "n8n", "nodered", "jupyterlab"]),
     ("CMS & CRM", ["wordpress", "joomla", "ghost", "espocrm"]),
     ("Files & Sync", ["onedrive", "filebrowser", "nextcloud", "syncthing"]),
     ("Media & Library", ["jellyfin", "emby", "navidrome", "audiobookshelf", "calibre-web",
