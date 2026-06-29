@@ -113,6 +113,14 @@ CATALOG: dict[str, dict] = {
         "use_token": True,
         "websocket": True,
     },
+    "flutter": {
+        "name": "Flutter SDK",
+        "description": "Flutter SDK for building apps, installed to /opt/flutter. The "
+                       "install log prints the path — in Android Studio's Flutter plugin "
+                       "set the Flutter SDK path to /opt/flutter. Pairs with Android Studio.",
+        "icon": "💙",
+        "kind": "tool",
+    },
     "android-studio": {
         "name": "Android Studio (IDE)",
         "description": "The full Android Studio IDE, installed (via snap) into the Linux "
@@ -539,7 +547,7 @@ CATALOG: dict[str, dict] = {
 CATEGORIES = [
     ("Infrastructure", ["docker", "postgres", "mariadb", "redis", "mongo"]),
     ("Database UIs", ["adminer", "phpmyadmin", "pgadmin"]),
-    ("Developer", ["code-server", "android-studio", "gitea", "n8n", "nodered", "jupyterlab"]),
+    ("Developer", ["code-server", "android-studio", "flutter", "gitea", "n8n", "nodered", "jupyterlab"]),
     ("CMS & CRM", ["wordpress", "joomla", "ghost", "espocrm"]),
     ("Files & Sync", ["onedrive", "filebrowser", "nextcloud", "syncthing"]),
     ("Media & Library", ["jellyfin", "emby", "navidrome", "audiobookshelf", "calibre-web",

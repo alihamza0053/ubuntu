@@ -25,7 +25,9 @@ DISP=":1"
 VNCPORT=5901
 PW="${PASSWORD:-changeme}"
 
-asuser() { runuser -u "$U" -- env HOME="$H" DISPLAY="$DISP" "$@"; }
+asuser() { runuser -u "$U" -- env HOME="$H" DISPLAY="$DISP" \
+  PATH="/snap/bin:/usr/local/bin:/usr/bin:/bin" \
+  XDG_DATA_DIRS="/var/lib/snapd/desktop:/usr/local/share:/usr/share" "$@"; }
 
 cleanup() {
   pkill -u "$U" -f "Xvfb $DISP" 2>/dev/null || true

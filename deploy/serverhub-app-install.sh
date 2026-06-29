@@ -112,6 +112,8 @@ CFG
       apt-get install -y "$TMP" || true
       rm -f "$TMP"
     fi
+    # Serve the noVNC client at "/" (else the root shows a bare directory listing).
+    [ -f /usr/share/novnc/vnc.html ] && ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html
     # Dedicated desktop user (XFCE must not run as root).
     id kasm >/dev/null 2>&1 || useradd -m -s /bin/bash kasm
     install -d -o kasm -g kasm /home/kasm/.vnc
@@ -173,6 +175,30 @@ PL
       echo "Note: no /dev/kvm — the emulator won't run, but the IDE + builds work."
     fi
     echo "Done. Open the 'Linux Desktop (XFCE)' app and launch Android Studio from the menu."
+    ;;
+
+  flutter)
+    echo "==> Installing Flutter SDK"
+    apt-get install -y git curl unzip xz-utils zip \
+      libglu1-mesa clang cmake ninja-build pkg-config || true
+    FLUTTER_DIR=/opt/flutter
+    if [ ! -d "$FLUTTER_DIR/bin" ]; then
+      git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$FLUTTER_DIR"
+    else
+      git -C "$FLUTTER_DIR" pull --ff-only 2>/dev/null || true
+    fi
+    # Flutter caches the Dart SDK inside its own dir, so the desktop user needs to own it.
+    if id kasm >/dev/null 2>&1; then chown -R kasm:kasm "$FLUTTER_DIR"; fi
+    git config --global --add safe.directory "$FLUTTER_DIR" 2>/dev/null || true
+    # Put flutter/dart on PATH.
+    ln -sf "$FLUTTER_DIR/bin/flutter" /usr/local/bin/flutter
+    ln -sf "$FLUTTER_DIR/bin/dart" /usr/local/bin/dart
+    echo ""
+    echo "=================================================================="
+    echo " Flutter SDK installed at:  $FLUTTER_DIR"
+    echo " In Android Studio: Settings -> Languages & Frameworks -> Flutter"
+    echo " set 'Flutter SDK path' to:  $FLUTTER_DIR"
+    echo "=================================================================="
     ;;
 
   webtop)
