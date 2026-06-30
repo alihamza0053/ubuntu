@@ -148,6 +148,15 @@ Name=Plank
 Exec=plank
 X-GNOME-Autostart-enabled=true
 PL
+    # Make Google Chrome the default browser so apps (Android Studio, etc.)
+    # that call xdg-open actually launch a browser for OAuth/sign-in.
+    cat > /home/ali/.config/mimeapps.list <<'MIME'
+[Default Applications]
+text/html=google-chrome.desktop
+x-scheme-handler/http=google-chrome.desktop
+x-scheme-handler/https=google-chrome.desktop
+x-scheme-handler/about=google-chrome.desktop
+MIME
     chown -R ali:ali /home/ali/.config
     for b in Xvfb x11vnc websockify startxfce4; do
       command -v "$b" >/dev/null || echo "!! WARNING: '$b' missing — the desktop may not start."
