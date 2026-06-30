@@ -8,6 +8,7 @@ import EditorTab from './project-tabs/EditorTab'
 import FilesTab from './project-tabs/FilesTab'
 import OneDriveTab from './project-tabs/OneDriveTab'
 import OverviewTab from './project-tabs/OverviewTab'
+import PackagesTab from './project-tabs/PackagesTab'
 import PipelineTab from './project-tabs/PipelineTab'
 import SchedulerTab from './project-tabs/SchedulerTab'
 import ScriptsTab from './project-tabs/ScriptsTab'
@@ -18,6 +19,7 @@ const TABS = [
   { key: 'files', label: 'Files' },
   { key: 'editor', label: 'Code Editor' },
   { key: 'scripts', label: 'Scripts' },
+  { key: 'packages', label: 'Packages' },
   { key: 'pipeline', label: 'Pipeline' },
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'scheduler', label: 'Scheduler' },
@@ -88,6 +90,7 @@ export default function ProjectDetail() {
         <EditorTab project={project} files={files} initialFile={editorFile} />
       )}
       {tab === 'scripts' && <ScriptsTab project={project} onChanged={refresh} />}
+      {tab === 'packages' && <PackagesTab project={project} />}
       {tab === 'pipeline' && <PipelineTab project={project} />}
       {tab === 'dashboard' && <DashboardTab project={project} onChanged={refresh} />}
       {tab === 'scheduler' && <SchedulerTab project={project} />}
