@@ -76,7 +76,6 @@ async def run_script(
     log_activity(f"▶ script {project_name}/{folder}/{filename} started")
 
     started = datetime.utcnow()
-    lines: list[str] = []
 
     try:
         process = await asyncio.create_subprocess_exec(
@@ -101,33 +100,41 @@ async def run_script(
 
     _running[script_id] = process
     assert process.stdout is not None
-    while True:
-        raw = await process.stdout.readline()
-        if not raw:
-            break
-        line = raw.decode("utf-8", errors="replace").rstrip("\n")
-        lines.append(line)
-        if on_line:
-            try:
-                await on_line(line)
-            except Exception:
-                # Client went away — keep running, keep logging
-                on_line = None
+    # Stream output to the log file line-by-line (flushed) so "View Log" can
+    # tail it live while the script runs — not only after it finishes.
+    log_file = log_path.open("w", encoding="utf-8")
+    try:
+        while True:
+            raw = await process.stdout.readline()
+            if not raw:
+                break
+            line = raw.decode("utf-8", errors="replace").rstrip("\n")
+            log_file.write(line + "\n")
+            log_file.flush()
+            if on_line:
+                try:
+                    await on_line(line)
+                except Exception:
+                    # Client went away — keep running, keep logging
+                    on_line = None
 
-    exit_code = await process.wait()
-    _running.pop(script_id, None)
-    if script_id in _stopped:
-        _stopped.discard(script_id)
-        status = "STOPPED"
-    else:
-        status = "SUCCESS" if exit_code == 0 else "FAILED"
+        exit_code = await process.wait()
+        _running.pop(script_id, None)
+        if script_id in _stopped:
+            _stopped.discard(script_id)
+            status = "STOPPED"
+        else:
+            status = "SUCCESS" if exit_code == 0 else "FAILED"
 
-    footer = (
-        f"\n[serverhub] started {started.isoformat()}Z"
-        f"\n[serverhub] finished {datetime.utcnow().isoformat()}Z"
-        f"\n[serverhub] exit code {exit_code} ({status})\n"
-    )
-    log_path.write_text("\n".join(lines) + footer, encoding="utf-8")
+        log_file.write(
+            f"\n[serverhub] started {started.isoformat()}Z"
+            f"\n[serverhub] finished {datetime.utcnow().isoformat()}Z"
+            f"\n[serverhub] exit code {exit_code} ({status})\n"
+        )
+        log_file.flush()
+    finally:
+        log_file.close()
+
     _update_script(script_id, status=status, log=str(log_path), ran_at=started)
     mark = {"SUCCESS": "✓", "STOPPED": "⏹"}.get(status, "✗")
     log_activity(f"{mark} script {project_name}/{folder}/{filename} {status} (exit {exit_code})")
