@@ -68,3 +68,28 @@ async def pip_install_ws(websocket: WebSocket, project_id: int, spec: str = Quer
     except WebSocketDisconnect:
         return
     await websocket.close()
+
+
+@ws_router.websocket("/ws/projects/{project_id}/playwright-install")
+async def playwright_install_ws(websocket: WebSocket, project_id: int):
+    """Download Playwright's Chromium browser (the step after `pip install playwright`)."""
+    user = await authenticate_websocket(websocket, require="projects")
+    if user is None:
+        return
+    await websocket.accept()
+
+    async def send(line: str):
+        await websocket.send_text(line)
+
+    await send("[serverhub] playwright install chromium …")
+    try:
+        code = await stream_command(
+            [settings.PYTHON_BIN, "-m", "playwright", "install", "chromium"], send)
+        if code == 0:
+            await send("[serverhub] ✓ browsers installed — re-run your script")
+        else:
+            await send(f"[serverhub] failed (exit {code}). If it's a missing system "
+                       f"library, run in Terminal:  sudo {settings.PYTHON_BIN} -m playwright install-deps")
+    except WebSocketDisconnect:
+        return
+    await websocket.close()

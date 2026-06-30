@@ -34,6 +34,12 @@ export default function PackagesTab({ project }) {
     setTimeout(() => setInstallWs(path), 0)
   }
 
+  function installPlaywrightBrowsers() {
+    const path = `/ws/projects/${project.id}/playwright-install`
+    setInstallWs(null)
+    setTimeout(() => setInstallWs(path), 0)
+  }
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return q ? pkgs.filter((p) => p.name.toLowerCase().includes(q)) : pkgs
@@ -57,10 +63,15 @@ export default function PackagesTab({ project }) {
           />
           <button type="submit" className="btn-primary" disabled={!spec.trim()}>⬇ Install</button>
         </form>
-        <p className="text-xs text-slate-600 mt-2">
-          Note: packages are shared by all projects' scripts (same interpreter). Some libraries
-          (e.g. Playwright, Selenium) need a one-time browser/driver step — see the tip after install.
-        </p>
+        <div className="text-xs text-slate-600 mt-2 flex items-center gap-2 flex-wrap">
+          <span>
+            Packages are shared by all projects' scripts (same interpreter). Using Playwright?
+            After installing it, download its browser:
+          </span>
+          <button type="button" className="btn-secondary py-1" onClick={installPlaywrightBrowsers}>
+            🎭 Install Playwright browsers
+          </button>
+        </div>
         {installWs && (
           <LiveLog path={installWs} onClose={refresh} />
         )}
