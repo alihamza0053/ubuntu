@@ -58,6 +58,11 @@ sleep 2
 asuser dbus-launch --exit-with-session startxfce4 >/tmp/serverhub-desktop-xfce.log 2>&1 &
 sleep 2
 
+# 3b. Keep the X CLIPBOARD and PRIMARY selections in sync so noVNC copy/paste
+#     works reliably (Ctrl+Shift+V, middle-click, and the noVNC clipboard panel).
+asuser autocutsel -selection CLIPBOARD -fork >/dev/null 2>&1 || true
+asuser autocutsel -selection PRIMARY -fork >/dev/null 2>&1 || true
+
 # 4. Password-protected VNC server bound to localhost.
 asuser x11vnc -display "$DISP" -rfbauth "$H/.vnc/passwd" -forever -shared \
   -rfbport "$VNCPORT" -localhost -noxdamage >/tmp/serverhub-desktop-vnc.log 2>&1 &

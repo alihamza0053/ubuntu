@@ -102,9 +102,9 @@ CFG
     # Full XFCE + the proven noVNC streaming stack + a MODERN look:
     # Arc-Dark theme, Papirus icons, Noto fonts, and a Plank dock.
     apt-get install -y xfce4 xfce4-terminal xfce4-goodies thunar dbus-x11 \
-      xvfb x11vnc novnc websockify xterm fonts-dejavu fonts-noto-core ca-certificates \
+      xvfb x11vnc novnc websockify autocutsel xterm fonts-dejavu fonts-noto-core ca-certificates \
       wget curl firefox arc-theme papirus-icon-theme plank || \
-      apt-get install -y xfce4 xfce4-terminal thunar dbus-x11 xvfb x11vnc novnc websockify
+      apt-get install -y xfce4 xfce4-terminal thunar dbus-x11 xvfb x11vnc novnc websockify autocutsel
     # Google Chrome (.deb, snap-free) so there's a fast modern browser too.
     if ! command -v google-chrome >/dev/null; then
       TMP="$(mktemp --suffix=.deb)"
