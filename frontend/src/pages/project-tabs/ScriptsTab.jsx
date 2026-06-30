@@ -25,8 +25,8 @@ export default function ScriptsTab({ project, onChanged }) {
   // While a live run panel is open, poll so RUNNING/STOPPED status (and the
   // Stop button) stays current.
   useEffect(() => {
-    const anyLive = Object.values(panels).some((p) => p?.mode === 'live')
-    if (!anyLive) return
+    const anyOpen = Object.values(panels).some((p) => p?.mode === 'live' || p?.mode === 'log')
+    if (!anyOpen) return
     const t = setInterval(refresh, 3000)
     return () => clearInterval(t)
   }, [panels, refresh])
@@ -49,13 +49,14 @@ export default function ScriptsTab({ project, onChanged }) {
     }
   }
 
-  async function viewLog(script) {
-    try {
-      const res = await api.get(`/projects/${project.id}/logs/${script.filename}`)
-      setPanels((prev) => ({ ...prev, [script.id]: { mode: 'log', content: res.data.content } }))
-    } catch (err) {
-      alert(errorMessage(err))
-    }
+  function viewLog(script) {
+    // Live-tail the script's log file: shows the running script's output live,
+    // or the last run's log when idle. Re-open to re-attach to the latest.
+    setPanels((prev) => ({ ...prev, [script.id]: null }))
+    setTimeout(
+      () => setPanels((prev) => ({ ...prev, [script.id]: { mode: 'log' } })),
+      0,
+    )
   }
 
   function closePanel(id) {
@@ -120,9 +121,7 @@ export default function ScriptsTab({ project, onChanged }) {
               />
             )}
             {panel?.mode === 'log' && (
-              <pre className="mt-3 bg-black text-slate-300 text-xs font-mono p-3 rounded-lg h-64 overflow-y-auto whitespace-pre-wrap">
-                {panel.content || '(empty log)'}
-              </pre>
+              <LiveLog path={`/ws/script/${script.id}/logs`} />
             )}
           </div>
         )

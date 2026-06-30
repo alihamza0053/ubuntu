@@ -16,6 +16,12 @@ function formatSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+function formatDate(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z') // backend sends UTC
+  return isNaN(d.getTime()) ? '—' : d.toLocaleString()
+}
+
 /** Global server file manager confined to the panel-managed roots under /srv. */
 export default function Files() {
   const [path, setPath] = useState('') // '' = roots listing
@@ -143,6 +149,7 @@ export default function Files() {
             <tr className="text-left text-xs uppercase text-slate-500 border-b border-panel-border">
               <th className="py-2">Name</th>
               <th>Size</th>
+              <th>Modified</th>
               <th className="text-right">Actions</th>
             </tr>
           </thead>
@@ -155,6 +162,7 @@ export default function Files() {
                   </button>
                 </td>
                 <td className="text-slate-500">{entry.is_dir ? '—' : formatSize(entry.size)}</td>
+                <td className="text-slate-400 whitespace-nowrap">{formatDate(entry.modified)}</td>
                 <td className="text-right space-x-2 whitespace-nowrap">
                   {!entry.is_dir && (
                     <button onClick={() => download(entry)} className="text-sky-400 hover:underline">⬇</button>
@@ -165,7 +173,7 @@ export default function Files() {
               </tr>
             ))}
             {data.entries.length === 0 && (
-              <tr><td colSpan={3} className="py-6 text-center text-slate-600">empty</td></tr>
+              <tr><td colSpan={4} className="py-6 text-center text-slate-600">empty</td></tr>
             )}
           </tbody>
         </table>

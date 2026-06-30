@@ -14,6 +14,7 @@ from ..deps import authenticate_websocket, get_current_user
 from ..models import Script
 from ..schemas import DetailResponse
 from ..services.script_runner import log_path_for, run_script, stop_script
+from ..services.streaming import tail_file
 from .projects import get_project_or_404, sync_scripts
 
 router = APIRouter(tags=["scripts"])
@@ -117,4 +118,38 @@ async def run_script_ws(websocket: WebSocket, script_id: int):
         await websocket.close()
     except WebSocketDisconnect:
         # Client closed the tab — run_script keeps going and writes the log
+        pass
+
+
+@router.websocket("/ws/script/{script_id}/logs")
+async def script_logs_ws(websocket: WebSocket, script_id: int):
+    """
+    Live-tail a script's log file: sends the recent lines, then streams new
+    output as it's written. Works whether the script is running (live output)
+    or idle (just shows the last run's log). Used by the "View Log" button.
+    """
+    user = await authenticate_websocket(websocket, require="projects")
+    if user is None:
+        return
+    await websocket.accept()
+
+    db = SessionLocal()
+    try:
+        script = db.get(Script, script_id)
+        if script is None:
+            await websocket.send_text("[serverhub] script not found")
+            await websocket.close()
+            return
+        project_name, filename = script.project.name, script.filename
+    finally:
+        db.close()
+
+    async def send_line(line: str):
+        await websocket.send_text(line)
+
+    try:
+        await tail_file(log_path_for(project_name, filename), send_line, backlog=500)
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    except Exception:
         pass
