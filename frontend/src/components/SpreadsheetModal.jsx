@@ -1,8 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
-import * as XLSX from 'xlsx'
 import api, { errorMessage } from '../api/client'
 
 const MAX_ROWS = 2000 // cap rendered rows so huge sheets don't freeze the browser
+
+// SheetJS is self-hosted (frontend/public/vendor/) and loaded on demand — no npm
+// dependency and no CDN, so it works fully offline. Resolves window.XLSX.
+let _xlsxPromise = null
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve(window.XLSX)
+  if (_xlsxPromise) return _xlsxPromise
+  _xlsxPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = '/vendor/xlsx.full.min.js'
+    s.onload = () => resolve(window.XLSX)
+    s.onerror = () => { _xlsxPromise = null; reject(new Error('Failed to load the spreadsheet viewer')) }
+    document.head.appendChild(s)
+  })
+  return _xlsxPromise
+}
 
 /**
  * Read-only viewer for spreadsheet files (.csv, .xlsx, .xls). Downloads the file
@@ -12,6 +27,7 @@ const MAX_ROWS = 2000 // cap rendered rows so huge sheets don't freeze the brows
  * Props: entry ({ name, path }), onClose()
  */
 export default function SpreadsheetModal({ entry, onClose }) {
+  const [xlsx, setXlsx] = useState(null)
   const [workbook, setWorkbook] = useState(null)
   const [active, setActive] = useState('')
   const [loading, setLoading] = useState(true)
@@ -21,10 +37,13 @@ export default function SpreadsheetModal({ entry, onClose }) {
     if (!entry) return
     setLoading(true)
     setError('')
-    api
-      .get('/files/download', { params: { path: entry.path }, responseType: 'arraybuffer' })
-      .then((res) => {
+    Promise.all([
+      loadXLSX(),
+      api.get('/files/download', { params: { path: entry.path }, responseType: 'arraybuffer' }),
+    ])
+      .then(([XLSX, res]) => {
         const wb = XLSX.read(new Uint8Array(res.data), { type: 'array' })
+        setXlsx(XLSX)
         setWorkbook(wb)
         setActive(wb.SheetNames[0] || '')
       })
@@ -54,10 +73,10 @@ export default function SpreadsheetModal({ entry, onClose }) {
 
   // Convert the active sheet to an array-of-arrays (header row + data rows).
   const rows = useMemo(() => {
-    if (!workbook || !active) return []
+    if (!xlsx || !workbook || !active) return []
     const sheet = workbook.Sheets[active]
-    return XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' })
-  }, [workbook, active])
+    return xlsx.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' })
+  }, [xlsx, workbook, active])
 
   const truncated = rows.length > MAX_ROWS + 1
   const shown = truncated ? rows.slice(0, MAX_ROWS + 1) : rows
