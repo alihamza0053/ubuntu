@@ -1,1 +1,0 @@
-# ServerHub backend application package
