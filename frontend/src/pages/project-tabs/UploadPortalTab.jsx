@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import api, { errorMessage } from '../../api/client'
+import FolderBrowser from '../../components/FolderBrowser'
 
 /**
  * Upload Portal tab: a public, password-protected page at
@@ -43,6 +44,7 @@ export default function UploadPortalTab({ project, onChanged }) {
   }
 
   return (
+   <div className="space-y-4">
     <div className="card space-y-4 max-w-2xl">
       <div>
         <h3 className="font-semibold">📤 Upload Portal</h3>
@@ -101,5 +103,22 @@ export default function UploadPortalTab({ project, onChanged }) {
 
       {msg && <p className="text-xs text-slate-400 break-words">{msg}</p>}
     </div>
+
+    {/* Files uploaded via the portal — overview + upload from the panel */}
+    <div className="card">
+      <div className="mb-3">
+        <h3 className="font-semibold">📁 Portal files</h3>
+        <p className="text-xs text-slate-500">
+          Everything uploaded through the portal lands in{' '}
+          <span className="font-mono">onedrivefiles/</span>. You can also upload here directly
+          (button or drag-and-drop) and open spreadsheets.
+        </p>
+      </div>
+      <FolderBrowser
+        rootPath={`${project.folder_path}/onedrivefiles`}
+        emptyHint="No files uploaded yet"
+      />
+    </div>
+   </div>
   )
 }
