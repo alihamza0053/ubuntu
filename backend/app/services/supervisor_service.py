@@ -8,6 +8,7 @@ restricted NOPASSWD rule installed by deploy/sudoers-serverhub.
 
 All subprocess calls use argument lists — never shell=True.
 """
+import re
 import subprocess
 from pathlib import Path
 
@@ -107,15 +108,38 @@ def remove_config(project_name: str) -> None:
     _supervisorctl("update")
 
 
+def set_autostart(project_name: str, enabled: bool) -> None:
+    """
+    Persist the desired run-state into the program's conf so a running dashboard
+    survives a reboot / supervisord restart (like a Docker `restart: always`),
+    while a stopped one stays down.
+
+    `autostart` is only evaluated when supervisord itself boots, so we just
+    rewrite the file on disk — no reread/update (which would disruptively
+    restart the running program right now).
+    """
+    path = config_path(project_name)
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    new = re.sub(r"(?m)^autostart=.*$", f"autostart={'true' if enabled else 'false'}", text)
+    if new != text:
+        path.write_text(new, encoding="utf-8")
+
+
 def start(project_name: str) -> str:
+    set_autostart(project_name, True)
     return _action("start", project_name)
 
 
 def stop(project_name: str) -> str:
-    return _action("stop", project_name)
+    out = _action("stop", project_name)
+    set_autostart(project_name, False)
+    return out
 
 
 def restart(project_name: str) -> str:
+    set_autostart(project_name, True)
     return _action("restart", project_name)
 
 

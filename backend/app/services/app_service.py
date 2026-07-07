@@ -11,6 +11,7 @@ The actual package install is performed by a vetted root helper script
 rule, so the panel never runs arbitrary commands as root.
 """
 import json
+import re
 import secrets
 import subprocess
 from pathlib import Path
@@ -701,11 +702,31 @@ def remove_program(instance: str) -> None:
     supervisor_service.run_supervisorctl("update")
 
 
+def set_autostart(instance: str, enabled: bool) -> None:
+    """
+    Persist the desired run-state into the app's conf so a running app (e.g. the
+    XFCE desktop) comes back after a reboot / supervisord restart, like the
+    Docker apps do. autostart is only read at supervisord boot, so we just
+    rewrite the file — no reread/update needed.
+    """
+    path = config_path(instance)
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    new = re.sub(r"(?m)^autostart=.*$", f"autostart={'true' if enabled else 'false'}", text)
+    if new != text:
+        path.write_text(new, encoding="utf-8")
+
+
 def control(instance: str, action: str) -> str:
+    if action in ("start", "restart"):
+        set_autostart(instance, True)
     result = supervisor_service.run_supervisorctl(action, program_name(instance))
     out = (result.stdout + result.stderr).strip()
     if "ERROR" in out and "already started" not in out:
         raise HTTPException(status_code=500, detail=f"supervisorctl {action}: {out}")
+    if action == "stop":
+        set_autostart(instance, False)
     return out
 
 

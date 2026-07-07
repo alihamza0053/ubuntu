@@ -9,6 +9,7 @@ env build) and app_service (per-program supervisor conf).
 Runs as the panel's `serverhub` user, which owns /srv/websites — no sudo for the
 venv/pip work; supervisorctl uses the existing restricted sudo rule.
 """
+import re
 import subprocess
 import threading
 from datetime import datetime
@@ -170,16 +171,33 @@ def write_program(site: Website) -> None:
     supervisor_service.run_supervisorctl("update")
 
 
+def set_autostart(name: str, enabled: bool) -> None:
+    """Persist desired run-state into the conf so a running app survives a reboot
+    / supervisord restart. autostart is only read at supervisord boot, so we just
+    rewrite the file — no reread/update needed."""
+    path = config_path(name)
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    new = re.sub(r"(?m)^autostart=.*$", f"autostart={'true' if enabled else 'false'}", text)
+    if new != text:
+        path.write_text(new, encoding="utf-8")
+
+
 def control(site: Website, action: str) -> str:
     """start / stop / restart the app; (re)writes the program if needed."""
     if action not in ("start", "stop", "restart"):
         raise HTTPException(status_code=400, detail="action must be start/stop/restart")
     if not config_path(site.name).exists():
         write_program(site)
+    if action in ("start", "restart"):
+        set_autostart(site.name, True)
     result = supervisor_service.run_supervisorctl(action, program_name(site.name))
     out = (result.stdout + result.stderr).strip()
     if "ERROR" in out and "already started" not in out:
         raise HTTPException(status_code=500, detail=f"supervisorctl {action}: {out}")
+    if action == "stop":
+        set_autostart(site.name, False)
     return out
 
 
