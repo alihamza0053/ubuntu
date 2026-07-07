@@ -119,6 +119,15 @@ async def run_script(
                     on_line = None
 
         exit_code = await process.wait()
+        # Reap any children the script leaked — headless Chrome/chromedriver that
+        # outlived the script (e.g. it errored before driver.quit()). The script
+        # ran in its own process group (start_new_session), so its pgid == its
+        # pid; signalling that group cleans up stragglers instead of letting them
+        # accumulate and eat RAM over many runs.
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
         _running.pop(script_id, None)
         if script_id in _stopped:
             _stopped.discard(script_id)
