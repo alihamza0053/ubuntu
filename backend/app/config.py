@@ -40,6 +40,12 @@ class Settings:
     WEBSITES_ROOT: Path = _env_path("WEBSITES_ROOT", "/srv/websites")
     NGINX_CONFIGS_ROOT: Path = _env_path("NGINX_CONFIGS_ROOT", "/srv/nginx-configs")
 
+    # --- Recycle bin ---
+    # Deleted project/website files are moved here (with metadata) instead of
+    # being erased, and auto-purged after TRASH_RETENTION_HOURS.
+    TRASH_ROOT: Path = _env_path("TRASH_ROOT", "/srv/serverhub/trash")
+    TRASH_RETENTION_HOURS: int = int(os.getenv("TRASH_RETENTION_HOURS", "24"))
+
     # --- OneDrive sync (read-only into /srv/onedrive; one company account) ---
     # The onedrive client syncs here; projects map to a subfolder of it.
     ONEDRIVE_ROOT: Path = _env_path("ONEDRIVE_ROOT", "/srv/onedrive")

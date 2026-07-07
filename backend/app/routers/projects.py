@@ -27,7 +27,7 @@ class DomainRequest(BaseModel):
     domain: str
 from ..models import NginxConfig
 from ..security import hash_password
-from ..services import nginx_service, supervisor_service, venv_service
+from ..services import nginx_service, supervisor_service, trash_service, venv_service
 from ..services.paths import (ensure_within, safe_join, validate_extension,
                               validate_filename)
 
@@ -307,9 +307,9 @@ def delete_file(
     path = safe_join(project_root(project), folder, validate_filename(filename))
     if not path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
-    path.unlink()
+    trash_service.move_to_trash(path)  # recoverable from the recycle bin for 24h
     sync_scripts(project, db)  # drop the script row if a .py was removed
-    return DetailResponse(detail=f"Deleted {folder}/{filename}")
+    return DetailResponse(detail=f"Moved {folder}/{filename} to the recycle bin")
 
 
 # ---------- OneDrive (read-only synced files) ----------

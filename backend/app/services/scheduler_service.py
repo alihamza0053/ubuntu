@@ -11,6 +11,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from ..database import SessionLocal
 from ..models import PipelineSchedule, Schedule, Script
+from . import trash_service
 from .pipeline_service import run_pipeline
 from .script_runner import run_script
 
@@ -91,10 +92,22 @@ def pipeline_next_run(project_id: int):
     return job.next_run_time if job else None
 
 
+def _purge_trash() -> None:
+    """Hourly job: drop recycle-bin items past the retention window."""
+    try:
+        trash_service.purge_expired()
+    except Exception:
+        pass
+
+
 def start() -> None:
     """Start the scheduler and load all active schedules (called on app startup)."""
     if not scheduler.running:
         scheduler.start()
+    # Auto-empty the recycle bin: sweep expired items hourly (and once now).
+    scheduler.add_job(_purge_trash, "interval", hours=1, id="trash-purge",
+                      replace_existing=True)
+    _purge_trash()
     db = SessionLocal()
     try:
         for schedule in db.query(Schedule).filter(Schedule.is_active.is_(True)).all():

@@ -22,7 +22,7 @@ from .security import decode_access_token
 from .routers import (apps, auth, dashboard, databases, docker, files, logs,
                       nginx, onedrive, packages, pipeline, portal, projects,
                       proxies, schedules, scripts, server, settings_router,
-                      terminal, websites)
+                      terminal, trash, websites)
 from .services import pipeline_service, scheduler_service
 
 # Create any missing tables on startup (idempotent), then run column migrations
@@ -106,6 +106,7 @@ app.include_router(proxies.router)
 app.include_router(databases.router)
 app.include_router(nginx.router)
 app.include_router(files.router)
+app.include_router(trash.router)               # recycle bin (deleted project/website files)
 app.include_router(logs.router)
 app.include_router(terminal.router)
 app.include_router(server.router)

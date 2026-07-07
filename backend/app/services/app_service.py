@@ -169,6 +169,15 @@ CATALOG: dict[str, dict] = {
         "icon": "🌐",
         "kind": "tool",
     },
+    "libreoffice": {
+        "name": "LibreOffice (headless)",
+        "description": "Headless LibreOffice Calc — lets dashboards recalculate & refresh "
+                       "Excel master files on the server (e.g. the Working Capital "
+                       "dashboard's Main Data Sheet) and convert xlsx/xls/csv. Installs the "
+                       "'soffice' engine; no web UI.",
+        "icon": "📗",
+        "kind": "tool",
+    },
     "chromium": {
         "name": "Chromium Browser",
         "description": "A full Chromium browser streamed to your tab over KasmVNC — "
@@ -561,7 +570,7 @@ CATEGORIES = [
     ("Files & Sync", ["onedrive", "filebrowser", "nextcloud", "syncthing"]),
     ("Media & Library", ["jellyfin", "emby", "navidrome", "audiobookshelf", "calibre-web",
                          "kavita", "qbittorrent"]),
-    ("Productivity", ["vaultwarden", "trilium", "memos", "vikunja", "mealie",
+    ("Productivity", ["libreoffice", "vaultwarden", "trilium", "memos", "vikunja", "mealie",
                       "actual", "grocy", "freshrss"]),
     ("Utilities", ["it-tools", "cyberchef", "searxng", "changedetection",
                    "excalidraw", "drawio", "stirling-pdf"]),

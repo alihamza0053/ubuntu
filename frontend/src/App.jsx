@@ -13,6 +13,7 @@ import Nginx from './pages/Nginx'
 import ProjectDetail from './pages/ProjectDetail'
 import Projects from './pages/Projects'
 import Proxies from './pages/Proxies'
+import RecycleBin from './pages/RecycleBin'
 import Server from './pages/Server'
 import Settings from './pages/Settings'
 import Terminal from './pages/Terminal'
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="terminal" element={<Guard perm="terminal"><Terminal /></Guard>} />
         <Route path="logs" element={<Guard perm="logs"><Logs /></Guard>} />
         <Route path="files" element={<Guard perm="files"><Files /></Guard>} />
+        <Route path="recycle-bin" element={<Guard perm="files"><RecycleBin /></Guard>} />
         <Route path="databases" element={<Guard perm="databases"><Databases /></Guard>} />
         <Route path="nginx" element={<Guard perm="nginx"><Nginx /></Guard>} />
         <Route path="server" element={<Guard perm="server"><Server /></Guard>} />

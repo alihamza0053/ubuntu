@@ -212,6 +212,23 @@ MIME
     echo "=================================================================="
     ;;
 
+  libreoffice)
+    echo "==> Installing LibreOffice Calc (headless)"
+    apt-get update || true
+    # --no-install-recommends keeps it lean (no GUI/help); libreoffice-core brings
+    # the 'soffice' engine used for headless recalc/convert.
+    apt-get install -y --no-install-recommends libreoffice-calc libreoffice-core \
+      || apt-get install -y libreoffice-calc || true
+    echo ""
+    echo "LibreOffice binary: $(command -v soffice || command -v libreoffice || echo 'NOT FOUND')"
+    (soffice --headless --version 2>/dev/null || libreoffice --headless --version 2>/dev/null) || true
+    echo "=================================================================="
+    echo " LibreOffice Calc (headless) installed."
+    echo " Dashboards can now refresh/recalculate Excel master files, and the"
+    echo " server can convert xlsx/xls/csv. Restart a dashboard to pick it up."
+    echo "=================================================================="
+    ;;
+
   flutter)
     echo "==> Installing Flutter SDK"
     apt-get install -y git curl unzip xz-utils zip \

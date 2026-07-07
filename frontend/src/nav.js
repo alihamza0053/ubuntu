@@ -10,6 +10,7 @@ export const NAV = [
   { to: '/terminal', label: 'Terminal', icon: '💻', perm: 'terminal' },
   { to: '/logs', label: 'Logs', icon: '📜', perm: 'logs' },
   { to: '/files', label: 'Files', icon: '📁', perm: 'files' },
+  { to: '/recycle-bin', label: 'Recycle Bin', icon: '🗑️', perm: 'files' },
   { to: '/databases', label: 'Databases', icon: '🗄️', perm: 'databases' },
   { to: '/nginx', label: 'Nginx', icon: '⚙️', perm: 'nginx' },
   { to: '/server', label: 'Server', icon: '🖥️', perm: 'server' },

@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from ..config import settings
 from ..deps import get_current_user
 from ..schemas import DetailResponse, FileReadResponse, FileWriteRequest
+from ..services import trash_service
 from ..services.paths import ensure_in_allowed_roots, validate_filename
 
 router = APIRouter(
@@ -166,6 +167,11 @@ def delete(body: DeleteRequest):
     target = ensure_in_allowed_roots(Path(body.path))
     if not target.exists():
         raise HTTPException(status_code=404, detail="Not found")
+    # Project/website files go to the recycle bin (restorable for 24h); other
+    # managed paths (e.g. nginx configs) are still deleted outright.
+    if trash_service.is_trashable(target):
+        trash_service.move_to_trash(target)
+        return DetailResponse(detail=f"Moved {target.name} to the recycle bin")
     if target.is_dir():
         shutil.rmtree(target)
     else:
