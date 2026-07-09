@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import api, { errorMessage } from '../api/client'
+import ProgressBar from './ProgressBar'
 
 const LABELS = {} // filled from catalog
 
@@ -19,6 +20,7 @@ export default function Backups() {
   const [busy, setBusy] = useState('')          // backup name being acted on
   const [restore, setRestore] = useState(null)  // { name, sel } restore dialog
   const [restarting, setRestarting] = useState(false)
+  const [transfer, setTransfer] = useState(null) // { dir, name, pct }
   const fileRef = useRef(null)
 
   const load = useCallback(() => {
@@ -52,7 +54,13 @@ export default function Backups() {
   }
 
   function download(name) {
-    api.get(`/settings/backups/${encodeURIComponent(name)}/download`, { responseType: 'blob' })
+    setTransfer({ dir: 'down', name, pct: 0 })
+    api.get(`/settings/backups/${encodeURIComponent(name)}/download`, {
+      responseType: 'blob',
+      onDownloadProgress: (e) => {
+        if (e.total) setTransfer((t) => t && { ...t, pct: Math.round((e.loaded / e.total) * 100) })
+      },
+    })
       .then((res) => {
         const url = URL.createObjectURL(res.data)
         const a = document.createElement('a')
@@ -60,6 +68,7 @@ export default function Backups() {
         URL.revokeObjectURL(url)
       })
       .catch((err) => setMsg({ text: errorMessage(err), error: true }))
+      .finally(() => setTransfer(null))
   }
 
   async function remove(name) {
@@ -77,16 +86,21 @@ export default function Backups() {
     const file = e.target.files?.[0]
     if (!file) return
     setBusy('import'); setMsg(null)
+    setTransfer({ dir: 'up', name: file.name, pct: 0 })
     try {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await api.post('/settings/backups/import', fd)
+      const res = await api.post('/settings/backups/import', fd, {
+        onUploadProgress: (e) => {
+          if (e.total) setTransfer((t) => t && { ...t, pct: Math.round((e.loaded / e.total) * 100) })
+        },
+      })
       setMsg({ text: `Imported ${res.data.name}` })
       load()
     } catch (err) {
       setMsg({ text: errorMessage(err), error: true })
     } finally {
-      setBusy(''); if (fileRef.current) fileRef.current.value = ''
+      setBusy(''); setTransfer(null); if (fileRef.current) fileRef.current.value = ''
     }
   }
 
@@ -136,6 +150,8 @@ export default function Backups() {
       {msg && (
         <p className={`text-sm ${msg.error ? 'text-red-400' : 'text-green-400'}`}>{msg.text}</p>
       )}
+
+      {transfer && <ProgressBar dir={transfer.dir} name={transfer.name} pct={transfer.pct} />}
 
       {restarting && (
         <p className="text-sm text-sky-300">

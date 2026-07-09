@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import SpreadsheetModal from './SpreadsheetModal'
 import EditorModal from './EditorModal'
+import ProgressBar from './ProgressBar'
 
 const EDITABLE_EXT = ['.py', '.txt', '.json', '.yaml', '.yml', '.md', '.toml', '.cfg', '.ini', '.log', '.sh', '.js', '.html', '.css', '.xml', '.sql', '.php', '.conf']
 function isEditable(name) {
@@ -43,6 +44,7 @@ export default function FolderBrowser({ rootPath, accept, viewer = true, editabl
   const [viewing, setViewing] = useState(null)
   const [editing, setEditing] = useState(null)
   const [dragOver, setDragOver] = useState(false)
+  const [transfer, setTransfer] = useState(null)   // { dir, name, pct }
   const inputRef = useRef(null)
 
   const path = data.path
@@ -68,16 +70,30 @@ export default function FolderBrowser({ rootPath, accept, viewer = true, editabl
     if (!fileList.length) return
     const form = new FormData()
     for (const f of fileList) form.append('files', f)
+    const name = fileList.length > 1 ? `${fileList.length} files` : fileList[0].name
     setBusy(true)
+    setTransfer({ dir: 'up', name, pct: 0 })
     try {
-      await api.post('/files/upload', form, { params: { path } })
+      await api.post('/files/upload', form, {
+        params: { path },
+        onUploadProgress: (e) => {
+          if (e.total) setTransfer((t) => t && { ...t, pct: Math.round((e.loaded / e.total) * 100) })
+        },
+      })
       browse(path)
       onChanged && onChanged()
-    } catch (e) { alert(errorMessage(e)) } finally { setBusy(false) }
+    } catch (e) { alert(errorMessage(e)) } finally { setBusy(false); setTransfer(null) }
   }
 
   function download(entry) {
-    api.get('/files/download', { params: { path: entry.path }, responseType: 'blob' })
+    setTransfer({ dir: 'down', name: entry.name, pct: 0 })
+    api.get('/files/download', {
+      params: { path: entry.path },
+      responseType: 'blob',
+      onDownloadProgress: (e) => {
+        if (e.total) setTransfer((t) => t && { ...t, pct: Math.round((e.loaded / e.total) * 100) })
+      },
+    })
       .then((res) => {
         const url = URL.createObjectURL(res.data)
         const a = document.createElement('a')
@@ -87,6 +103,7 @@ export default function FolderBrowser({ rootPath, accept, viewer = true, editabl
         URL.revokeObjectURL(url)
       })
       .catch((e) => alert(errorMessage(e)))
+      .finally(() => setTransfer(null))
   }
 
   async function remove(entry) {
@@ -148,6 +165,8 @@ export default function FolderBrowser({ rootPath, accept, viewer = true, editabl
       </div>
 
       {err && <p className="text-red-400 text-sm mb-2">{err}</p>}
+
+      {transfer && <ProgressBar dir={transfer.dir} name={transfer.name} pct={transfer.pct} />}
 
       {/* Drop zone wraps the listing */}
       <div
