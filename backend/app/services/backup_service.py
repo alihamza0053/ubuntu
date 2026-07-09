@@ -81,12 +81,33 @@ def _sqlite_snapshot(src: Path, dst: Path) -> None:
         source.close()
 
 
-def _tar_filter(info: tarfile.TarInfo):
-    """Drop regenerable/huge subdirs from directory components."""
-    parts = Path(info.name).parts
-    if any(p in _SKIP_DIRS for p in parts):
-        return None
-    return info
+def _add_tree(tar: tarfile.TarFile, src: Path, arcname: str) -> None:
+    """
+    Recursively add a file/dir to the archive, but:
+      - skip regenerable/huge dirs (venv, node_modules, …), and
+      - skip anything the panel user can't read.
+
+    That last part matters for the `apps` component: Docker apps like self-hosted
+    Supabase keep a Postgres data dir there owned by the container's postgres user
+    at mode 0700. The panel's `serverhub` user can't read it, so a naive tar walk
+    dies with "[Errno 13] Permission denied". A live DB data dir can't be safely
+    file-copied anyway (use a DB dump), so skipping it is the right behaviour.
+    """
+    if src.name in _SKIP_DIRS:
+        return
+    try:
+        if src.is_symlink():
+            tar.add(src, arcname=arcname, recursive=False)
+            return
+        if src.is_dir():
+            tar.add(src, arcname=arcname, recursive=False)   # directory entry only
+            for child in sorted(src.iterdir()):               # may raise PermissionError
+                _add_tree(tar, child, f"{arcname}/{child.name}")
+        else:
+            tar.add(src, arcname=arcname, recursive=False)
+    except (PermissionError, FileNotFoundError, OSError):
+        # Unreadable (container-owned) or vanished entry — skip, keep the backup going.
+        return
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +153,7 @@ def create_backup(components: list[str]) -> dict:
                     src = _component_path(c)
                     if not src or not src.exists():
                         continue
-                    tar.add(src, arcname=c, filter=_tar_filter)
+                    _add_tree(tar, src, c)
                     included.append(c)
 
             manifest = {
