@@ -14,8 +14,9 @@ from fastapi import (APIRouter, Depends, HTTPException, Query, WebSocket,
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..database import get_db
+from ..database import SessionLocal, get_db
 from ..deps import authenticate_websocket, get_current_user
+from ..models import Project
 from ..services.streaming import run_command, stream_command
 from .projects import get_project_or_404
 
@@ -27,19 +28,47 @@ ws_router = APIRouter(tags=["packages"])   # pip-install WS authenticates via ?t
 _SPEC = re.compile(r"^[A-Za-z0-9_.\-\[\]=<>!~,+*]+$")
 
 
+def _project_pip(project_name: str) -> list[str]:
+    """
+    Pip command targeting the PROJECT's own venv (where its Streamlit dashboard
+    runs), so installed packages actually reach the dashboard. Falls back to the
+    shared scripts interpreter only when the project has no venv yet.
+    """
+    venv_pip = settings.PROJECTS_ROOT / project_name / "venv" / "bin" / "pip"
+    if venv_pip.exists():
+        return [str(venv_pip)]
+    return [settings.PYTHON_BIN, "-m", "pip"]
+
+
+def _project_python(project_name: str) -> str:
+    """The project venv's python if present, else the shared interpreter."""
+    venv_py = settings.PROJECTS_ROOT / project_name / "venv" / "bin" / "python"
+    return str(venv_py) if venv_py.exists() else settings.PYTHON_BIN
+
+
+def _project_name(project_id: int) -> str | None:
+    """Look up a project's name from a WebSocket handler (no request-scoped db)."""
+    db = SessionLocal()
+    try:
+        project = db.get(Project, project_id)
+        return project.name if project else None
+    finally:
+        db.close()
+
+
 @router.get("/{project_id}/packages")
 async def list_packages(project_id: int, db: Session = Depends(get_db)):
-    """List packages installed in the scripts' Python environment."""
-    get_project_or_404(project_id, db)
-    code, out = await run_command(
-        [settings.PYTHON_BIN, "-m", "pip", "list", "--format=json"], timeout=60)
+    """List packages installed in the project's Python environment."""
+    project = get_project_or_404(project_id, db)
+    pip = _project_pip(project.name)
+    code, out = await run_command([*pip, "list", "--format=json"], timeout=60)
     if code != 0:
         raise HTTPException(status_code=500, detail=f"pip list failed: {out[:300]}")
     try:
         packages = json.loads(out)
     except ValueError:
         packages = []
-    return {"python": settings.PYTHON_BIN, "packages": packages}
+    return {"python": pip[0], "packages": packages}
 
 
 @ws_router.websocket("/ws/projects/{project_id}/pip-install")
@@ -59,11 +88,17 @@ async def pip_install_ws(websocket: WebSocket, project_id: int, spec: str = Quer
     async def send(line: str):
         await websocket.send_text(line)
 
-    await send(f"[serverhub] pip install {' '.join(parts)} …")
+    name = _project_name(project_id)
+    if name is None:
+        await send("[serverhub] project not found")
+        await websocket.close()
+        return
+    pip = _project_pip(name)
+
+    await send(f"[serverhub] pip install {' '.join(parts)}  (into {pip[0]}) …")
     try:
-        code = await stream_command(
-            [settings.PYTHON_BIN, "-m", "pip", "install", "--upgrade", *parts], send)
-        await send("[serverhub] ✓ done" if code == 0
+        code = await stream_command([*pip, "install", "--upgrade", *parts], send)
+        await send("[serverhub] ✓ done — restart the dashboard to use it" if code == 0
                    else f"[serverhub] pip install failed (exit {code})")
     except WebSocketDisconnect:
         return
@@ -81,15 +116,18 @@ async def playwright_install_ws(websocket: WebSocket, project_id: int):
     async def send(line: str):
         await websocket.send_text(line)
 
+    name = _project_name(project_id)
+    python = _project_python(name) if name else settings.PYTHON_BIN
+
     await send("[serverhub] playwright install chromium …")
     try:
         code = await stream_command(
-            [settings.PYTHON_BIN, "-m", "playwright", "install", "chromium"], send)
+            [python, "-m", "playwright", "install", "chromium"], send)
         if code == 0:
             await send("[serverhub] ✓ browsers installed — re-run your script")
         else:
             await send(f"[serverhub] failed (exit {code}). If it's a missing system "
-                       f"library, run in Terminal:  sudo {settings.PYTHON_BIN} -m playwright install-deps")
+                       f"library, run in Terminal:  sudo {python} -m playwright install-deps")
     except WebSocketDisconnect:
         return
     await websocket.close()
