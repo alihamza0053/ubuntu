@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import api from '../api/client'
 import ProjectCard from '../components/ProjectCard'
 import WebsiteCard from '../components/WebsiteCard'
+import { useAuth } from '../context/AuthContext'
 
 /** Small stat widget (CPU / RAM / Disk / Uptime). */
 function StatWidget({ label, value, sub, percent }) {
@@ -23,21 +24,29 @@ function StatWidget({ label, value, sub, percent }) {
 }
 
 export default function Home() {
+  const { can } = useAuth()
   const [stats, setStats] = useState(null)
   const [projects, setProjects] = useState([])
   const [websites, setWebsites] = useState([])
   const [loading, setLoading] = useState(true)
 
+  // Users without the projects/websites tabs must not see (or fetch) them here.
+  const showProjects = can('projects')
+  const showWebsites = can('websites')
+
   const refresh = useCallback(() => {
     // with_status=true asks the backend for live supervisor states
-    api.get('/projects', { params: { with_status: true } }).then((res) => setProjects(res.data))
+    if (showProjects) {
+      api.get('/projects', { params: { with_status: true } }).then((res) => setProjects(res.data))
+    }
     api.get('/server/stats').then((res) => setStats(res.data)).catch(() => {})
-  }, [])
+  }, [showProjects])
 
   useEffect(() => {
     Promise.allSettled([
-      api.get('/projects', { params: { with_status: true } }).then((res) => setProjects(res.data)),
-      api.get('/websites').then((res) => setWebsites(res.data)),
+      showProjects &&
+        api.get('/projects', { params: { with_status: true } }).then((res) => setProjects(res.data)),
+      showWebsites && api.get('/websites').then((res) => setWebsites(res.data)),
       api.get('/server/stats').then((res) => setStats(res.data)),
     ]).finally(() => setLoading(false))
 
@@ -45,7 +54,7 @@ export default function Home() {
       api.get('/server/stats').then((res) => setStats(res.data)).catch(() => {})
     }, 10000) // refresh stats every 10s
     return () => clearInterval(interval)
-  }, [])
+  }, [showProjects, showWebsites])
 
   return (
     <div className="space-y-6">
@@ -73,7 +82,8 @@ export default function Home() {
         <StatWidget label="Uptime" value={stats ? stats.uptime.human : '…'} />
       </div>
 
-      {/* Project cards */}
+      {/* Project cards — only for users with the projects tab */}
+      {showProjects && (
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold">Python Projects</h3>
@@ -98,8 +108,10 @@ export default function Home() {
           </div>
         )}
       </div>
+      )}
 
-      {/* Website cards */}
+      {/* Website cards — only for users with the websites tab */}
+      {showWebsites && (
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold">Websites</h3>
@@ -115,6 +127,7 @@ export default function Home() {
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }

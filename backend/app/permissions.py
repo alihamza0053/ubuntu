@@ -56,8 +56,9 @@ _PREFIX_TAB: list[tuple[str, str]] = [
 _PREFIX_TAB.sort(key=lambda x: len(x[0]), reverse=True)
 
 # Read-only GET endpoints any authenticated user may hit (the Dashboard landing
-# page aggregates these). Exact path match.
-_ALLOW_ANY_GET = {"/api/server/stats", "/api/projects", "/api/websites"}
+# page needs server stats). Exact path match. Project/website lists are NOT
+# here: the Dashboard only shows them to users who hold those tabs.
+_ALLOW_ANY_GET = {"/api/server/stats"}
 
 
 def parse_permissions(raw: str | None) -> list[str]:
