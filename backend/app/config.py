@@ -41,8 +41,9 @@ class Settings:
     NGINX_CONFIGS_ROOT: Path = _env_path("NGINX_CONFIGS_ROOT", "/srv/nginx-configs")
     # File Manager shortcut. It is not shown in the default roots listing.
     OPT_ROOT: Path = _env_path("OPT_ROOT", "/opt")
-    # Local source workspaces for Docker-based Shopify applications.
-    SHOPIFY_APPS_ROOT: Path = _env_path("SHOPIFY_APPS_ROOT", "/opt/shopify-apps")
+    # Local source workspaces for Docker-based Shopify applications. This lives
+    # under the panel's own managed directory, not in a separate system area.
+    SHOPIFY_APPS_ROOT: Path = _env_path("SHOPIFY_APPS_ROOT", "/srv/serverhub/shopify-apps")
 
     # --- Recycle bin ---
     # Deleted project/website files are moved here (with metadata) instead of

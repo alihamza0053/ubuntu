@@ -113,8 +113,8 @@ echo "==> Fixing ownership (excluding apps/ — Docker apps own their own data)"
 # keep their data there and Postgres refuses a data dir it doesn't own. A blanket
 # 'chown -R' over it breaks Postgres with "pg_filenode.map: Permission denied".
 find "$PANEL_ROOT" -path "$PANEL_ROOT/apps" -prune -o -exec chown "$PANEL_USER:$PANEL_USER" {} +
-mkdir -p /opt/shopify-apps
-chown -R "$PANEL_USER:$PANEL_USER" /opt/shopify-apps
+mkdir -p "$PANEL_ROOT/shopify-apps"
+chown -R "$PANEL_USER:$PANEL_USER" "$PANEL_ROOT/shopify-apps"
 
 echo "==> Restarting panel"
 supervisorctl restart serverhub

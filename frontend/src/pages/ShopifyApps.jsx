@@ -35,7 +35,7 @@ export default function ShopifyApps() {
 
   return <div className="space-y-4">
     <div><h2 className="text-2xl font-bold">Shopify Apps</h2>
-      <p className="text-sm text-slate-500 mt-1">Local source lives in <span className="font-mono">/opt/shopify-apps</span>. Upload a ZIP without node_modules, then deploy its Dockerfile on this VPS.</p>
+      <p className="text-sm text-slate-500 mt-1">Panel-managed local source storage. Upload a ZIP without node_modules, then deploy its Dockerfile on this VPS.</p>
     </div>
     <form onSubmit={createWorkspace} className="card flex gap-2 items-center flex-wrap">
       <input className="input max-w-sm" placeholder="app name, e.g. size-chart" value={name} onChange={(e) => setName(e.target.value)} />

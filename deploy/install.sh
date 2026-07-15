@@ -85,8 +85,8 @@ if [ ! -f "$PANEL_ROOT/backend/.env" ]; then
 fi
 
 echo "==> Permissions"
-mkdir -p /opt/shopify-apps
-chown -R "$PANEL_USER:$PANEL_USER" /srv/projects /srv/websites /srv/nginx-configs /opt/shopify-apps
+mkdir -p "$PANEL_ROOT/shopify-apps"
+chown -R "$PANEL_USER:$PANEL_USER" /srv/projects /srv/websites /srv/nginx-configs "$PANEL_ROOT/shopify-apps"
 # $PANEL_ROOT but NOT $PANEL_ROOT/apps — Docker apps (e.g. self-hosted Supabase)
 # own their data there; chowning Postgres's data dir breaks it.
 find "$PANEL_ROOT" -path "$PANEL_ROOT/apps" -prune -o -exec chown "$PANEL_USER:$PANEL_USER" {} +
