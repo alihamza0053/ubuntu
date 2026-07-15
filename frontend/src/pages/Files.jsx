@@ -29,16 +29,22 @@ export default function Files() {
   const [editorPath, setEditorPath] = useState(null)
   const [error, setError] = useState('')
   const inputRef = useRef(null)
+  const browseRequest = useRef(0)
 
   const browse = useCallback((target) => {
+    const requestId = ++browseRequest.current
     setError('')
     api
       .get('/files/browse', { params: { path: target } })
       .then((res) => {
+        if (requestId !== browseRequest.current) return
         setData(res.data)
         setPath(res.data.path)
       })
-      .catch((err) => setError(errorMessage(err)))
+      .catch((err) => {
+        // Ignore an older request that finished after the user navigated away.
+        if (requestId === browseRequest.current) setError(errorMessage(err))
+      })
   }, [])
 
   useEffect(() => {
