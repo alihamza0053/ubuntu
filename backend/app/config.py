@@ -39,6 +39,8 @@ class Settings:
     PROJECTS_ROOT: Path = _env_path("PROJECTS_ROOT", "/srv/projects")
     WEBSITES_ROOT: Path = _env_path("WEBSITES_ROOT", "/srv/websites")
     NGINX_CONFIGS_ROOT: Path = _env_path("NGINX_CONFIGS_ROOT", "/srv/nginx-configs")
+    # File Manager shortcut. It is not shown in the default roots listing.
+    OPT_ROOT: Path = _env_path("OPT_ROOT", "/opt")
 
     # --- Recycle bin ---
     # Deleted project/website files are moved here (with metadata) instead of
