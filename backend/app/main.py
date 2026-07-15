@@ -22,7 +22,7 @@ from .security import decode_access_token
 from .routers import (apps, auth, dashboard, databases, docker, files, logs,
                       nginx, onedrive, packages, pipeline, portal, projects,
                       proxies, schedules, scripts, server, settings_router,
-                      terminal, trash, websites)
+                      shopify_apps, terminal, trash, websites)
 from .services import pipeline_service, scheduler_service
 
 # Create any missing tables on startup (idempotent), then run column migrations
@@ -113,6 +113,7 @@ app.include_router(server.router)
 app.include_router(server.ws_router)          # apt live-stream WebSocket
 app.include_router(apps.router)
 app.include_router(apps.ws_router)            # app install WebSocket
+app.include_router(shopify_apps.router)
 app.include_router(onedrive.router)           # OneDrive setup (under the Apps tab)
 app.include_router(docker.router)
 app.include_router(docker.ws_router)          # container logs WebSocket

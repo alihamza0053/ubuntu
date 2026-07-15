@@ -16,6 +16,7 @@ import Proxies from './pages/Proxies'
 import RecycleBin from './pages/RecycleBin'
 import Server from './pages/Server'
 import Settings from './pages/Settings'
+import ShopifyApps from './pages/ShopifyApps'
 import Terminal from './pages/Terminal'
 import WebsiteDetail from './pages/WebsiteDetail'
 import Websites from './pages/Websites'
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="websites/:id" element={<Guard perm="websites"><WebsiteDetail /></Guard>} />
         <Route path="proxies" element={<Guard perm="proxies"><Proxies /></Guard>} />
         <Route path="apps" element={<Guard perm="apps"><Apps /></Guard>} />
+        <Route path="shopify-apps" element={<Guard perm="shopify"><ShopifyApps /></Guard>} />
         <Route path="docker" element={<Guard perm="docker"><Docker /></Guard>} />
         <Route path="terminal" element={<Guard perm="terminal"><Terminal /></Guard>} />
         <Route path="logs" element={<Guard perm="logs"><Logs /></Guard>} />
