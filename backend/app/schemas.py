@@ -83,6 +83,8 @@ class ProjectOut(BaseModel):
     domain: str | None
     onedrive_path: str | None = None
     portal_username: str | None = None
+    # Admin-hidden: only ever True in responses admins see (filtered otherwise)
+    hidden: bool = False
     created_at: datetime
     # Extra computed fields for dashboard cards
     file_counts: dict[str, int] = {}

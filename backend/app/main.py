@@ -17,7 +17,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .config import settings
 from .database import Base, SessionLocal, engine, run_migrations
 from .models import User
-from .permissions import user_can
+from .permissions import targets_hidden_entity, user_can
 from .security import decode_access_token
 from .routers import (apps, auth, dashboard, databases, docker, files, logs,
                       nginx, onedrive, packages, pipeline, portal, projects,
@@ -79,12 +79,18 @@ class PermissionMiddleware(BaseHTTPMiddleware):
                 db = SessionLocal()
                 try:
                     user = db.query(User).filter(User.username == username).first()
+                    if user and not user_can(user, path, request.method):
+                        return JSONResponse(
+                            {"detail": "You don't have access to this section."},
+                            status_code=403)
+                    # Admin-hidden projects/websites/apps look like they don't
+                    # exist to non-admins, even when addressed by id.
+                    if (user and not user.is_admin
+                            and targets_hidden_entity(db, path)):
+                        return JSONResponse({"detail": "Not found"},
+                                            status_code=404)
                 finally:
                     db.close()
-                if user and not user_can(user, path, request.method):
-                    return JSONResponse(
-                        {"detail": "You don't have access to this section."},
-                        status_code=403)
         return await call_next(request)
 
 

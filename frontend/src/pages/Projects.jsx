@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import ProjectCard from '../components/ProjectCard'
+import { useAuth } from '../context/AuthContext'
 
 export default function Projects() {
+  const { isAdmin } = useAuth()
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -34,6 +36,15 @@ export default function Projects() {
       setError(errorMessage(err))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function toggleHidden(project) {
+    try {
+      await api.put(`/projects/${project.id}/hidden`, { hidden: !project.hidden })
+      refresh()
+    } catch (err) {
+      alert(errorMessage(err))
     }
   }
 
@@ -80,6 +91,15 @@ export default function Projects() {
               >
                 🗑
               </button>
+              {isAdmin && (
+                <button
+                  onClick={() => toggleHidden(p)}
+                  className="absolute top-3 right-9 -translate-y-9 text-slate-600 hover:text-sky-400 text-xs"
+                  title={p.hidden ? 'Hidden from non-admins — click to unhide' : 'Hide from non-admins'}
+                >
+                  {p.hidden ? '🙈' : '👁'}
+                </button>
+              )}
             </div>
           ))}
         </div>

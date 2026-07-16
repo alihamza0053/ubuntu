@@ -12,8 +12,9 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
-from ..deps import authenticate_websocket, get_current_user
-from ..models import NginxConfig, Website
+from ..deps import authenticate_websocket, get_current_user, require_admin
+from ..models import NginxConfig, User, Website
+from ..permissions import hidden_for
 from ..schemas import DetailResponse, FileInfo
 from ..services import nginx_service, webapp_service, website_service
 from ..services.streaming import tail_file
@@ -71,6 +72,7 @@ def _to_out(site: Website) -> dict:
         "folder_path": site.folder_path, "domain": site.domain,
         "db_name": site.db_name, "created_at": site.created_at,
         "run_command": site.run_command, "port": site.port, "status": site.status,
+        "hidden": site.hidden,
     }
     if site.type == "python":
         try:
@@ -82,8 +84,27 @@ def _to_out(site: Website) -> dict:
 
 
 @router.get("")
-def list_websites(db: Session = Depends(get_db)):
-    return [_to_out(s) for s in db.query(Website).all()]
+def list_websites(db: Session = Depends(get_db),
+                  user: User = Depends(get_current_user)):
+    query = db.query(Website)
+    if not user.is_admin:   # admin-hidden websites are invisible to others
+        query = query.filter(Website.hidden.is_(False))
+    return [_to_out(s) for s in query.all()]
+
+
+class HiddenRequest(BaseModel):
+    hidden: bool
+
+
+@router.put("/{website_id}/hidden", response_model=DetailResponse,
+            dependencies=[Depends(require_admin)])
+def set_hidden(website_id: int, body: HiddenRequest, db: Session = Depends(get_db)):
+    """Hide/unhide this website for non-admin users (admin only)."""
+    site = get_website_or_404(website_id, db)
+    site.hidden = body.hidden
+    db.commit()
+    return DetailResponse(detail=f"Website '{site.name}' is now "
+                                 f"{'hidden from' if body.hidden else 'visible to'} non-admins")
 
 
 @router.post("", status_code=201)
@@ -284,7 +305,7 @@ async def website_logs_ws(websocket: WebSocket, website_id: int, source: str = "
         site = db.get(Website, website_id)
     finally:
         db.close()
-    if site is None:
+    if site is None or hidden_for(user, site):
         await websocket.send_text("[serverhub] website not found")
         await websocket.close()
         return

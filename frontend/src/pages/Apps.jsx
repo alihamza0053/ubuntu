@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import LiveLog from '../components/LiveLog'
 import StatusBadge from '../components/StatusBadge'
+import { useAuth } from '../context/AuthContext'
 
 const CATEGORY_ORDER = [
   'Infrastructure', 'Database UIs', 'Developer', 'CMS & CRM', 'Files & Sync',
@@ -227,6 +228,7 @@ export default function Apps() {
 
 /** One installed app: status, controls, domain/SSL, password, logs, uninstall. */
 function InstalledApp({ app, onChanged }) {
+  const { isAdmin } = useAuth()
   const [domain, setDomain] = useState(app.domain || '')
   const [showLog, setShowLog] = useState(false)
   const [msg, setMsg] = useState('')
@@ -303,6 +305,15 @@ function InstalledApp({ app, onChanged }) {
     }
   }
 
+  async function toggleHidden() {
+    try {
+      await api.put(`/apps/${app.id}/hidden`, { hidden: !app.hidden })
+      onChanged()
+    } catch (err) {
+      alert(errorMessage(err))
+    }
+  }
+
   async function uninstall() {
     if (!window.confirm(`Remove ${app.name} from the panel? (the installed program stays on disk)`)) return
     try {
@@ -322,7 +333,14 @@ function InstalledApp({ app, onChanged }) {
           <span className="text-xl">{app.icon}</span>
           <span className="font-semibold truncate">{app.name}</span>
         </div>
-        {isRunnable && <StatusBadge status={app.status} />}
+        <span className="flex items-center gap-1.5">
+          {app.hidden && (
+            <span className="badge bg-slate-500/15 text-slate-400" title="Only admins can see this app">
+              🙈 hidden
+            </span>
+          )}
+          {isRunnable && <StatusBadge status={app.status} />}
+        </span>
       </div>
 
       {isRunnable ? (
@@ -433,7 +451,13 @@ function InstalledApp({ app, onChanged }) {
 
       {msg && <p className="mt-2 text-xs text-slate-400 break-words">{msg}</p>}
 
-      <div className="mt-3 text-right">
+      <div className="mt-3 flex justify-end gap-3">
+        {isAdmin && (
+          <button onClick={toggleHidden} className="text-xs text-slate-400 hover:underline"
+            title={app.hidden ? 'Hidden from non-admins — click to unhide' : 'Hide from non-admins'}>
+            {app.hidden ? '🙈 unhide' : '👁 hide'}
+          </button>
+        )}
         <button onClick={uninstall} className="text-xs text-red-400 hover:underline">remove</button>
       </div>
     </div>

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import WebsiteCard from '../components/WebsiteCard'
+import { useAuth } from '../context/AuthContext'
 
 export default function Websites() {
+  const { isAdmin } = useAuth()
   const [sites, setSites] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -27,6 +29,15 @@ export default function Websites() {
       refresh()
     } catch (err) {
       setError(errorMessage(err))
+    }
+  }
+
+  async function toggleHidden(site) {
+    try {
+      await api.put(`/websites/${site.id}/hidden`, { hidden: !site.hidden })
+      refresh()
+    } catch (err) {
+      alert(errorMessage(err))
     }
   }
 
@@ -57,7 +68,10 @@ export default function Websites() {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {sites.map((s) => <WebsiteCard key={s.id} site={s} onDelete={remove} />)}
+          {sites.map((s) => (
+            <WebsiteCard key={s.id} site={s} onDelete={remove}
+              onToggleHidden={isAdmin ? toggleHidden : undefined} />
+          ))}
         </div>
       )}
 

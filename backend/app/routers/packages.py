@@ -46,12 +46,16 @@ def _project_python(project_name: str) -> str:
     return str(venv_py) if venv_py.exists() else settings.PYTHON_BIN
 
 
-def _project_name(project_id: int) -> str | None:
-    """Look up a project's name from a WebSocket handler (no request-scoped db)."""
+def _project_name(project_id: int, user=None) -> str | None:
+    """Look up a project's name from a WebSocket handler (no request-scoped db).
+    Admin-hidden projects resolve to None for non-admin users."""
+    from ..permissions import hidden_for
     db = SessionLocal()
     try:
         project = db.get(Project, project_id)
-        return project.name if project else None
+        if project is None or (user is not None and hidden_for(user, project)):
+            return None
+        return project.name
     finally:
         db.close()
 
@@ -88,7 +92,7 @@ async def pip_install_ws(websocket: WebSocket, project_id: int, spec: str = Quer
     async def send(line: str):
         await websocket.send_text(line)
 
-    name = _project_name(project_id)
+    name = _project_name(project_id, user)
     if name is None:
         await send("[serverhub] project not found")
         await websocket.close()
@@ -116,7 +120,7 @@ async def playwright_install_ws(websocket: WebSocket, project_id: int):
     async def send(line: str):
         await websocket.send_text(line)
 
-    name = _project_name(project_id)
+    name = _project_name(project_id, user)
     python = _project_python(name) if name else settings.PYTHON_BIN
 
     await send("[serverhub] playwright install chromium …")

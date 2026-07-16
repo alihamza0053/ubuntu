@@ -8,7 +8,7 @@ const TYPE_STYLES = {
 }
 
 /** Home / Websites grid card for one website. */
-export default function WebsiteCard({ site, onDelete }) {
+export default function WebsiteCard({ site, onDelete, onToggleHidden }) {
   const navigate = useNavigate()
   const liveUrl = site.domain ? `http://${site.domain}` : null
 
@@ -18,7 +18,14 @@ export default function WebsiteCard({ site, onDelete }) {
         <Link to={`/websites/${site.id}`} className="text-lg font-semibold text-sky-300 hover:underline">
           {site.name}
         </Link>
-        <span className={`badge ${TYPE_STYLES[site.type] || ''}`}>{site.type.toUpperCase()}</span>
+        <span className="flex items-center gap-1.5">
+          {site.hidden && (
+            <span className="badge bg-slate-500/15 text-slate-400" title="Only admins can see this website">
+              🙈 hidden
+            </span>
+          )}
+          <span className={`badge ${TYPE_STYLES[site.type] || ''}`}>{site.type.toUpperCase()}</span>
+        </span>
       </div>
 
       <dl className="mt-3 space-y-1.5 text-sm">
@@ -52,6 +59,15 @@ export default function WebsiteCard({ site, onDelete }) {
           <button className="btn-secondary" onClick={() => navigate(`/websites/${site.id}?tab=run`)}>▶ Run</button>
         )}
         <button className="btn-secondary" onClick={() => navigate(`/websites/${site.id}?tab=database`)}>🗄 Database</button>
+        {onToggleHidden && (
+          <button
+            className="btn-secondary"
+            onClick={() => onToggleHidden(site)}
+            title={site.hidden ? 'Hidden from non-admins — click to unhide' : 'Hide from non-admins'}
+          >
+            {site.hidden ? '🙈' : '👁'}
+          </button>
+        )}
         {onDelete && (
           <button className="btn-secondary text-red-400" onClick={() => onDelete(site)}>🗑</button>
         )}

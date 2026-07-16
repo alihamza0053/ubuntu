@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..database import get_db
-from ..deps import get_current_user
-from ..models import Project, Script
+from ..deps import get_current_user, require_admin
+from ..models import Project, Script, User
 from pydantic import BaseModel
 
 from ..schemas import (DetailResponse, FileInfo, ProjectCreate, ProjectFilesOut,
@@ -130,8 +130,27 @@ def sync_scripts(project: Project, db: Session) -> None:
 def list_projects(
     with_status: bool = Query(False, description="Also query live supervisor status"),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    return [project_to_out(p, db, with_status) for p in db.query(Project).all()]
+    query = db.query(Project)
+    if not user.is_admin:   # admin-hidden projects are invisible to others
+        query = query.filter(Project.hidden.is_(False))
+    return [project_to_out(p, db, with_status) for p in query.all()]
+
+
+class HiddenRequest(BaseModel):
+    hidden: bool
+
+
+@router.put("/{project_id}/hidden", response_model=DetailResponse,
+            dependencies=[Depends(require_admin)])
+def set_hidden(project_id: int, body: HiddenRequest, db: Session = Depends(get_db)):
+    """Hide/unhide this project for non-admin users (admin only)."""
+    project = get_project_or_404(project_id, db)
+    project.hidden = body.hidden
+    db.commit()
+    return DetailResponse(detail=f"Project '{project.name}' is now "
+                                 f"{'hidden from' if body.hidden else 'visible to'} non-admins")
 
 
 @router.post("", response_model=ProjectOut, status_code=201)

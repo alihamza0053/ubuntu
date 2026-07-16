@@ -19,8 +19,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
-from ..deps import authenticate_websocket, get_current_user
-from ..models import App, NginxConfig
+from ..deps import authenticate_websocket, get_current_user, require_admin
+from ..models import App, NginxConfig, User
+from ..permissions import hidden_for
 from ..schemas import DetailResponse
 from ..services import app_service, nginx_service
 from ..services.activity import log_activity
@@ -52,7 +53,7 @@ def _to_out(app: App, live_status: bool = False) -> dict:
         "name": app.name, "kind": app.kind, "multi": entry.get("multi", False),
         "port": app.port, "domain": app.domain, "status": app.status,
         "secret": app.secret, "icon": entry.get("icon", "📦"),
-        "image": app.image,
+        "image": app.image, "hidden": app.hidden,
         "websocket": entry.get("websocket", False),
         "username": entry.get("username"),
         "web_ui": entry.get("web_ui", True),
@@ -102,8 +103,12 @@ def generate_password():
 
 
 @router.get("")
-def list_apps(db: Session = Depends(get_db)):
-    apps = db.query(App).all()
+def list_apps(db: Session = Depends(get_db),
+              user: User = Depends(get_current_user)):
+    query = db.query(App)
+    if not user.is_admin:   # admin-hidden apps are invisible to others
+        query = query.filter(App.hidden.is_(False))
+    apps = query.all()
     # Backfill compose-app credentials read from their .env (for apps installed
     # before this was added).
     for a in apps:
@@ -113,6 +118,21 @@ def list_apps(db: Session = Depends(get_db)):
             a.secret = app_service.read_env_value(env_file, entry["secret_env_key"])
     db.commit()
     return [_to_out(a, live_status=True) for a in apps]
+
+
+class HiddenRequest(BaseModel):
+    hidden: bool
+
+
+@router.put("/{app_id}/hidden", response_model=DetailResponse,
+            dependencies=[Depends(require_admin)])
+def set_hidden(app_id: int, body: HiddenRequest, db: Session = Depends(get_db)):
+    """Hide/unhide this app for non-admin users (admin only)."""
+    app = _get_app(app_id, db)
+    app.hidden = body.hidden
+    db.commit()
+    return DetailResponse(detail=f"App '{app.name}' is now "
+                                 f"{'hidden from' if body.hidden else 'visible to'} non-admins")
 
 
 @router.post("/{app_id}/action/{action}", response_model=DetailResponse)
@@ -217,7 +237,7 @@ async def app_logs_ws(websocket: WebSocket, app_id: int):
         app = db.get(App, app_id)
     finally:
         db.close()
-    if app is None:
+    if app is None or hidden_for(user, app):
         await websocket.send_text("[serverhub] app not found")
         await websocket.close()
         return

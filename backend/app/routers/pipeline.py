@@ -174,7 +174,8 @@ async def run_pipeline_ws(websocket: WebSocket, project_id: int):
     db = SessionLocal()
     try:
         project = db.get(Project, project_id)
-        if project is None:
+        from ..permissions import hidden_for
+        if project is None or hidden_for(user, project):
             await websocket.send_text("[pipeline] error: project not found")
             await websocket.close()
             return

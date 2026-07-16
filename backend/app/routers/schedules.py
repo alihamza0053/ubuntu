@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import Schedule, Script
+from ..models import Schedule, Script, User
 from ..schemas import DetailResponse
 from ..services import scheduler_service
 
@@ -54,8 +54,16 @@ def _to_out(s: Schedule, db: Session) -> dict:
 
 
 @router.get("")
-def list_schedules(db: Session = Depends(get_db)):
-    return [_to_out(s, db) for s in db.query(Schedule).all()]
+def list_schedules(db: Session = Depends(get_db),
+                   user: User = Depends(get_current_user)):
+    schedules = db.query(Schedule).all()
+    if not user.is_admin:
+        # Schedules of admin-hidden projects are invisible to non-admins
+        def visible(s: Schedule) -> bool:
+            script = db.get(Script, s.script_id)
+            return not (script and script.project and script.project.hidden)
+        schedules = [s for s in schedules if visible(s)]
+    return [_to_out(s, db) for s in schedules]
 
 
 @router.post("", status_code=201)

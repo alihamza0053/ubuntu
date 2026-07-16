@@ -43,6 +43,8 @@ class Project(Base):
     # Both set = portal enabled. Password is bcrypt-hashed.
     portal_username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     portal_password_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Admin-hidden: invisible and unreachable for non-admin users.
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     scripts: Mapped[list["Script"]] = relationship(
@@ -85,6 +87,8 @@ class Website(Base):
     run_command: Mapped[str | None] = mapped_column(String(512), nullable=True)
     port: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="STOPPED")
+    # Admin-hidden: invisible and unreachable for non-admin users.
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -166,6 +170,8 @@ class App(Base):
     image: Mapped[str | None] = mapped_column(String(255), nullable=True)
     container_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
     env_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Admin-hidden: invisible and unreachable for non-admin users.
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

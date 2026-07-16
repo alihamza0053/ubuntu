@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ..database import SessionLocal, get_db
 from ..deps import authenticate_websocket, get_current_user
 from ..models import Script
+from ..permissions import hidden_for
 from ..schemas import DetailResponse
 from ..services.script_runner import log_path_for, run_script, stop_script
 from ..services.streaming import tail_file
@@ -94,7 +95,7 @@ async def run_script_ws(websocket: WebSocket, script_id: int):
     db = SessionLocal()
     try:
         script = db.get(Script, script_id)
-        if script is None:
+        if script is None or hidden_for(user, script.project):
             await websocket.send_text("[serverhub] error: script not found")
             await websocket.close()
             return
@@ -136,7 +137,7 @@ async def script_logs_ws(websocket: WebSocket, script_id: int):
     db = SessionLocal()
     try:
         script = db.get(Script, script_id)
-        if script is None:
+        if script is None or hidden_for(user, script.project):
             await websocket.send_text("[serverhub] script not found")
             await websocket.close()
             return

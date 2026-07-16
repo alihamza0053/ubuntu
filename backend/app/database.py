@@ -67,6 +67,9 @@ def run_migrations() -> None:
                 conn.execute(text("ALTER TABLE projects ADD COLUMN portal_username VARCHAR(64)"))
             if "portal_password_hash" not in pcols:
                 conn.execute(text("ALTER TABLE projects ADD COLUMN portal_password_hash VARCHAR(128)"))
+            # admin-only visibility (added with the hide-from-non-admins feature)
+            if "hidden" not in pcols:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN hidden BOOLEAN DEFAULT 0"))
 
     # websites: run-it-yourself Python web services (added with the "python" type).
     if "websites" in insp.get_table_names():
@@ -78,6 +81,8 @@ def run_migrations() -> None:
                 conn.execute(text("ALTER TABLE websites ADD COLUMN port INTEGER"))
             if "status" not in wcols:
                 conn.execute(text("ALTER TABLE websites ADD COLUMN status VARCHAR(16) DEFAULT 'STOPPED'"))
+            if "hidden" not in wcols:
+                conn.execute(text("ALTER TABLE websites ADD COLUMN hidden BOOLEAN DEFAULT 0"))
 
     if "apps" not in insp.get_table_names():
         return
@@ -97,6 +102,8 @@ def run_migrations() -> None:
             conn.execute(text("ALTER TABLE apps ADD COLUMN container_port INTEGER"))
         if "env_json" not in cols:
             conn.execute(text("ALTER TABLE apps ADD COLUMN env_json TEXT"))
+        if "hidden" not in cols:
+            conn.execute(text("ALTER TABLE apps ADD COLUMN hidden BOOLEAN DEFAULT 0"))
         # slug must no longer be UNIQUE (multiple instances share a slug)
         for idx in indexes:
             if idx.get("column_names") == ["slug"] and idx.get("unique"):

@@ -8,6 +8,8 @@ checks it; WebSocket handlers call `user_can_tab` via authenticate_websocket.
 """
 from __future__ import annotations
 
+import re
+
 # Canonical tabs (key, label) — must match the frontend nav order.
 TABS: list[tuple[str, str]] = [
     ("dashboard", "Dashboard"),
@@ -101,3 +103,52 @@ def user_can(user, path: str, method: str) -> bool:
     if tab is None:
         return True
     return user_can_tab(user, tab)
+
+
+# ---------------------------------------------------------------------------
+# Admin-hidden entities: a project/website/app flagged `hidden` is invisible
+# to non-admins. List endpoints filter them out; this maps a request path to
+# the entity it addresses so the middleware can block direct access by id
+# (including via a hidden project's scripts and schedules).
+# ---------------------------------------------------------------------------
+_HIDDEN_PATHS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"^/api/projects/(\d+)(?:/|$)"), "project"),
+    (re.compile(r"^/api/websites/(\d+)(?:/|$)"), "website"),
+    (re.compile(r"^/api/apps/(\d+)(?:/|$)"), "app"),
+    (re.compile(r"^/api/scripts/(\d+)(?:/|$)"), "script"),
+    (re.compile(r"^/api/schedules/(\d+)(?:/|$)"), "schedule"),
+]
+
+
+def targets_hidden_entity(db, path: str) -> bool:
+    """True when `path` addresses an admin-hidden project/website/app
+    (directly, or through one of a hidden project's scripts/schedules)."""
+    from .models import App, Project, Schedule, Script, Website
+
+    for pattern, kind in _HIDDEN_PATHS:
+        match = pattern.match(path)
+        if not match:
+            continue
+        entity_id = int(match.group(1))
+        if kind == "project":
+            row = db.get(Project, entity_id)
+        elif kind == "website":
+            row = db.get(Website, entity_id)
+        elif kind == "app":
+            row = db.get(App, entity_id)
+        elif kind == "script":
+            script = db.get(Script, entity_id)
+            row = script.project if script else None
+        else:  # schedule → script → project
+            schedule = db.get(Schedule, entity_id)
+            script = db.get(Script, schedule.script_id) if schedule else None
+            row = script.project if script else None
+        return bool(row is not None and getattr(row, "hidden", False))
+    return False
+
+
+def hidden_for(user, entity) -> bool:
+    """True when `entity` is admin-hidden and `user` isn't an admin.
+    (WebSocket handlers use this after fetching their entity.)"""
+    return bool(entity is not None and getattr(entity, "hidden", False)
+                and not getattr(user, "is_admin", False))

@@ -34,7 +34,14 @@ export default function ProjectCard({ project, onChanged }) {
         <Link to={`/projects/${project.id}`} className="text-lg font-semibold text-sky-300 hover:underline">
           {project.name}
         </Link>
-        <StatusBadge status={project.dashboard_status} />
+        <span className="flex items-center gap-1.5">
+          {project.hidden && (
+            <span className="badge bg-slate-500/15 text-slate-400" title="Only admins can see this project">
+              🙈 hidden
+            </span>
+          )}
+          <StatusBadge status={project.dashboard_status} />
+        </span>
       </div>
 
       {/* Details */}
