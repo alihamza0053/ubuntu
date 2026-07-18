@@ -2,6 +2,8 @@
 Settings routes: change admin password, panel key/value settings, a download
 of the panel SQLite database for backup, panel self-update, and system cleanup.
 """
+import asyncio
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -196,11 +198,124 @@ def _rotated_logs_size() -> int | None:
     return total
 
 
+# Disk locations reported in the "where is my disk going" breakdown.
+DISK_BREAKDOWN: list[tuple[str, str]] = [
+    ("/srv/projects", "Project workspaces"),
+    ("/srv/websites", "Websites"),
+    ("/srv/serverhub/apps", "Installed apps (data)"),
+    ("/srv/serverhub/backups", "Panel backups"),
+    ("/srv/serverhub/trash", "Recycle bin"),
+    ("/srv/onedrive", "OneDrive sync"),
+    ("/var/lib/mysql", "MySQL databases"),
+    ("/var/log", "System logs"),
+    ("/var/cache/apt/archives", "APT package cache"),
+    ("/tmp", "Temp (/tmp)"),
+    ("/var/tmp", "Temp (/var/tmp)"),
+    ("/home", "Home directories"),
+]
+
+
+async def _du(path: str) -> int | None:
+    """Best-effort recursive size of a directory via `du` (bytes)."""
+    if not Path(path).exists():
+        return None
+    try:
+        code, out = await run_command(["du", "-sb", path], timeout=25)
+    except OSError:
+        return None
+    # stderr is merged in (permission warnings) — find the total line, which
+    # du prints even when parts of the tree weren't readable.
+    for line in reversed(out.splitlines()):
+        m = re.match(r"^(\d+)\s", line)
+        if m:
+            return int(m.group(1))
+    return None
+
+
+async def _docker_df() -> list[dict] | None:
+    """Docker disk usage rows (images/containers/volumes/build cache)."""
+    try:
+        code, out = await run_command(["sudo", "-n", "docker", "system", "df"],
+                                      timeout=20)
+    except OSError:
+        return None
+    if code != 0:
+        return None
+    rows = []
+    for line in out.splitlines()[1:]:
+        parts = re.split(r"\s{2,}", line.strip())
+        if len(parts) >= 5:
+            rows.append({"type": parts[0], "count": parts[1],
+                         "size": parts[3], "reclaimable": parts[4]})
+    return rows or None
+
+
+def _top_processes() -> tuple[float, list[dict], list[dict]]:
+    """(total CPU %, top by CPU, top by memory) over a short sampling window."""
+    psutil.cpu_percent(None)      # prime the system-wide counter
+    procs = []
+    for p in psutil.process_iter(["pid", "name", "username"]):
+        try:
+            p.cpu_percent(None)   # prime the per-process counter
+            procs.append(p)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    import time
+    time.sleep(0.4)               # sampling window for cpu_percent
+    total_cpu = psutil.cpu_percent(None)
+
+    snapshot = []
+    for p in procs:
+        if p.pid == 0:   # kernel idle pseudo-process
+            continue
+        try:
+            with p.oneshot():
+                snapshot.append({
+                    "pid": p.pid,
+                    "name": p.info.get("name") or "?",
+                    "user": p.info.get("username") or "?",
+                    "cpu": round(p.cpu_percent(None), 1),
+                    "memory_percent": round(p.memory_percent(), 1),
+                    "memory_mb": round(p.memory_info().rss / 1024**2, 1),
+                })
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    by_cpu = sorted(snapshot, key=lambda x: x["cpu"], reverse=True)[:8]
+    by_mem = sorted(snapshot, key=lambda x: x["memory_mb"], reverse=True)[:8]
+    return total_cpu, by_cpu, by_mem
+
+
 @router.get("/cleanup/preview", dependencies=[Depends(require_admin)])
-def cleanup_preview():
-    """Current CPU/RAM/disk load + a best-effort size for each cleanable item."""
+async def cleanup_preview():
+    """
+    Full CPU / RAM / Disk picture for the System Cleanup section:
+    load + top processes, memory breakdown, and where disk space is going —
+    plus a best-effort size for each cleanable item.
+    """
     memory = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
+
+    # Top processes sample in a thread (it sleeps 0.4s to measure CPU)
+    cpu_total, top_cpu, top_mem = await asyncio.to_thread(_top_processes)
+
+    try:
+        load_avg = [round(x, 2) for x in psutil.getloadavg()]
+    except (AttributeError, OSError):
+        load_avg = None
+
+    # Disk breakdown: all `du`s + docker df run concurrently
+    du_sizes, docker_rows = await asyncio.gather(
+        asyncio.gather(*(_du(path) for path, _ in DISK_BREAKDOWN)),
+        _docker_df(),
+    )
+    breakdown = [
+        {"path": path, "label": label, "size": size}
+        for (path, label), size in zip(DISK_BREAKDOWN, du_sizes)
+        if size is not None
+    ]
+    breakdown.sort(key=lambda x: x["size"], reverse=True)
 
     trash_count = 0
     trash_size = 0
@@ -217,21 +332,34 @@ def cleanup_preview():
         "journal": _dir_size(Path("/var/log/journal")),
         "logs": _rotated_logs_size(),
         "pip": _dir_size(Path.home() / ".cache" / "pip"),
-        "docker": None,   # unknown without asking the docker daemon
+        "docker": None,   # shown via the docker df table instead
         "trash": trash_size,
         "ram": getattr(memory, "cached", 0) or None,
     }
 
     return {
-        "cpu_percent": psutil.cpu_percent(interval=0.2),
-        "memory": {"percent": memory.percent,
-                   "used_gb": round(memory.used / 1024**3, 2),
-                   "available_gb": round(memory.available / 1024**3, 2),
-                   "total_gb": round(memory.total / 1024**3, 2)},
-        "disk": {"percent": disk.percent,
-                 "used_gb": round(disk.used / 1024**3, 2),
-                 "free_gb": round(disk.free / 1024**3, 2),
-                 "total_gb": round(disk.total / 1024**3, 2)},
+        "cpu": {
+            "percent": cpu_total,
+            "cores": psutil.cpu_count() or 1,
+            "load_avg": load_avg,
+            "top": top_cpu,
+        },
+        "memory": {
+            "percent": memory.percent,
+            "used_gb": round(memory.used / 1024**3, 2),
+            "available_gb": round(memory.available / 1024**3, 2),
+            "total_gb": round(memory.total / 1024**3, 2),
+            "cached_gb": round(getattr(memory, "cached", 0) / 1024**3, 2),
+            "top": top_mem,
+        },
+        "disk": {
+            "percent": disk.percent,
+            "used_gb": round(disk.used / 1024**3, 2),
+            "free_gb": round(disk.free / 1024**3, 2),
+            "total_gb": round(disk.total / 1024**3, 2),
+            "breakdown": breakdown,
+            "docker": docker_rows,
+        },
         "tasks": [
             {"key": key, "label": label, "description": desc,
              "size": sizes.get(key),

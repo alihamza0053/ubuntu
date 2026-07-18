@@ -135,8 +135,9 @@ export default function Settings() {
       {/* Backup & Restore */}
       <Backups />
 
-      {/* System cleanup (admins only) */}
+      {/* System cleanup: CPU / RAM / Disk cards (admins only) */}
       {isAdmin && <SystemCleanup />}
+
 
       {/* Updates */}
       <div className="card space-y-3">
@@ -191,7 +192,7 @@ export default function Settings() {
   )
 }
 
-const DEFAULT_CLEAN = ['tmp', 'apt', 'journal', 'logs', 'pip', 'ram']
+const DEFAULT_CLEAN = ['tmp', 'apt', 'journal', 'logs', 'pip']
 
 function fmtSize(bytes) {
   if (bytes === null || bytes === undefined) return '—'
@@ -217,20 +218,52 @@ function StatBar({ label, percent, detail, color }) {
   )
 }
 
+/** Compact process table used by the CPU and RAM cards. */
+function ProcessTable({ rows, valueHeader, value }) {
+  if (!rows?.length) return null
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-slate-500 text-left">
+            <th className="py-1 pr-2 font-normal">Process</th>
+            <th className="py-1 pr-2 font-normal">User</th>
+            <th className="py-1 pr-2 font-normal">PID</th>
+            <th className="py-1 font-normal text-right">{valueHeader}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((p) => (
+            <tr key={p.pid} className="border-t border-slate-800">
+              <td className="py-1 pr-2 text-slate-200 truncate max-w-[12rem]">{p.name}</td>
+              <td className="py-1 pr-2 text-slate-500">{p.user}</td>
+              <td className="py-1 pr-2 text-slate-500 font-mono">{p.pid}</td>
+              <td className="py-1 font-mono text-right text-slate-300">{value(p)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 /**
- * System Cleanup: free disk space (temp files, apt/pip caches, old logs,
- * docker leftovers, recycle bin) and flush RAM caches — with live output.
+ * System Cleanup: three cards — CPU (what's using it), RAM (top processes +
+ * flush caches) and Disk (where the space went + cleanup tasks).
  */
 function SystemCleanup() {
   const [info, setInfo] = useState(null)      // /settings/cleanup/preview payload
+  const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(new Set(DEFAULT_CLEAN))
   const [wsPath, setWsPath] = useState(null)  // LiveLog path while cleaning
-  const [running, setRunning] = useState(false)
+  const [runningKind, setRunningKind] = useState(null)  // 'ram' | 'disk' | null
 
   const refresh = useCallback(() => {
+    setLoading(true)
     api.get('/settings/cleanup/preview')
       .then((res) => setInfo(res.data))
       .catch(() => {})
+      .finally(() => setLoading(false))
   }, [])
 
   useEffect(() => { refresh() }, [refresh])
@@ -244,79 +277,182 @@ function SystemCleanup() {
     })
   }
 
-  function startCleanup() {
-    const tasks = (info?.tasks || []).map((t) => t.key).filter((k) => selected.has(k))
+  function start(kind, tasks) {
     if (tasks.length === 0) return
     if (tasks.includes('trash') && !window.confirm(
       'Also empty the recycle bin? Deleted files in it can no longer be restored.')) {
       return
     }
-    setRunning(true)
+    setRunningKind(kind)
     setWsPath(null)
     setTimeout(() => setWsPath(`/ws/settings/cleanup?tasks=${tasks.join(',')}`), 0)
   }
 
   function onCleanupClosed() {
-    setRunning(false)
-    refresh()   // show the freed space in the stats
+    setRunningKind(null)
+    setWsPath(null)
+    refresh()   // show the freed space/RAM in the stats
   }
 
+  const cpu = info?.cpu
+  const mem = info?.memory
+  const disk = info?.disk
+  const ramTask = (info?.tasks || []).find((t) => t.key === 'ram')
+  const diskTasks = (info?.tasks || []).filter((t) => t.key !== 'ram')
+  const helperMissing = info && info.ready === false
+
   return (
-    <div className="card space-y-3">
+    <>
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">System Cleanup</h3>
-        <button className="text-xs text-slate-400 hover:text-slate-200" onClick={refresh}>
-          ↻ Refresh
+        <h3 className="text-lg font-semibold">System Cleanup</h3>
+        <button className="text-xs text-slate-400 hover:text-slate-200"
+          onClick={refresh} disabled={loading}>
+          {loading ? 'Loading…' : '↻ Refresh'}
         </button>
       </div>
-      <p className="text-xs text-slate-500">
-        Frees disk space and RAM by removing caches, old temp files and rotated
-        logs. Nothing here touches your projects, websites, apps or databases.
-      </p>
 
-      {info && (
-        <div className="flex flex-wrap gap-4">
-          <StatBar label="CPU" percent={info.cpu_percent}
-            detail={`${info.cpu_percent}%`} color="bg-sky-500" />
-          <StatBar label="RAM" percent={info.memory?.percent}
-            detail={`${info.memory?.used_gb} / ${info.memory?.total_gb} GB`}
-            color="bg-violet-500" />
-          <StatBar label="Disk" percent={info.disk?.percent}
-            detail={`${info.disk?.used_gb} / ${info.disk?.total_gb} GB`}
-            color="bg-emerald-500" />
-        </div>
-      )}
-
-      <div className="space-y-1.5">
-        {(info?.tasks || []).map((t) => (
-          <label key={t.key}
-            className="flex items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-slate-800/60 cursor-pointer">
-            <input type="checkbox" className="mt-1 accent-sky-500"
-              checked={selected.has(t.key)} onChange={() => toggle(t.key)} />
-            <span className="flex-1 min-w-0">
-              <span className="text-sm text-slate-200">{t.label}</span>
-              <span className="block text-xs text-slate-500">{t.description}</span>
-            </span>
-            <span className="text-xs text-slate-400 font-mono shrink-0">
-              {t.key === 'trash' && t.count ? `${t.count} item(s) · ` : ''}{fmtSize(t.size)}
-            </span>
-          </label>
-        ))}
-      </div>
-
-      {info && info.ready === false && (
-        <p className="text-xs text-yellow-500">
+      {helperMissing && (
+        <p className="text-xs text-yellow-500 -mt-3">
           The cleanup helper isn't installed on this server yet — run{' '}
-          <code>sudo bash deploy/update.sh</code> once, then cleanup will work.
+          <code>sudo bash deploy/update.sh</code> once, then the RAM/Disk
+          cleanup buttons will work.
         </p>
       )}
 
-      <button className="btn-primary" onClick={startCleanup}
-        disabled={running || selected.size === 0}>
-        {running ? 'Cleaning…' : '🧹 Clean now'}
-      </button>
+      {/* ─── CPU ─── */}
+      <div className="card space-y-3">
+        <h3 className="font-semibold">⚙️ CPU</h3>
+        {cpu && (
+          <>
+            <StatBar label={`CPU (${cpu.cores} core${cpu.cores > 1 ? 's' : ''})`}
+              percent={cpu.percent} detail={`${cpu.percent}%`} color="bg-sky-500" />
+            {cpu.load_avg && (
+              <p className="text-xs text-slate-500">
+                Load average (1 / 5 / 15 min):{' '}
+                <span className="font-mono text-slate-300">{cpu.load_avg.join(' / ')}</span>
+                {' '}— above {cpu.cores}.0 means the CPU is saturated.
+              </p>
+            )}
+            <p className="text-xs text-slate-500">Top processes by CPU right now:</p>
+            <ProcessTable rows={cpu.top} valueHeader="CPU %"
+              value={(p) => `${p.cpu}%`} />
+            <p className="text-xs text-slate-600">
+              CPU load isn't "cleanable" — it's whatever is running. If something
+              here shouldn't be running, stop it from the <b>Server</b> tab's
+              process list (or stop that script/dashboard/app).
+            </p>
+          </>
+        )}
+      </div>
 
-      {wsPath && <LiveLog path={wsPath} onClose={onCleanupClosed} />}
-    </div>
+      {/* ─── RAM ─── */}
+      <div className="card space-y-3">
+        <h3 className="font-semibold">🧠 RAM</h3>
+        {mem && (
+          <>
+            <StatBar label="RAM" percent={mem.percent}
+              detail={`${mem.used_gb} / ${mem.total_gb} GB`} color="bg-violet-500" />
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
+              <span>Available: <b className="text-slate-200">{mem.available_gb} GB</b></span>
+              <span>Disk cache: <b className="text-slate-200">{mem.cached_gb} GB</b></span>
+            </div>
+            <p className="text-xs text-slate-500">Top processes by memory:</p>
+            <ProcessTable rows={mem.top} valueHeader="Memory"
+              value={(p) => `${p.memory_mb} MB (${p.memory_percent}%)`} />
+            <p className="text-xs text-slate-600">
+              Linux keeps free RAM filled with disk cache on purpose — that part
+              is released automatically when programs need it. Flushing it is
+              safe but usually only worth it before starting something heavy.
+            </p>
+            <button className="btn-primary"
+              onClick={() => start('ram', ['ram'])}
+              disabled={!!runningKind || helperMissing}>
+              {runningKind === 'ram' ? 'Flushing…' : '🧹 Flush RAM caches'}
+              {ramTask?.size ? ` (~${fmtSize(ramTask.size)})` : ''}
+            </button>
+            {runningKind === 'ram' && wsPath && (
+              <LiveLog path={wsPath} onClose={onCleanupClosed} />
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ─── Disk ─── */}
+      <div className="card space-y-3">
+        <h3 className="font-semibold">💾 Disk</h3>
+        {disk && (
+          <>
+            <StatBar label="Disk (/)" percent={disk.percent}
+              detail={`${disk.used_gb} / ${disk.total_gb} GB · ${disk.free_gb} GB free`}
+              color="bg-emerald-500" />
+
+            {disk.breakdown?.length > 0 && (
+              <>
+                <p className="text-xs text-slate-500">Where the space is going:</p>
+                <div className="space-y-1">
+                  {disk.breakdown.map((d) => (
+                    <div key={d.path} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-slate-300">{d.label}
+                        <span className="text-slate-600 font-mono ml-1.5">{d.path}</span>
+                      </span>
+                      <span className="font-mono text-slate-300 shrink-0">{fmtSize(d.size)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {disk.docker?.length > 0 && (
+              <>
+                <p className="text-xs text-slate-500 mt-1">Docker disk usage:</p>
+                <div className="space-y-1">
+                  {disk.docker.map((d) => (
+                    <div key={d.type} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-slate-300">{d.type}
+                        <span className="text-slate-600 ml-1.5">({d.count})</span>
+                      </span>
+                      <span className="font-mono text-slate-300 shrink-0">
+                        {d.size} <span className="text-slate-500">· reclaimable {d.reclaimable}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <p className="text-xs text-slate-500 border-t border-slate-800 pt-2">
+              Safe to clean (nothing here touches your projects, websites, apps
+              or databases):
+            </p>
+            <div className="space-y-1.5">
+              {diskTasks.map((t) => (
+                <label key={t.key}
+                  className="flex items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-slate-800/60 cursor-pointer">
+                  <input type="checkbox" className="mt-1 accent-sky-500"
+                    checked={selected.has(t.key)} onChange={() => toggle(t.key)} />
+                  <span className="flex-1 min-w-0">
+                    <span className="text-sm text-slate-200">{t.label}</span>
+                    <span className="block text-xs text-slate-500">{t.description}</span>
+                  </span>
+                  <span className="text-xs text-slate-400 font-mono shrink-0">
+                    {t.key === 'trash' && t.count ? `${t.count} item(s) · ` : ''}{fmtSize(t.size)}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <button className="btn-primary"
+              onClick={() => start('disk', diskTasks.map((t) => t.key).filter((k) => selected.has(k)))}
+              disabled={!!runningKind || helperMissing
+                || diskTasks.every((t) => !selected.has(t.key))}>
+              {runningKind === 'disk' ? 'Cleaning…' : '🧹 Clean disk now'}
+            </button>
+            {runningKind === 'disk' && wsPath && (
+              <LiveLog path={wsPath} onClose={onCleanupClosed} />
+            )}
+          </>
+        )}
+      </div>
+    </>
   )
 }

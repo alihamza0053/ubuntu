@@ -50,7 +50,17 @@ echo "==> Target:   $PANEL_ROOT"
 # 1. Pull latest code if the source is a git checkout
 if [ "$DO_PULL" = true ] && [ -d "$SRC/.git" ]; then
   echo "==> git pull"
+  BEFORE_PULL="$(git -C "$SRC" rev-parse HEAD)"
   git -C "$SRC" pull --ff-only
+  AFTER_PULL="$(git -C "$SRC" rev-parse HEAD)"
+  # If the pull changed anything, THIS script file may be stale (bash keeps
+  # running the copy it opened before the pull). Re-exec the freshly pulled
+  # update.sh so new deploy steps (helpers, sudoers, …) actually run.
+  # --no-pull on the re-exec guarantees this happens at most once.
+  if [ "$BEFORE_PULL" != "$AFTER_PULL" ]; then
+    echo "==> update.sh may have changed — re-running the updated copy"
+    exec bash "$SRC/deploy/update.sh" --no-pull "$@"
+  fi
 fi
 
 # 2. Safety: back up .env and the database before touching anything
