@@ -1,9 +1,11 @@
 """
 Settings routes: change admin password, panel key/value settings, a download
-of the panel SQLite database for backup, and panel self-update.
+of the panel SQLite database for backup, panel self-update, and system cleanup.
 """
 from datetime import datetime
+from pathlib import Path
 
+import psutil
 from fastapi import (APIRouter, Depends, File, HTTPException, UploadFile,
                      WebSocket, WebSocketDisconnect)
 from fastapi.responses import FileResponse
@@ -12,10 +14,10 @@ from sqlalchemy.orm import Session
 
 from ..config import settings as app_settings
 from ..database import get_db
-from ..deps import authenticate_websocket, get_current_user
+from ..deps import authenticate_websocket, get_current_user, require_admin
 from ..models import Setting
 from ..schemas import DetailResponse
-from ..services import backup_service
+from ..services import backup_service, trash_service
 from ..services.streaming import run_command, stream_command, tail_file
 
 router = APIRouter(
@@ -125,6 +127,180 @@ def restore_backup(name: str, body: RestoreRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     except (RuntimeError, OSError) as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# System cleanup (Settings → System Cleanup, admin only)
+# ---------------------------------------------------------------------------
+CLEANUP_BIN = str(app_settings.PANEL_ROOT / "bin" / "serverhub-cleanup")
+
+# Tasks the root helper script understands, in display order. `trash` is
+# handled inside the panel (no root needed) — it empties the recycle bin.
+CLEANUP_TASKS: list[tuple[str, str, str]] = [
+    ("tmp", "Temp files", "Files in /tmp and /var/tmp untouched for over a day"),
+    ("apt", "APT cache", "Downloaded .deb packages + packages nothing needs anymore"),
+    ("journal", "System journal", "systemd journal logs older than 3 days"),
+    ("logs", "Rotated logs", "Old compressed/rotated log files under /var/log"),
+    ("pip", "Pip cache", "Python package download caches"),
+    ("docker", "Docker leftovers", "Dangling images + build cache (never containers)"),
+    ("trash", "Recycle bin", "Everything in the panel's recycle bin, immediately"),
+    ("ram", "RAM caches", "Flush filesystem caches from memory (drop_caches)"),
+]
+CLEANUP_TASK_KEYS = {k for k, _, _ in CLEANUP_TASKS}
+
+
+def _dir_size(path: Path) -> int | None:
+    """Best-effort recursive size; None when the path can't be read at all."""
+    if not path.exists():
+        return None
+    total = 0
+    try:
+        stack = [path]
+        while stack:
+            current = stack.pop()
+            try:
+                for entry in current.iterdir():
+                    try:
+                        if entry.is_symlink():
+                            continue
+                        if entry.is_dir():
+                            stack.append(entry)
+                        elif entry.is_file():
+                            total += entry.stat().st_size
+                    except OSError:
+                        continue
+            except OSError:
+                continue
+    except OSError:
+        return None
+    return total
+
+
+def _rotated_logs_size() -> int | None:
+    root = Path("/var/log")
+    if not root.exists():
+        return None
+    total = 0
+    try:
+        for entry in root.rglob("*"):
+            try:
+                name = entry.name
+                if entry.is_file() and (
+                        name.endswith((".gz", ".xz", ".old"))
+                        or name.rsplit(".", 1)[-1].isdigit()):
+                    total += entry.stat().st_size
+            except OSError:
+                continue
+    except OSError:
+        return None
+    return total
+
+
+@router.get("/cleanup/preview", dependencies=[Depends(require_admin)])
+def cleanup_preview():
+    """Current CPU/RAM/disk load + a best-effort size for each cleanable item."""
+    memory = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
+
+    trash_count = 0
+    trash_size = 0
+    if app_settings.TRASH_ROOT.exists():
+        for item in app_settings.TRASH_ROOT.iterdir():
+            if item.is_dir():
+                trash_count += 1
+                trash_size += _dir_size(item) or 0
+
+    sizes: dict[str, int | None] = {
+        "tmp": (_dir_size(Path("/tmp")) or 0) + (_dir_size(Path("/var/tmp")) or 0)
+               if Path("/tmp").exists() else None,
+        "apt": _dir_size(Path("/var/cache/apt/archives")),
+        "journal": _dir_size(Path("/var/log/journal")),
+        "logs": _rotated_logs_size(),
+        "pip": _dir_size(Path.home() / ".cache" / "pip"),
+        "docker": None,   # unknown without asking the docker daemon
+        "trash": trash_size,
+        "ram": getattr(memory, "cached", 0) or None,
+    }
+
+    return {
+        "cpu_percent": psutil.cpu_percent(interval=0.2),
+        "memory": {"percent": memory.percent,
+                   "used_gb": round(memory.used / 1024**3, 2),
+                   "available_gb": round(memory.available / 1024**3, 2),
+                   "total_gb": round(memory.total / 1024**3, 2)},
+        "disk": {"percent": disk.percent,
+                 "used_gb": round(disk.used / 1024**3, 2),
+                 "free_gb": round(disk.free / 1024**3, 2),
+                 "total_gb": round(disk.total / 1024**3, 2)},
+        "tasks": [
+            {"key": key, "label": label, "description": desc,
+             "size": sizes.get(key),
+             **({"count": trash_count} if key == "trash" else {})}
+            for key, label, desc in CLEANUP_TASKS
+        ],
+        "ready": Path(CLEANUP_BIN).is_file(),
+    }
+
+
+@ws_router.websocket("/ws/settings/cleanup")
+async def cleanup_ws(websocket: WebSocket):
+    """
+    Run the selected cleanup tasks with live output. Admin only.
+    Connect with ?token=JWT&tasks=tmp,apt,ram — task keys from CLEANUP_TASKS.
+    """
+    user = await authenticate_websocket(websocket, require="settings")
+    if user is None:
+        return
+    if not user.is_admin:
+        await websocket.close(code=1008, reason="Admin access required")
+        return
+    await websocket.accept()
+
+    async def send(line: str):
+        await websocket.send_text(line)
+
+    raw = websocket.query_params.get("tasks", "")
+    tasks = [t for t in (x.strip() for x in raw.split(",")) if t in CLEANUP_TASK_KEYS]
+    if not tasks:
+        await send("[serverhub] no valid cleanup tasks selected")
+        await websocket.close()
+        return
+
+    # Recycle bin: handled by the panel itself (its own files, no root needed).
+    if "trash" in tasks:
+        await send("── recycle bin: delete everything now ──")
+        removed, freed = trash_service.purge_all()
+        await send(f"removed {removed} item(s), freed {freed / 1024**2:.1f} MB")
+        await send("")
+        tasks = [t for t in tasks if t != "trash"]
+
+    if not tasks:
+        await send("[serverhub] ✓ cleanup finished")
+        await websocket.close()
+        return
+
+    sudo_blocked = {"hit": False}
+
+    async def watch(line: str):
+        if "a password is required" in line or line.lower().startswith("sudo:"):
+            sudo_blocked["hit"] = True
+        await send(line)
+
+    try:
+        code = await stream_command(["sudo", "-n", CLEANUP_BIN, *tasks], watch)
+    except WebSocketDisconnect:
+        return
+
+    if sudo_blocked["hit"] or code == 127:
+        await send("[serverhub] The panel isn't allowed to run the cleanup "
+                   "helper via sudo yet. Re-run deploy/update.sh once on the "
+                   "server to install it:")
+        await send("[serverhub]   cd /opt/serverhub-src && sudo bash deploy/update.sh")
+    elif code != 0:
+        await send(f"[serverhub] cleanup exited with code {code}")
+    else:
+        await send("[serverhub] ✓ cleanup finished")
+    await websocket.close()
 
 
 # ---------------------------------------------------------------------------

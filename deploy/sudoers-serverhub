@@ -37,5 +37,8 @@ serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-app-install *
 # --- Panel self-update (Settings → Updates → Update now) ---
 serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-self-update *
 
+# --- System cleanup (Settings → System Cleanup) ---
+serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-cleanup *
+
 # --- Docker engine + container apps (Apps section) ---
 serverhub ALL=(root) NOPASSWD: /usr/bin/docker *

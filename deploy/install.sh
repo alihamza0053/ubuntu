@@ -102,6 +102,7 @@ install -m 0755 "$REPO_DIR/deploy/serverhub-app-install.sh" "$PANEL_ROOT/bin/ser
 install -m 0755 "$REPO_DIR/deploy/serverhub-webtop.sh" "$PANEL_ROOT/bin/serverhub-webtop"
 install -m 0755 "$REPO_DIR/deploy/serverhub-xfce-desktop.sh" "$PANEL_ROOT/bin/serverhub-xfce-desktop"
 install -m 0755 "$REPO_DIR/deploy/serverhub-self-update.sh" "$PANEL_ROOT/bin/serverhub-self-update"
+install -m 0755 "$REPO_DIR/deploy/serverhub-cleanup.sh" "$PANEL_ROOT/bin/serverhub-cleanup"
 
 echo "==> Sudoers rule"
 install -m 0440 "$REPO_DIR/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub

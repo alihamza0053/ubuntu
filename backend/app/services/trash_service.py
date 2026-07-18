@@ -107,6 +107,21 @@ def _expiry(meta: dict) -> datetime:
         return datetime.utcnow() + RETENTION
 
 
+def purge_all() -> tuple[int, int]:
+    """Empty the recycle bin completely. Returns (items removed, bytes freed)."""
+    removed = 0
+    freed = 0
+    if not settings.TRASH_ROOT.exists():
+        return 0, 0
+    for item_dir in settings.TRASH_ROOT.iterdir():
+        if not item_dir.is_dir():
+            continue
+        freed += _dir_size(item_dir)
+        shutil.rmtree(item_dir, ignore_errors=True)
+        removed += 1
+    return removed, freed
+
+
 def purge_expired() -> int:
     """Delete bin items older than the retention window. Returns count removed."""
     now = datetime.utcnow()

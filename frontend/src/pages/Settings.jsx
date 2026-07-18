@@ -135,6 +135,9 @@ export default function Settings() {
       {/* Backup & Restore */}
       <Backups />
 
+      {/* System cleanup (admins only) */}
+      {isAdmin && <SystemCleanup />}
+
       {/* Updates */}
       <div className="card space-y-3">
         <div className="flex items-center justify-between">
@@ -184,6 +187,136 @@ export default function Settings() {
 
         {updPath && <LiveLog path={updPath} onClose={onUpdateClosed} />}
       </div>
+    </div>
+  )
+}
+
+const DEFAULT_CLEAN = ['tmp', 'apt', 'journal', 'logs', 'pip', 'ram']
+
+function fmtSize(bytes) {
+  if (bytes === null || bytes === undefined) return '—'
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let v = bytes
+  let i = -1
+  do { v /= 1024; i += 1 } while (v >= 1024 && i < units.length - 1)
+  return `${v.toFixed(1)} ${units[i]}`
+}
+
+function StatBar({ label, percent, detail, color }) {
+  return (
+    <div className="flex-1 min-w-[10rem]">
+      <div className="flex justify-between text-xs mb-1">
+        <span className="text-slate-400">{label}</span>
+        <span className="text-slate-300">{detail}</span>
+      </div>
+      <div className="h-2 rounded bg-slate-800 overflow-hidden">
+        <div className={`h-full ${color}`} style={{ width: `${Math.min(percent || 0, 100)}%` }} />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * System Cleanup: free disk space (temp files, apt/pip caches, old logs,
+ * docker leftovers, recycle bin) and flush RAM caches — with live output.
+ */
+function SystemCleanup() {
+  const [info, setInfo] = useState(null)      // /settings/cleanup/preview payload
+  const [selected, setSelected] = useState(new Set(DEFAULT_CLEAN))
+  const [wsPath, setWsPath] = useState(null)  // LiveLog path while cleaning
+  const [running, setRunning] = useState(false)
+
+  const refresh = useCallback(() => {
+    api.get('/settings/cleanup/preview')
+      .then((res) => setInfo(res.data))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => { refresh() }, [refresh])
+
+  function toggle(key) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  function startCleanup() {
+    const tasks = (info?.tasks || []).map((t) => t.key).filter((k) => selected.has(k))
+    if (tasks.length === 0) return
+    if (tasks.includes('trash') && !window.confirm(
+      'Also empty the recycle bin? Deleted files in it can no longer be restored.')) {
+      return
+    }
+    setRunning(true)
+    setWsPath(null)
+    setTimeout(() => setWsPath(`/ws/settings/cleanup?tasks=${tasks.join(',')}`), 0)
+  }
+
+  function onCleanupClosed() {
+    setRunning(false)
+    refresh()   // show the freed space in the stats
+  }
+
+  return (
+    <div className="card space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold">System Cleanup</h3>
+        <button className="text-xs text-slate-400 hover:text-slate-200" onClick={refresh}>
+          ↻ Refresh
+        </button>
+      </div>
+      <p className="text-xs text-slate-500">
+        Frees disk space and RAM by removing caches, old temp files and rotated
+        logs. Nothing here touches your projects, websites, apps or databases.
+      </p>
+
+      {info && (
+        <div className="flex flex-wrap gap-4">
+          <StatBar label="CPU" percent={info.cpu_percent}
+            detail={`${info.cpu_percent}%`} color="bg-sky-500" />
+          <StatBar label="RAM" percent={info.memory?.percent}
+            detail={`${info.memory?.used_gb} / ${info.memory?.total_gb} GB`}
+            color="bg-violet-500" />
+          <StatBar label="Disk" percent={info.disk?.percent}
+            detail={`${info.disk?.used_gb} / ${info.disk?.total_gb} GB`}
+            color="bg-emerald-500" />
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        {(info?.tasks || []).map((t) => (
+          <label key={t.key}
+            className="flex items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-slate-800/60 cursor-pointer">
+            <input type="checkbox" className="mt-1 accent-sky-500"
+              checked={selected.has(t.key)} onChange={() => toggle(t.key)} />
+            <span className="flex-1 min-w-0">
+              <span className="text-sm text-slate-200">{t.label}</span>
+              <span className="block text-xs text-slate-500">{t.description}</span>
+            </span>
+            <span className="text-xs text-slate-400 font-mono shrink-0">
+              {t.key === 'trash' && t.count ? `${t.count} item(s) · ` : ''}{fmtSize(t.size)}
+            </span>
+          </label>
+        ))}
+      </div>
+
+      {info && info.ready === false && (
+        <p className="text-xs text-yellow-500">
+          The cleanup helper isn't installed on this server yet — run{' '}
+          <code>sudo bash deploy/update.sh</code> once, then cleanup will work.
+        </p>
+      )}
+
+      <button className="btn-primary" onClick={startCleanup}
+        disabled={running || selected.size === 0}>
+        {running ? 'Cleaning…' : '🧹 Clean now'}
+      </button>
+
+      {wsPath && <LiveLog path={wsPath} onClose={onCleanupClosed} />}
     </div>
   )
 }
