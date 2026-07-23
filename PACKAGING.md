@@ -135,7 +135,7 @@ serverhub/
 ├── README.md         front page
 ├── DEPLOYMENT.md     install from zero
 ├── UPDATING.md       push changes to a running panel
-├── DASHBOARD_GUIDE.md / SCRIPTS_GUIDE.md   running apps & scripts
+├── DASHBOARD_GUIDE.md / SCRIPTS_GUIDE.md   dashboards & scripts
 └── PACKAGING.md      this file
 ```
 

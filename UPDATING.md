@@ -172,8 +172,8 @@ sudo rsync -a --exclude 'node_modules/' /opt/serverhub-src/frontend/ /srv/server
 cd /srv/serverhub/frontend && sudo npm install && sudo npm run build
 
 # Ownership + restart + verify
-# NOTE: never 'chown -R … /srv/serverhub' blindly — it re-owns Docker app data
-# (e.g. Supabase's Postgres dir) and breaks it. Exclude apps/:
+# NOTE: never 'chown -R … /srv/serverhub' blindly — leftover container data
+# under apps/ must keep its own ownership. Exclude apps/:
 sudo find /srv/serverhub -path /srv/serverhub/apps -prune -o -exec chown serverhub:serverhub {} +
 sudo supervisorctl restart serverhub
 curl http://127.0.0.1:8765/api/health     # {"status":"ok"}
@@ -237,7 +237,7 @@ sudo tail -f /var/log/supervisor/serverhub.err.log    # watch for errors
 ls -1 /srv/serverhub/backups/                # newest last
 sudo cp /srv/serverhub/backups/<timestamp>/serverhub.db /srv/serverhub/db/serverhub.db
 sudo cp /srv/serverhub/backups/<timestamp>/.env        /srv/serverhub/backend/.env
-# Exclude apps/ so Docker app data (e.g. Supabase Postgres) isn't re-owned:
+# Exclude apps/ so any leftover container data isn't re-owned:
 sudo find /srv/serverhub -path /srv/serverhub/apps -prune -o -exec chown serverhub:serverhub {} +
 sudo supervisorctl restart serverhub
 ```

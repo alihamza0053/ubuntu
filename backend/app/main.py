@@ -82,7 +82,7 @@ class PermissionMiddleware(BaseHTTPMiddleware):
                         return JSONResponse(
                             {"detail": "You don't have access to this section."},
                             status_code=403)
-                    # Admin-hidden projects/websites/apps look like they don't
+                    # Admin-hidden projects/websites look like they don't
                     # exist to non-admins, even when addressed by id.
                     if (user and not user.is_admin
                             and targets_hidden_entity(db, path)):

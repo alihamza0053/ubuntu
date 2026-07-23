@@ -111,7 +111,7 @@ def remove_config(project_name: str) -> None:
 def set_autostart(project_name: str, enabled: bool) -> None:
     """
     Persist the desired run-state into the program's conf so a running dashboard
-    survives a reboot / supervisord restart (like a Docker `restart: always`),
+    survives a reboot / supervisord restart,
     while a stopped one stays down.
 
     `autostart` is only evaluated when supervisord itself boots, so we just

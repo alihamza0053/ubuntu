@@ -144,7 +144,6 @@ CLEANUP_TASKS: list[tuple[str, str, str]] = [
     ("journal", "System journal", "systemd journal logs older than 3 days"),
     ("logs", "Rotated logs", "Old compressed/rotated log files under /var/log"),
     ("pip", "Pip cache", "Python package download caches"),
-    ("docker", "Docker leftovers", "Dangling images + build cache (never containers)"),
     ("trash", "Recycle bin", "Everything in the panel's recycle bin, immediately"),
     ("ram", "RAM caches", "Flush filesystem caches from memory (drop_caches)"),
 ]
@@ -202,7 +201,6 @@ def _rotated_logs_size() -> int | None:
 DISK_BREAKDOWN: list[tuple[str, str]] = [
     ("/srv/projects", "Project workspaces"),
     ("/srv/websites", "Websites"),
-    ("/srv/serverhub/apps", "Installed apps (data)"),
     ("/srv/serverhub/backups", "Panel backups"),
     ("/srv/serverhub/trash", "Recycle bin"),
     ("/srv/onedrive", "OneDrive sync"),
@@ -230,24 +228,6 @@ async def _du(path: str) -> int | None:
         if m:
             return int(m.group(1))
     return None
-
-
-async def _docker_df() -> list[dict] | None:
-    """Docker disk usage rows (images/containers/volumes/build cache)."""
-    try:
-        code, out = await run_command(["sudo", "-n", "docker", "system", "df"],
-                                      timeout=20)
-    except OSError:
-        return None
-    if code != 0:
-        return None
-    rows = []
-    for line in out.splitlines()[1:]:
-        parts = re.split(r"\s{2,}", line.strip())
-        if len(parts) >= 5:
-            rows.append({"type": parts[0], "count": parts[1],
-                         "size": parts[3], "reclaimable": parts[4]})
-    return rows or None
 
 
 def _top_processes() -> tuple[float, list[dict], list[dict]]:
@@ -305,11 +285,8 @@ async def cleanup_preview():
     except (AttributeError, OSError):
         load_avg = None
 
-    # Disk breakdown: all `du`s + docker df run concurrently
-    du_sizes, docker_rows = await asyncio.gather(
-        asyncio.gather(*(_du(path) for path, _ in DISK_BREAKDOWN)),
-        _docker_df(),
-    )
+    # Disk breakdown: every `du` runs concurrently
+    du_sizes = await asyncio.gather(*(_du(path) for path, _ in DISK_BREAKDOWN))
     breakdown = [
         {"path": path, "label": label, "size": size}
         for (path, label), size in zip(DISK_BREAKDOWN, du_sizes)
@@ -332,7 +309,6 @@ async def cleanup_preview():
         "journal": _dir_size(Path("/var/log/journal")),
         "logs": _rotated_logs_size(),
         "pip": _dir_size(Path.home() / ".cache" / "pip"),
-        "docker": None,   # shown via the docker df table instead
         "trash": trash_size,
         "ram": getattr(memory, "cached", 0) or None,
     }
@@ -358,7 +334,6 @@ async def cleanup_preview():
             "free_gb": round(disk.free / 1024**3, 2),
             "total_gb": round(disk.total / 1024**3, 2),
             "breakdown": breakdown,
-            "docker": docker_rows,
         },
         "tasks": [
             {"key": key, "label": label, "description": desc,

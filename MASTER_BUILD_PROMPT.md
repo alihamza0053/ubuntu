@@ -51,7 +51,7 @@ Backend:
 - SQLite for the panel's own internal database (SQLAlchemy ORM)
 - Supervisor for managing Streamlit dashboard processes
 - APScheduler for cron-style scheduling
-- WebSockets (FastAPI/asyncio) for real-time terminal, logs, script & apt output
+- WebSockets (FastAPI/asyncio) for real-time log, script & pipeline output
 - python-dotenv for configuration
 - subprocess / asyncio.create_subprocess_exec for system commands (argument
   lists only)
@@ -64,9 +64,8 @@ Frontend:
 - Axios for API calls (single instance, JWT interceptor, 401 → logout)
 - React Router for navigation
 - JWT stored in localStorage
-- xterm.js for the in-browser terminal
 - Monaco Editor (@monaco-editor/react) for in-browser code editing
-- Native WebSocket for terminal/log/script/apt streaming (JWT via ?token=)
+- Native WebSocket for log/script/pipeline streaming (JWT via ?token=)
 - Recharts (or similar) for live CPU/RAM/disk graphs
 
 Auth:
@@ -118,7 +117,6 @@ scripts(id, project_id, folder, filename, schedule_cron, last_run, last_status, 
 websites(id, name, folder_path, type[react/php/html], domain, db_name, created_at)
 schedules(id, script_id, cron_expression, is_active, next_run)
 nginx_configs(id, entity_type, entity_id, config_path, domain)
-terminal_history(id, command, output, executed_at)
 settings(id, key, value)   -- panel settings (port/subdomain, etc.)
 
 ================================================================
@@ -198,40 +196,21 @@ FILE MANAGER (server-wide, confined to allowed roots):
   GET    /api/files/read                 (editor)
   POST   /api/files/write                (editor)
 
-TERMINAL:
-  WS   /ws/terminal                      full interactive shell (PTY)
-  POST /api/terminal/run                 single command, return output
-  GET  /api/terminal/history
-
-SERVER & PACKAGES:
-  GET  /api/server/stats                 CPU, RAM, disk, uptime
-  GET  /api/server/processes             supervisor + system processes
-  POST /api/server/supervisor/{name}/{action}   start/stop/restart a program
-  POST /api/server/apt/update
-  POST /api/server/apt/upgrade           (return changelog/preview first)
-  POST /api/server/apt/install           {package}
-  POST /api/server/apt/remove            {package}
-  GET  /api/server/apt/search?q=
-
-LOGS (full viewer):
-  GET /api/logs/nginx/access
-  GET /api/logs/nginx/error
-  GET /api/logs/supervisor/{name}
-  GET /api/logs/script/{id}
-  GET /api/logs/system                   /var/log/syslog
-  GET /api/logs/download?type=&name=     download as .txt
+SERVER:
+  GET  /api/server/stats                 CPU, RAM, disk, uptime (Dashboard cards)
 
 SETTINGS:
   GET  /api/settings
   PUT  /api/settings
   POST /api/settings/backup-db           download the panel SQLite DB
+  GET  /api/settings/cleanup/preview     CPU/RAM/disk detail + cleanable sizes
 
 REAL-TIME WEBSOCKETS (all JWT-protected via ?token=):
-  /ws/terminal                full bash/PTY session
-  /ws/logs/{type}/{name}      tail -f any log live
-  /ws/script/{id}/run         live output of a running script
-  /ws/apt/{action}            live output of apt install/update/upgrade/remove
-  /ws/server/stats            optional live stats push
+  /ws/script/{id}/run                    live output of a running script
+  /ws/script/{id}/logs                   tail a script's last-run log
+  /ws/pipeline/{project_id}/run          live pipeline progress
+  /ws/projects/{name}/dashboard-log      tail a dashboard's supervisor log
+  /ws/settings/cleanup                   live system-cleanup output
 
 ================================================================
 FRONTEND PAGES (React) — implement ALL, fully functional
@@ -283,17 +262,6 @@ FRONTEND PAGES (React) — implement ALL, fully functional
   - Database: linked MySQL db; import/export .sql; simple query runner.
   - Domain & SSL: current domain; reassign; SSL status + request/renew.
 
-/terminal (full terminal page)
-  - xterm.js connected to a real shell over WebSocket; run ANY command
-    (apt install, pip install, nano, etc.); color support; scrollback;
-    command history (up/down); session persists while tab open.
-
-/logs (log viewer page)
-  - Sidebar list of sources: nginx access, nginx error, system (syslog),
-    per Streamlit dashboard, per script (last run).
-  - Main panel shows selected log; "Live" toggle → real-time streaming;
-    search/filter; download as .txt.
-
 /files (global file manager)
   - Server file browser starting at /srv/; navigate dirs; upload files/folders;
     download; create folders; delete/rename/move; open any text/code file in
@@ -303,19 +271,10 @@ FRONTEND PAGES (React) — implement ALL, fully functional
   - List databases; create db + user; import .sql; export/download dump;
     query runner (SQL input + results table); drop db (confirm).
 
-/nginx (config manager)
-  - List managed config files; view raw; edit in Monaco; Save + Reload Nginx;
-    delete config.
-
-/server (server tools)
-  - Live CPU/RAM/disk graphs (auto-refresh).
-  - Supervisor process list with start/stop/restart per program.
-  - APT package manager: search, install (live install log via WebSocket),
-    remove, apt update, apt upgrade (preview changes first). All installs
-    stream output live.
-
 /settings
-  - Change admin password; panel port/subdomain config; backup panel database.
+  - Users & per-tab permissions; change password; panel port/subdomain config;
+    OneDrive sync setup; backup & restore; panel self-update; system cleanup
+    (CPU/RAM/disk detail with per-item cleanup).
 
 ================================================================
 REAL-TIME IMPLEMENTATION NOTES
@@ -324,10 +283,8 @@ REAL-TIME IMPLEMENTATION NOTES
 - Backend WebSocket endpoints use asyncio subprocesses; read stdout/stderr line
   by line and push frames to the client. Client disconnect must not kill a
   running script (keep logging to disk).
-- Terminal uses a real PTY (e.g. ptyprocess / pty) so interactive programs and
-  colors work; resize support via control messages.
-- Frontend: xterm.js for terminal; a shared <LiveLog> component (auto-scroll,
-  clear, connected indicator) for log/script/apt streams.
+- Frontend: a shared <LiveLog> component (auto-scroll, clear, connected
+  indicator) for every log/script/pipeline stream.
 - Auth on WebSockets: JWT passed as ?token= and validated on connect; close with
   code 1008 on failure.
 
@@ -411,13 +368,11 @@ SECURITY (enforce everywhere)
 - JWT on all API routes and WebSocket connections; bcrypt password hashing
   (truncate to 72 bytes; use the bcrypt library directly, not passlib).
 - Subprocess calls use argument lists, never shell=True with raw user input.
-  The /ws/terminal PTY is the one intentional interactive shell — still behind
-  JWT, single-admin only.
 - File uploads: validate extensions per destination; sanitize filenames
   (no path separators, no traversal). Reject executables except .py where
   appropriate.
 - Every filesystem path resolved and confined to allowed roots; reject escapes.
-- Nginx reload, certbot, supervisorctl, apt: invoked via `sudo` using a
+- Nginx reload, certbot, supervisorctl: invoked via `sudo` using a
   restricted NOPASSWD sudoers file listing ONLY those specific commands.
 - Panel runs as an unprivileged system user (`serverhub`) behind Nginx on its
   own subdomain (panel.yourdomain.com), HTTPS enforced.
@@ -453,15 +408,14 @@ BUILD ORDER (build them all; this is the recommended sequence)
 1. Core + Auth + Projects: login/JWT; project CRUD + folders; per-folder upload;
    Monaco editor; script run + live WebSocket log; Streamlit start/stop via
    Supervisor; dashboard cards on home.
-2. Terminal + Full Logs + Scheduler: xterm.js PTY terminal; full log viewer with
-   live streaming + search + download; APScheduler + visual cron builder.
-3. Websites + Nginx + Domains: website deploy (zip upload, react build), nginx
-   config auto-generation, domain assignment + SSL, global file manager.
-4. Databases + Server Tools: MySQL manager (create/import/export/query/drop);
-   APT package manager with live output; live server stat graphs; supervisor
-   process manager.
-5. Polish: full dashboard card UI, settings page (password/port/backup),
-   mobile-responsive layout, consistent error handling and toasts throughout.
+2. Scheduling: APScheduler + visual cron builder; project pipelines with live
+   progress; per-project venv + pip package management.
+3. Websites + Domains: website deploy (zip upload, react build, run-your-own
+   Python services), nginx config auto-generation, domain assignment + SSL,
+   global file manager with a recycle bin.
+4. Databases: MySQL manager (create/import/export/query/drop).
+5. Polish: full dashboard card UI, settings page (users/password/backup/
+   self-update/cleanup), mobile-responsive layout, consistent error handling.
 
 ================================================================
 DELIVERABLE

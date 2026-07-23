@@ -8,7 +8,6 @@ Creates compressed archives (``serverhub-backup-<stamp>.tar.gz``) under
   projects   /srv/projects        (code, data, dashboards)
   websites   /srv/websites        (hosted sites)
   nginx      /srv/nginx-configs   (generated vhosts)
-  apps       /srv/serverhub/apps  (docker-compose stacks)
   databases  all MySQL databases  (via mysqldump)
 
 Most paths are owned by the panel user, so create/restore are plain file ops;
@@ -84,11 +83,11 @@ def _add_tree(tar: tarfile.TarFile, src: Path, arcname: str) -> None:
       - skip regenerable/huge dirs (venv, node_modules, …), and
       - skip anything the panel user can't read.
 
-    That last part matters for the `apps` component: Docker apps like self-hosted
-    Supabase keep a Postgres data dir there owned by the container's postgres user
-    at mode 0700. The panel's `serverhub` user can't read it, so a naive tar walk
-    dies with "[Errno 13] Permission denied". A live DB data dir can't be safely
-    file-copied anyway (use a DB dump), so skipping it is the right behaviour.
+    That last part matters because a backed-up tree can contain paths owned by
+    another user at mode 0700 (e.g. a database data dir). The panel's `serverhub`
+    user can't read those, so a naive tar walk dies with "[Errno 13] Permission
+    denied". A live DB data dir can't be safely file-copied anyway (use a DB
+    dump), so skipping it is the right behaviour.
     """
     if src.name in _SKIP_DIRS:
         return

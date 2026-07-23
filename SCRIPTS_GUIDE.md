@@ -196,7 +196,7 @@ expects, in `data/`. Check the dashboard's `CONFIG` section for the filename.
 - [ ] `atexit` cleanup (or `driver.quit()` in `finally`).
 - [ ] Credentials via `os.getenv(...)`.
 - [ ] Output filename matches what the dashboard reads.
-- [ ] Tested from the **Terminal**, then **Scripts → Run Now**.
+- [ ] Tested over SSH, then **Scripts → Run Now**.
 
 > A second login system? Use different env-var names, e.g. the OQL report uses
 > `OQL_USER` / `OQL_PASS` while the Oracle Fusion reports use
@@ -294,7 +294,7 @@ Then:
 sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl restart serverhub
 ```
 
-**Or** just run from the Terminal page with them inline for a one-off:
+**Or** just run over SSH with them inline for a one-off:
 ```bash
 ORACLE_USER="HOD.ERP" ORACLE_PASS="secret" \
   /srv/serverhub/venv/bin/python "/srv/projects/YOUR-PROJECT/code/P2P Custom.py"

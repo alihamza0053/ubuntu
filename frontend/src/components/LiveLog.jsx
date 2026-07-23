@@ -17,7 +17,7 @@ function lineColor(line) {
 }
 
 /**
- * Terminal-style live log panel fed by a WebSocket.
+ * Console-style live log panel fed by a WebSocket.
  *
  * Props:
  *   path     — backend WS path (e.g. /ws/script/3/run); null = idle

@@ -114,16 +114,6 @@ class NginxConfig(Base):
     domain: Mapped[str] = mapped_column(String(255))
 
 
-class TerminalHistory(Base):
-    """History of commands run through the panel terminal (Phase 2)."""
-    __tablename__ = "terminal_history"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    command: Mapped[str] = mapped_column(Text)
-    output: Mapped[str | None] = mapped_column(Text, nullable=True)
-    executed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
 class Setting(Base):
     """Key/value panel settings (Phase 5): panel port, subdomain, etc."""
     __tablename__ = "settings"

@@ -131,7 +131,7 @@ async def playwright_install_ws(websocket: WebSocket, project_id: int):
             await send("[serverhub] ✓ browsers installed — re-run your script")
         else:
             await send(f"[serverhub] failed (exit {code}). If it's a missing system "
-                       f"library, run in Terminal:  sudo {python} -m playwright install-deps")
+                       f"library, run this over SSH:  sudo {python} -m playwright install-deps")
     except WebSocketDisconnect:
         return
     await websocket.close()

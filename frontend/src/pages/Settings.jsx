@@ -406,24 +406,6 @@ function SystemCleanup() {
               </>
             )}
 
-            {disk.docker?.length > 0 && (
-              <>
-                <p className="text-xs text-slate-500 mt-1">Docker disk usage:</p>
-                <div className="space-y-1">
-                  {disk.docker.map((d) => (
-                    <div key={d.type} className="flex items-center justify-between gap-2 text-xs">
-                      <span className="text-slate-300">{d.type}
-                        <span className="text-slate-600 ml-1.5">({d.count})</span>
-                      </span>
-                      <span className="font-mono text-slate-300 shrink-0">
-                        {d.size} <span className="text-slate-500">· reclaimable {d.reclaimable}</span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
             <p className="text-xs text-slate-500 border-t border-slate-800 pt-2">
               Safe to clean (nothing here touches your projects, websites, apps
               or databases):

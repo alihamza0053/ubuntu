@@ -2,7 +2,7 @@
 Shared async helpers for streaming subprocess output and tailing log files
 over WebSockets.
 
-Used by: terminal single-run, apt manager, live log viewer, script runner.
+Used by: the script runner, pipeline runs, live log viewers and system cleanup.
 All commands are passed as argument lists — never shell strings with raw
 user input.
 """

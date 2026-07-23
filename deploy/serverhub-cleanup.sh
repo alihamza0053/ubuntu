@@ -8,7 +8,6 @@
 #   tmp      delete /tmp and /var/tmp files untouched for over a day
 #   logs     delete rotated/compressed logs under /var/log (*.gz, *.1, …)
 #   pip      delete pip download caches (all users)
-#   docker   remove dangling docker images + build cache (never containers)
 #   ram      flush filesystem caches from RAM (sync + drop_caches)
 #
 # Every task is safe to repeat: it only ever removes caches, expired temp
@@ -85,18 +84,6 @@ run_pip() {
   echo "freed $(human "$total") of pip cache"
 }
 
-run_docker() {
-  echo "── docker: remove dangling images + build cache ──"
-  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    # Deliberately NOT `system prune`: that would delete stopped containers,
-    # which panel apps rely on (a stopped app must be startable again).
-    docker image prune -f 2>&1 | tail -2
-    docker builder prune -f 2>&1 | tail -2
-  else
-    echo "docker not installed/running — skipped"
-  fi
-}
-
 run_ram() {
   echo "── ram: flush filesystem caches ──"
   local before after
@@ -110,7 +97,7 @@ run_ram() {
 }
 
 if [ "$#" -eq 0 ]; then
-  echo "usage: serverhub-cleanup <apt|journal|tmp|logs|pip|docker|ram> …" >&2
+  echo "usage: serverhub-cleanup <apt|journal|tmp|logs|pip|ram> …" >&2
   exit 1
 fi
 
@@ -121,7 +108,6 @@ for task in "$@"; do
     tmp)     run_tmp ;;
     logs)    run_logs ;;
     pip)     run_pip ;;
-    docker)  run_docker ;;
     ram)     run_ram ;;
     *)       echo "unknown task: $task (skipped)" ;;
   esac

@@ -2,9 +2,9 @@
 
 This guide takes you from a **brand-new, empty Ubuntu server** to a fully
 working ServerHub install with **every feature** enabled: Python project
-workspaces, Streamlit dashboards, the in-browser terminal, live logs, the
-scheduler, website hosting (React/PHP/HTML), MySQL management, the nginx
-config manager, the APT package manager, the file manager, and SSL.
+workspaces, Streamlit dashboards, live logs, the scheduler, website hosting
+(React/PHP/HTML/Python), MySQL management, automatic nginx configuration,
+the file manager, and SSL.
 
 Nothing is assumed to be pre-installed. Every package, version check, and
 config detail is spelled out.
@@ -392,8 +392,8 @@ sudo bash deploy/install.sh
 6. Generates `backend/.env` with a fresh random `SECRET_KEY`, pointing
    `PYTHON_BIN`/`STREAMLIT_BIN` at the venv.
 7. Sets ownership to `serverhub`.
-8. Installs the restricted **sudoers** file (supervisorctl, nginx, certbot, apt,
-   mysql — see Step 4.8).
+8. Installs the restricted **sudoers** file (supervisorctl, nginx, certbot,
+   mysql, panel helpers — see Step 4.8).
 9. Wires Supervisor to include panel-managed dashboard configs.
 10. Registers the panel itself as a Supervisor service on port 8765.
 11. Installs and reloads the nginx site.
@@ -646,15 +646,14 @@ Log in, then walk through each area. This confirms all dependencies are wired.
 | **Script run** | Scripts tab → Run Now | Live output streams; status SUCCESS |
 | **Streamlit** | Upload `dashboard/app.py` → Dashboard → Start | Status RUNNING; live URL opens |
 | **Scheduler** | Scheduler tab → build a cron → Add | Schedule listed with next-run time |
-| **Terminal** | Terminal page | A real shell prompt; run `ls`, `htop`, `pip --version` |
-| **Logs** | Logs page → pick a source → Live | Lines stream; search + download work |
+| **Logs** | Project → Dashboard tab → stdout/stderr | Lines stream live |
 | **Files** | Files page → browse `/srv` | Navigate, upload, rename, edit |
+| **Recycle Bin** | Delete a project file → Recycle Bin | Item listed; restore works |
 | **Websites** | Websites → New → upload a `.zip` | Files extract; assign domain works |
 | **MySQL** | Databases → New Database | Appears in list; query runner returns rows |
-| **Nginx** | Assign a domain to a project | Config appears under Nginx page |
-| **APT** | Server page → search a package → install | Live install log streams |
-| **Supervisor** | Server page | Programs listed; start/stop/restart work |
+| **Nginx** | Assign a domain to a project | Site answers on that domain |
 | **Settings** | Settings → change password / backup DB | Works; DB downloads |
+| **Cleanup** | Settings → System Cleanup → Clean disk now | Live output; space freed |
 
 Quick command-line sanity checks:
 
@@ -686,7 +685,7 @@ sudo supervisorctl start serverhub
 sudo tail -f /var/log/supervisor/serverhub.out.log
 sudo tail -f /var/log/supervisor/serverhub.err.log
 
-# A project dashboard (also in the UI: Logs page / Dashboard tab)
+# A project dashboard (also in the UI: Project → Dashboard tab)
 sudo tail -f /var/log/supervisor/<project>.out.log
 sudo tail -f /var/log/supervisor/<project>.err.log
 
@@ -795,9 +794,8 @@ curl http://127.0.0.1:8765/api/health
 Usually `SECRET_KEY` changed (old tokens invalid). Log in again. If it repeats,
 the panel is restart-looping — check its err log.
 
-### Terminal page won't connect / "PTY only on Linux"
+### Live logs / script output won't stream
 
-- The PTY needs Linux (your VPS) — it cannot run on a Windows dev box.
 - Check the panel is healthy and that nginx forwards WebSockets (the provided
   `nginx-panel.conf` sets the `Upgrade`/`Connection` headers — don't remove them).
 
@@ -829,12 +827,6 @@ Usually a missing import → install it into the venv (see Section 7).
 The PHP-FPM socket version in the generated nginx config doesn't match your
 installed PHP. Fix per Step 2.6 (install `php8.1-fpm`, **or** edit the site's
 config on the **Nginx** page to your actual `phpX.Y-fpm.sock`).
-
-### APT install in the panel does nothing / permission denied
-
-The sudoers file must include the `apt-get` lines (Step 4.8). Validate with
-`sudo visudo -c`. Some packages prompt interactively — the panel uses `-y`, but a
-few configs still pause; run those from the **Terminal** page instead.
 
 ### Certbot fails ("challenge failed")
 
@@ -917,7 +909,7 @@ Raise `client_max_body_size` in `/etc/nginx/sites-available/serverhub`
 - [ ] OS patched: `sudo apt update && sudo apt upgrade -y` (and reboot when kernel updates).
 - [ ] Swap configured on small servers so builds/MySQL don't OOM.
 
-> ServerHub gives full control of your server (terminal, file system, packages,
+> ServerHub gives broad control of your server (file system, projects,
 > databases) to whoever logs in. Treat the admin password and `SECRET_KEY` like
 > root credentials. Keep the panel behind HTTPS on its own subdomain.
 
