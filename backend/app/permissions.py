@@ -15,16 +15,8 @@ TABS: list[tuple[str, str]] = [
     ("dashboard", "Dashboard"),
     ("projects", "Projects"),
     ("websites", "Websites"),
-    ("proxies", "Proxies"),
-    ("apps", "Apps"),
-    ("shopify", "Shopify Apps"),
-    ("docker", "Docker"),
-    ("terminal", "Terminal"),
-    ("logs", "Logs"),
     ("files", "Files"),
     ("databases", "Databases"),
-    ("nginx", "Nginx"),
-    ("server", "Server"),
     ("settings", "Settings"),
 ]
 TAB_KEYS = [k for k, _ in TABS]
@@ -36,23 +28,13 @@ _PREFIX_TAB: list[tuple[str, str]] = [
     ("/api/projects", "projects"),
     ("/ws/script", "projects"),
     ("/ws/pipeline", "projects"),
+    # OneDrive sync backs the per-project OneDrive tab, so it rides on
+    # the projects permission.
+    ("/api/onedrive", "projects"),
     ("/api/websites", "websites"),
-    ("/api/proxies", "proxies"),
-    ("/api/apps", "apps"),
-    ("/ws/apps", "apps"),
-    ("/api/shopify-apps", "shopify"),
-    ("/api/onedrive", "apps"),
-    ("/api/docker", "docker"),
-    ("/ws/docker", "docker"),
-    ("/api/terminal", "terminal"),
-    ("/ws/terminal", "terminal"),
-    ("/api/logs", "logs"),
-    ("/ws/logs", "logs"),
+    ("/ws/websites", "websites"),
     ("/api/files", "files"),
     ("/api/databases", "databases"),
-    ("/api/nginx", "nginx"),
-    ("/api/server", "server"),
-    ("/ws/apt", "server"),
     ("/api/settings", "settings"),
     ("/ws/settings", "settings"),
 ]
@@ -114,16 +96,15 @@ def user_can(user, path: str, method: str) -> bool:
 _HIDDEN_PATHS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^/api/projects/(\d+)(?:/|$)"), "project"),
     (re.compile(r"^/api/websites/(\d+)(?:/|$)"), "website"),
-    (re.compile(r"^/api/apps/(\d+)(?:/|$)"), "app"),
     (re.compile(r"^/api/scripts/(\d+)(?:/|$)"), "script"),
     (re.compile(r"^/api/schedules/(\d+)(?:/|$)"), "schedule"),
 ]
 
 
 def targets_hidden_entity(db, path: str) -> bool:
-    """True when `path` addresses an admin-hidden project/website/app
+    """True when `path` addresses an admin-hidden project/website
     (directly, or through one of a hidden project's scripts/schedules)."""
-    from .models import App, Project, Schedule, Script, Website
+    from .models import Project, Schedule, Script, Website
 
     for pattern, kind in _HIDDEN_PATHS:
         match = pattern.match(path)
@@ -134,8 +115,6 @@ def targets_hidden_entity(db, path: str) -> bool:
             row = db.get(Project, entity_id)
         elif kind == "website":
             row = db.get(Website, entity_id)
-        elif kind == "app":
-            row = db.get(App, entity_id)
         elif kind == "script":
             script = db.get(Script, entity_id)
             row = script.project if script else None

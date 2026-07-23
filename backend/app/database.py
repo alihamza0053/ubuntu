@@ -84,29 +84,7 @@ def run_migrations() -> None:
             if "hidden" not in wcols:
                 conn.execute(text("ALTER TABLE websites ADD COLUMN hidden BOOLEAN DEFAULT 0"))
 
-    if "apps" not in insp.get_table_names():
-        return
-
-    cols = [c["name"] for c in insp.get_columns("apps")]
-    indexes = insp.get_indexes("apps")
-    with engine.begin() as conn:
-        # apps.instance: per-instance id (added when multi-instance shipped)
-        if "instance" not in cols:
-            conn.execute(text("ALTER TABLE apps ADD COLUMN instance VARCHAR(96)"))
-            conn.execute(text("UPDATE apps SET instance = slug WHERE instance IS NULL"))
-        # custom-image apps: image + container port + extra env (added with the
-        # "run any Docker image" feature).
-        if "image" not in cols:
-            conn.execute(text("ALTER TABLE apps ADD COLUMN image VARCHAR(255)"))
-        if "container_port" not in cols:
-            conn.execute(text("ALTER TABLE apps ADD COLUMN container_port INTEGER"))
-        if "env_json" not in cols:
-            conn.execute(text("ALTER TABLE apps ADD COLUMN env_json TEXT"))
-        if "hidden" not in cols:
-            conn.execute(text("ALTER TABLE apps ADD COLUMN hidden BOOLEAN DEFAULT 0"))
-        # slug must no longer be UNIQUE (multiple instances share a slug)
-        for idx in indexes:
-            if idx.get("column_names") == ["slug"] and idx.get("unique"):
-                conn.execute(text(f'DROP INDEX IF EXISTS "{idx["name"]}"'))
-        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_apps_instance ON apps(instance)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_apps_slug_nonunique ON apps(slug)"))
+    # NOTE: the old `apps` / `proxies` tables belonged to the removed Apps and
+    # Proxies sections. Their rows are deliberately left untouched in existing
+    # databases (dropping them would be destructive and buys nothing) — the
+    # panel simply no longer reads or writes them.

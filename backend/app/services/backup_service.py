@@ -41,15 +41,13 @@ _SKIP_DIRS = {"venv", ".venv", "__pycache__", "node_modules", ".git", "backups"}
 # Each component: key, label, description, and where it lives.
 COMPONENTS: list[dict] = [
     {"key": "panel_db", "label": "Panel database",
-     "desc": "Projects, scripts, apps, schedules, users, settings"},
+     "desc": "Projects, scripts, schedules, users, settings"},
     {"key": "projects", "label": "Projects",
      "desc": "/srv/projects — code, data, dashboards"},
     {"key": "websites", "label": "Websites",
      "desc": "/srv/websites — hosted sites & PHP apps"},
     {"key": "nginx", "label": "Nginx configs",
      "desc": "/srv/nginx-configs — generated vhosts"},
-    {"key": "apps", "label": "App data",
-     "desc": "/srv/serverhub/apps — docker-compose stacks"},
     {"key": "databases", "label": "MySQL databases",
      "desc": "All MySQL databases (mysqldump)"},
 ]
@@ -63,7 +61,6 @@ def _component_path(key: str) -> Path | None:
         "projects": settings.PROJECTS_ROOT,
         "websites": settings.WEBSITES_ROOT,
         "nginx": settings.NGINX_CONFIGS_ROOT,
-        "apps": settings.PANEL_ROOT / "apps",
     }.get(key)
 
 

@@ -178,7 +178,7 @@ export default function DashboardTab({ project, onChanged }) {
           </div>
         </div>
         <LiveLog
-          path={logStream ? `/ws/logs/supervisor/${project.name}?stream=${logStream}` : null}
+          path={logStream ? `/ws/projects/${project.name}/dashboard-log?stream=${logStream}` : null}
         />
         {!logStream && (
           <p className="text-sm text-slate-600 mt-2">Pick a stream to tail it live.</p>

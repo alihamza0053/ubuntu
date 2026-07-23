@@ -1,14 +1,18 @@
 """
-Streamlit dashboard control routes — thin wrappers over supervisor_service.
+Streamlit dashboard control routes — thin wrappers over supervisor_service,
+plus the live tail of a dashboard's supervisor log (Project → Dashboard tab).
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import (APIRouter, Depends, HTTPException, WebSocket,
+                     WebSocketDisconnect)
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..deps import get_current_user
+from ..deps import authenticate_websocket, get_current_user
 from ..schemas import DashboardStatusOut, DetailResponse
 from ..services import supervisor_service
 from ..services.activity import log_activity
+from ..services.streaming import tail_file
+from ..services.supervisor_service import dashboard_log_path
 from .projects import get_project_or_404, project_root
 
 router = APIRouter(
@@ -16,6 +20,8 @@ router = APIRouter(
     tags=["dashboard"],
     dependencies=[Depends(get_current_user)],
 )
+# WebSockets authenticate via ?token=, so they can't use the HTTP dependency.
+ws_router = APIRouter(tags=["dashboard"])
 
 
 def _set_status(project, db: Session):
@@ -68,3 +74,25 @@ def dashboard_status(project_id: int, db: Session = Depends(get_db)):
     project = get_project_or_404(project_id, db)
     state, raw = _set_status(project, db)
     return DashboardStatusOut(status=state, port=project.dashboard_port, raw=raw)
+
+
+@ws_router.websocket("/ws/projects/{name}/dashboard-log")
+async def dashboard_log_ws(websocket: WebSocket, name: str, stream: str = "out"):
+    """Live-tail a project dashboard's supervisor stdout/stderr log."""
+    user = await authenticate_websocket(websocket, require="projects")
+    if user is None:
+        return
+    if "/" in name or "\\" in name or ".." in name or stream not in ("out", "err"):
+        await websocket.close(code=1008, reason="Invalid log request")
+        return
+    await websocket.accept()
+
+    async def send(line: str):
+        await websocket.send_text(line)
+
+    try:
+        await tail_file(dashboard_log_path(name, stream), send)
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    except Exception:
+        pass

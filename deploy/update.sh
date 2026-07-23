@@ -92,18 +92,17 @@ if [ "$DO_FRONTEND" = true ]; then
   ( cd "$PANEL_ROOT/frontend" && npm install --no-fund --no-audit && npm run build )
 fi
 
-# 4b. Deploy helpers (Apps installer + sudoers) — keep them current
-if [ -f "$SRC/deploy/serverhub-app-install.sh" ]; then
-  echo "==> Updating apps installer + helpers + sudoers"
-  mkdir -p "$PANEL_ROOT/bin" "$PANEL_ROOT/apps"
-  install -m 0755 "$SRC/deploy/serverhub-app-install.sh" "$PANEL_ROOT/bin/serverhub-app-install"
-  [ -f "$SRC/deploy/serverhub-webtop.sh" ] && install -m 0755 "$SRC/deploy/serverhub-webtop.sh" "$PANEL_ROOT/bin/serverhub-webtop"
-  [ -f "$SRC/deploy/serverhub-xfce-desktop.sh" ] && install -m 0755 "$SRC/deploy/serverhub-xfce-desktop.sh" "$PANEL_ROOT/bin/serverhub-xfce-desktop"
-  [ -f "$SRC/deploy/serverhub-self-update.sh" ] && install -m 0755 "$SRC/deploy/serverhub-self-update.sh" "$PANEL_ROOT/bin/serverhub-self-update"
-  [ -f "$SRC/deploy/serverhub-cleanup.sh" ] && install -m 0755 "$SRC/deploy/serverhub-cleanup.sh" "$PANEL_ROOT/bin/serverhub-cleanup"
-  install -m 0440 "$SRC/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub
-  visudo -c >/dev/null
-fi
+# 4b. Deploy helpers (self-update, cleanup) + sudoers — keep them current
+echo "==> Updating helpers + sudoers"
+mkdir -p "$PANEL_ROOT/bin"
+[ -f "$SRC/deploy/serverhub-self-update.sh" ] && install -m 0755 "$SRC/deploy/serverhub-self-update.sh" "$PANEL_ROOT/bin/serverhub-self-update"
+[ -f "$SRC/deploy/serverhub-cleanup.sh" ] && install -m 0755 "$SRC/deploy/serverhub-cleanup.sh" "$PANEL_ROOT/bin/serverhub-cleanup"
+# Retire helpers belonging to sections that no longer exist in the panel.
+rm -f "$PANEL_ROOT/bin/serverhub-app-install" \
+      "$PANEL_ROOT/bin/serverhub-webtop" \
+      "$PANEL_ROOT/bin/serverhub-xfce-desktop"
+install -m 0440 "$SRC/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub
+visudo -c >/dev/null
 
 # 4c. Make sure the panel knows where to self-update from (this source dir)
 if [ -f "$PANEL_ROOT/backend/.env" ]; then
@@ -119,13 +118,11 @@ fi
 sudo -u "$PANEL_USER" git config --global --add safe.directory "$SRC" 2>/dev/null || true
 
 # 5. Ownership + restart
-echo "==> Fixing ownership (excluding apps/ — Docker apps own their own data)"
-# NEVER recurse into $PANEL_ROOT/apps: Docker apps (e.g. self-hosted Supabase)
-# keep their data there and Postgres refuses a data dir it doesn't own. A blanket
-# 'chown -R' over it breaks Postgres with "pg_filenode.map: Permission denied".
+echo "==> Fixing ownership (excluding apps/ — leftover container data)"
+# NEVER recurse into $PANEL_ROOT/apps: containers from the retired Apps section
+# may still hold data there (e.g. Postgres refuses a data dir it doesn't own),
+# so a blanket 'chown -R' over it can break them.
 find "$PANEL_ROOT" -path "$PANEL_ROOT/apps" -prune -o -exec chown "$PANEL_USER:$PANEL_USER" {} +
-mkdir -p "$PANEL_ROOT/shopify-apps"
-chown -R "$PANEL_USER:$PANEL_USER" "$PANEL_ROOT/shopify-apps"
 
 echo "==> Restarting panel"
 supervisorctl restart serverhub

@@ -14,7 +14,7 @@ function formatTime(iso) {
 
 /**
  * OneDrive tab: read-only view of the project's mapped OneDrive subfolder.
- * Files are kept fresh by the panel's OneDrive sync monitor (set up in Apps).
+ * Files are kept fresh by the panel's OneDrive sync monitor (set up in Settings).
  */
 export default function OneDriveTab({ project }) {
   const [status, setStatus] = useState(null) // { installed, authorized, monitor, sync_dir }
@@ -102,9 +102,9 @@ export default function OneDriveTab({ project }) {
             : 'OneDrive is installed but not authorized yet.'}
         </p>
         <p className="text-sm text-slate-400 mt-2">
-          Set it up once in the{' '}
-          <Link to="/apps" className="text-sky-400 hover:underline">Apps</Link> page
-          (Files &amp; Sync → OneDrive), then map a folder here.
+          Set it up once in{' '}
+          <Link to="/settings" className="text-sky-400 hover:underline">Settings</Link>
+          {' '}(OneDrive Sync), then map a folder here.
         </p>
       </div>
     )

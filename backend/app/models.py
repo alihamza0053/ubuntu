@@ -146,50 +146,6 @@ class PipelineSchedule(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class App(Base):
-    """
-    A self-hosted app installed from the catalog (e.g. code-server / VS Code).
-    `kind`: 'service' (runs on a port under Supervisor) or 'tool' (install only).
-    """
-    __tablename__ = "apps"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Catalog key (NOT unique — an app can have multiple instances)
-    slug: Mapped[str] = mapped_column(String(64), index=True)
-    # Unique per-instance id used for container/program/nginx naming
-    instance: Mapped[str] = mapped_column(String(96), unique=True, index=True)
-    name: Mapped[str] = mapped_column(String(128))
-    kind: Mapped[str] = mapped_column(String(16), default="service")
-    port: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    status: Mapped[str] = mapped_column(String(16), default="STOPPED")
-    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # Optional access secret (e.g. code-server password) shown to the admin
-    secret: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    # Custom-image apps (slug == "custom"): the Docker image + container port to
-    # run, plus extra env vars (JSON {KEY: VALUE}). NULL for catalog apps.
-    image: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    container_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    env_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Admin-hidden: invisible and unreachable for non-admin users.
-    hidden: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
-class Proxy(Base):
-    """
-    A reverse proxy: route a domain to a local service (127.0.0.1:port) — e.g.
-    a Docker container or a uvicorn/Flask/Node app you run yourself. The panel
-    generates the nginx proxy block and (optionally) issues SSL.
-    """
-    __tablename__ = "proxies"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    upstream_port: Mapped[int] = mapped_column(Integer)
-    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-
 class PipelineRun(Base):
     """One execution of a project's pipeline (manual or scheduled)."""
     __tablename__ = "pipeline_runs"

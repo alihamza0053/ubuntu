@@ -19,10 +19,9 @@ from .database import Base, SessionLocal, engine, run_migrations
 from .models import User
 from .permissions import targets_hidden_entity, user_can
 from .security import decode_access_token
-from .routers import (apps, auth, dashboard, databases, docker, files, logs,
-                      nginx, onedrive, packages, pipeline, portal, projects,
-                      proxies, schedules, scripts, server, settings_router,
-                      shopify_apps, terminal, trash, websites)
+from .routers import (auth, dashboard, databases, files, onedrive, packages,
+                      pipeline, portal, projects, schedules, scripts, server,
+                      settings_router, trash, websites)
 from .services import pipeline_service, scheduler_service
 
 # Create any missing tables on startup (idempotent), then run column migrations
@@ -103,26 +102,17 @@ app.include_router(scripts.router)
 app.include_router(packages.router)           # per-project pip packages
 app.include_router(packages.ws_router)        # pip-install live WebSocket
 app.include_router(dashboard.router)
+app.include_router(dashboard.ws_router)       # dashboard supervisor-log tail
 app.include_router(schedules.router)
 app.include_router(pipeline.router)
 app.include_router(pipeline.ws_router)        # pipeline live-stream WebSocket
 app.include_router(websites.router)
 app.include_router(websites.ws_router)        # python web-service logs WebSocket
-app.include_router(proxies.router)
 app.include_router(databases.router)
-app.include_router(nginx.router)
 app.include_router(files.router)
 app.include_router(trash.router)               # recycle bin (deleted project/website files)
-app.include_router(logs.router)
-app.include_router(terminal.router)
-app.include_router(server.router)
-app.include_router(server.ws_router)          # apt live-stream WebSocket
-app.include_router(apps.router)
-app.include_router(apps.ws_router)            # app install WebSocket
-app.include_router(shopify_apps.router)
-app.include_router(onedrive.router)           # OneDrive setup (under the Apps tab)
-app.include_router(docker.router)
-app.include_router(docker.ws_router)          # container logs WebSocket
+app.include_router(server.router)             # /api/server/stats — Dashboard cards
+app.include_router(onedrive.router)           # OneDrive sync (per-project OneDrive tab)
 app.include_router(settings_router.router)
 app.include_router(settings_router.ws_router)  # self-update live-stream WebSocket
 app.include_router(portal.router)              # public per-project upload portal

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import LiveLog from '../components/LiveLog'
 import Backups from '../components/Backups'
+import OneDriveSetup from '../components/OneDriveSetup'
 import Users from '../components/Users'
 import { useAuth } from '../context/AuthContext'
 
@@ -131,6 +132,9 @@ export default function Settings() {
         </p>
         <button className="btn-primary" type="submit">Save</button>
       </form>
+
+      {/* OneDrive sync (feeds each project's OneDrive tab) */}
+      <OneDriveSetup />
 
       {/* Backup & Restore */}
       <Backups />

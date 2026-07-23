@@ -4,7 +4,7 @@ Python web-service (Websites "python" type) lifecycle.
 Lets a user upload their own FastAPI/Flask app as a zip, build a virtualenv +
 install requirements.txt, and run it under Supervisor on a localhost port (the
 domain is then a reverse proxy to that port). Mirrors venv_service (background
-env build) and app_service (per-program supervisor conf).
+env build) for the environment work.
 
 Runs as the panel's `serverhub` user, which owns /srv/websites — no sudo for the
 venv/pip work; supervisorctl uses the existing restricted sudo rule.

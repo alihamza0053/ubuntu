@@ -85,10 +85,9 @@ if [ ! -f "$PANEL_ROOT/backend/.env" ]; then
 fi
 
 echo "==> Permissions"
-mkdir -p "$PANEL_ROOT/shopify-apps"
-chown -R "$PANEL_USER:$PANEL_USER" /srv/projects /srv/websites /srv/nginx-configs "$PANEL_ROOT/shopify-apps"
-# $PANEL_ROOT but NOT $PANEL_ROOT/apps — Docker apps (e.g. self-hosted Supabase)
-# own their data there; chowning Postgres's data dir breaks it.
+chown -R "$PANEL_USER:$PANEL_USER" /srv/projects /srv/websites /srv/nginx-configs
+# $PANEL_ROOT but NOT $PANEL_ROOT/apps — leftover containers from the retired
+# Apps section may own data there; chowning e.g. Postgres's data dir breaks it.
 find "$PANEL_ROOT" -path "$PANEL_ROOT/apps" -prune -o -exec chown "$PANEL_USER:$PANEL_USER" {} +
 # Panel user must be able to write supervisor program logs
 chown "$PANEL_USER:$PANEL_USER" /var/log/supervisor || true
@@ -96,11 +95,8 @@ chown "$PANEL_USER:$PANEL_USER" /var/log/supervisor || true
 mkdir -p "/home/$PANEL_USER/.cache"
 chown -R "$PANEL_USER:$PANEL_USER" "/home/$PANEL_USER"
 
-echo "==> Apps installer + helpers"
-mkdir -p "$PANEL_ROOT/bin" "$PANEL_ROOT/apps" "$PANEL_ROOT/backups"
-install -m 0755 "$REPO_DIR/deploy/serverhub-app-install.sh" "$PANEL_ROOT/bin/serverhub-app-install"
-install -m 0755 "$REPO_DIR/deploy/serverhub-webtop.sh" "$PANEL_ROOT/bin/serverhub-webtop"
-install -m 0755 "$REPO_DIR/deploy/serverhub-xfce-desktop.sh" "$PANEL_ROOT/bin/serverhub-xfce-desktop"
+echo "==> Panel helpers"
+mkdir -p "$PANEL_ROOT/bin" "$PANEL_ROOT/backups"
 install -m 0755 "$REPO_DIR/deploy/serverhub-self-update.sh" "$PANEL_ROOT/bin/serverhub-self-update"
 install -m 0755 "$REPO_DIR/deploy/serverhub-cleanup.sh" "$PANEL_ROOT/bin/serverhub-cleanup"
 

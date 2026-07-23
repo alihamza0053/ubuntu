@@ -35,7 +35,6 @@ def allowed_roots() -> list[Path]:
         settings.NGINX_CONFIGS_ROOT.resolve(),
         settings.ONEDRIVE_ROOT.resolve(),
         settings.OPT_ROOT.resolve(),
-        settings.SHOPIFY_APPS_ROOT.resolve(),
     ]
 
 
