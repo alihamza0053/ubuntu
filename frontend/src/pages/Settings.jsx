@@ -298,6 +298,15 @@ function SystemCleanup() {
     refresh()   // show the freed space/RAM in the stats
   }
 
+  async function toggleAutoTemp(enabled) {
+    try {
+      await api.put('/settings/cleanup/auto-temp', { enabled })
+      refresh()
+    } catch (err) {
+      alert(errorMessage(err))
+    }
+  }
+
   const cpu = info?.cpu
   const mem = info?.memory
   const disk = info?.disk
@@ -433,6 +442,33 @@ function SystemCleanup() {
                 || diskTasks.every((t) => !selected.has(t.key))}>
               {runningKind === 'disk' ? 'Cleaning…' : '🧹 Clean disk now'}
             </button>
+
+            {/* Daily automatic temp cleanup */}
+            {info?.auto_clean_temp && (
+              <div className="rounded-lg border border-panel-border bg-slate-900/60 p-3 mt-1">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input type="checkbox" className="mt-1 accent-sky-500"
+                    checked={info.auto_clean_temp.enabled}
+                    disabled={helperMissing}
+                    onChange={(e) => toggleAutoTemp(e.target.checked)} />
+                  <span className="flex-1 min-w-0">
+                    <span className="text-sm text-slate-200">
+                      Clean temp files automatically, every day
+                    </span>
+                    <span className="block text-xs text-slate-500">
+                      Runs at {info.auto_clean_temp.at} server time and deletes
+                      /tmp and /var/tmp files untouched for over 24 hours.
+                      Nothing else is touched.
+                    </span>
+                    {info.auto_clean_temp.enabled && info.auto_clean_temp.next_run && (
+                      <span className="block text-xs text-slate-600 mt-0.5">
+                        Next run: {new Date(info.auto_clean_temp.next_run).toLocaleString()}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              </div>
+            )}
             {runningKind === 'disk' && wsPath && (
               <LiveLog path={wsPath} onClose={onCleanupClosed} />
             )}

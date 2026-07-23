@@ -19,7 +19,7 @@ from ..database import get_db
 from ..deps import authenticate_websocket, get_current_user, require_admin
 from ..models import Setting
 from ..schemas import DetailResponse
-from ..services import backup_service, trash_service
+from ..services import backup_service, scheduler_service, trash_service
 from ..services.streaming import run_command, stream_command, tail_file
 
 router = APIRouter(
@@ -342,7 +342,37 @@ async def cleanup_preview():
             for key, label, desc in CLEANUP_TASKS
         ],
         "ready": Path(CLEANUP_BIN).is_file(),
+        "auto_clean_temp": {
+            "enabled": scheduler_service.auto_clean_temp_enabled(),
+            "next_run": scheduler_service.auto_clean_temp_next_run(),
+            "at": f"{scheduler_service.AUTO_CLEAN_TEMP_HOUR:02d}:"
+                  f"{scheduler_service.AUTO_CLEAN_TEMP_MINUTE:02d}",
+        },
     }
+
+
+class AutoCleanRequest(BaseModel):
+    enabled: bool
+
+
+@router.put("/cleanup/auto-temp", response_model=DetailResponse,
+            dependencies=[Depends(require_admin)])
+def set_auto_clean_temp(body: AutoCleanRequest, db: Session = Depends(get_db)):
+    """Turn the daily temp-file cleanup on or off (admin only)."""
+    row = (db.query(Setting)
+           .filter(Setting.key == scheduler_service.AUTO_CLEAN_TEMP_KEY).first())
+    value = "1" if body.enabled else "0"
+    if row:
+        row.value = value
+    else:
+        db.add(Setting(key=scheduler_service.AUTO_CLEAN_TEMP_KEY, value=value))
+    db.commit()
+    scheduler_service.set_auto_clean_temp(body.enabled)
+    at = (f"{scheduler_service.AUTO_CLEAN_TEMP_HOUR:02d}:"
+          f"{scheduler_service.AUTO_CLEAN_TEMP_MINUTE:02d}")
+    return DetailResponse(
+        detail=f"Daily temp cleanup enabled — runs every day at {at}"
+        if body.enabled else "Daily temp cleanup disabled")
 
 
 @ws_router.websocket("/ws/settings/cleanup")
