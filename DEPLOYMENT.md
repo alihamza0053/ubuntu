@@ -650,6 +650,7 @@ Log in, then walk through each area. This confirms all dependencies are wired.
 | **Files** | Files page → browse `/srv` | Navigate, upload, rename, edit |
 | **Recycle Bin** | Delete a project file → Recycle Bin | Item listed; restore works |
 | **Websites** | Websites → New → upload a `.zip` | Files extract; assign domain works |
+| **Flask app** | New → Python app (Flask) → upload zip → Install deps → Start | Run command auto-detected; status RUNNING; domain serves the app |
 | **MySQL** | Databases → New Database | Appears in list; query runner returns rows |
 | **Nginx** | Assign a domain to a project | Site answers on that domain |
 | **Settings** | Settings → change password / backup DB | Works; DB downloads |
@@ -693,6 +694,52 @@ sudo tail -f /var/log/supervisor/<project>.err.log
 sudo tail -f /var/log/nginx/access.log
 sudo tail -f /var/log/nginx/error.log
 ```
+
+### Deploy a Flask (or FastAPI) app
+
+A "python" website is your own web app, run by the panel under Supervisor on a
+private localhost port with nginx reverse-proxying your domain to it.
+
+1. **Websites → ＋ New Website** — give it a name, pick type **Python app**, then
+   the framework: **Flask** (served by gunicorn) or **FastAPI** (served by
+   uvicorn). Pick *Other* if you want to write the start command yourself.
+2. **Files tab → ⬆ Upload .zip** — your code plus a `requirements.txt`. Zip the
+   *contents*, not the enclosing folder, so `app.py` sits at the top level.
+   On upload the panel reads your code, finds the app object and fills in the
+   run command (e.g. `app = Flask(__name__)` in `app.py` → `app:app`). A run
+   command you edited by hand is never overwritten — it only suggests.
+3. **Run tab → 📦 Install deps** — builds a per-site virtualenv and installs
+   `requirements.txt`. gunicorn/uvicorn is installed automatically even if your
+   requirements file forgets it. Watch the live setup log for pip errors.
+4. **Run tab → ▶ Start**, then **📜 Logs** for stdout+stderr of the running app.
+   Started apps also come back automatically after a reboot.
+5. **Domain & SSL tab** — assign the domain, then **🔒 Request SSL**.
+
+The generated run commands are:
+
+| Framework | Command |
+|---|---|
+| Flask | `gunicorn app:app --bind 127.0.0.1:{port} --workers 3 --timeout 120` |
+| FastAPI | `uvicorn app_server:app --host 127.0.0.1 --port {port}` |
+
+`{port}` is substituted with the port the panel allocated; the site's venv is
+first on `PATH`, so `gunicorn`, `uvicorn` and `python` all resolve to it.
+
+**Writing the app so it survives production:**
+
+- Keep `app.run(...)` inside `if __name__ == "__main__":`. gunicorn *imports*
+  your module — a bare `app.run()` at import time hangs or crashes the worker.
+- Bind nothing yourself; gunicorn owns the socket.
+- Read secrets from the environment (`os.environ`), not hardcoded literals.
+- Flask sessions need a stable `SECRET_KEY` — with several gunicorn workers a
+  random per-process key logs everyone out at random.
+- Behind the proxy, `X-Forwarded-Proto` is set; use it (e.g. Werkzeug's
+  `ProxyFix`) if you generate absolute URLs.
+
+**If it won't start:** Run tab → 📜 Logs shows the traceback. The usual causes
+are a missing dependency (add it to `requirements.txt`, install deps again), a
+wrong import path in the run command (`module:variable` — press **🔍 Detect
+app** to have it worked out for you), or a port already taken by another site.
 
 ### Change the admin password
 

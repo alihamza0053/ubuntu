@@ -12,6 +12,12 @@ const BASE_TABS = [
   { key: 'domain', label: 'Domain & SSL' },
 ]
 
+const FRAMEWORK_LABELS = {
+  flask: 'Flask (gunicorn)',
+  fastapi: 'FastAPI (uvicorn)',
+  other: 'Other (custom command)',
+}
+
 // Python apps get a "Run" tab (between Files and Database).
 function tabsFor(type) {
   if (type !== 'python') return BASE_TABS
@@ -99,6 +105,7 @@ export default function WebsiteDetail() {
             <div className="flex justify-between"><dt className="text-slate-500">Database</dt><dd>{site.db_name || '—'}</dd></div>
             {site.type === 'python' && (
               <>
+                <div className="flex justify-between"><dt className="text-slate-500">Framework</dt><dd>{FRAMEWORK_LABELS[site.framework] || '—'}</dd></div>
                 <div className="flex justify-between"><dt className="text-slate-500">Port</dt><dd className="font-mono">127.0.0.1:{site.port}</dd></div>
                 <div className="flex justify-between items-center"><dt className="text-slate-500">Status</dt><dd><StatusBadge status={site.status} /></dd></div>
               </>
@@ -127,7 +134,9 @@ export default function WebsiteDetail() {
               <input ref={uploadRef} type="file" accept=".zip" className="hidden"
                 onChange={(e) => { uploadZip(e.target.files[0], false); e.target.value = '' }} />
               <span className="text-xs text-slate-500">
-                Upload a .zip — it replaces the folder contents{site.type === 'react' ? ' (then builds to dist/)' : ''}.
+                Upload a .zip — it replaces the folder contents
+                {site.type === 'react' && ' (then builds to dist/)'}
+                {site.type === 'python' && ' (include requirements.txt; the panel then detects your app and sets the run command)'}.
               </span>
             </div>
             {uploadMsg && <pre className="mt-3 bg-black text-slate-300 text-xs p-3 rounded-lg max-h-48 overflow-auto whitespace-pre-wrap">{uploadMsg}</pre>}
@@ -227,18 +236,48 @@ function DatabaseTab({ site, onChanged }) {
   )
 }
 
-/** Python web-service controls: deps, run command, start/stop, logs. */
+/** Python web-service controls: framework, deps, run command, start/stop, logs. */
 function RunTab({ site, onChanged }) {
   const [cmd, setCmd] = useState(site.run_command || '')
+  const [framework, setFramework] = useState(site.framework || 'fastapi')
+  const [presets, setPresets] = useState([])
   const [msg, setMsg] = useState('')
   const [setupWs, setSetupWs] = useState(null)
   const [showAppLogs, setShowAppLogs] = useState(false)
 
+  // Default run command per framework — drives the "use the default" shortcut.
+  useEffect(() => {
+    api.get(`/websites/${site.id}/frameworks`).then((r) => setPresets(r.data)).catch(() => {})
+  }, [site.id])
+
+  const defaultFor = (key) => presets.find((p) => p.key === key)?.run_command || ''
+  const isPreset = !cmd.trim() || presets.some((p) => p.run_command === cmd.trim())
+
+  // Switching framework rewrites the command only while it is still one of ours
+  // — a command typed by hand is never thrown away silently.
+  function changeFramework(key) {
+    setFramework(key)
+    if (isPreset && key !== 'other') setCmd(defaultFor(key))
+  }
+
   async function saveCmd() {
     setMsg('')
     try {
-      const r = await api.put(`/websites/${site.id}/run-command`, { run_command: cmd })
+      const r = await api.put(`/websites/${site.id}/run-command`, { run_command: cmd, framework })
       setMsg(r.data.detail)
+      onChanged()
+    } catch (err) { setMsg(errorMessage(err)) }
+  }
+
+  async function detect() {
+    setMsg('Scanning your code…')
+    try {
+      const r = await api.post(`/websites/${site.id}/detect`)
+      setMsg(r.data.detail)
+      if (r.data.detected) {
+        setCmd(r.data.run_command)
+        setFramework(r.data.framework)
+      }
       onChanged()
     } catch (err) { setMsg(errorMessage(err)) }
   }
@@ -285,6 +324,8 @@ function RunTab({ site, onChanged }) {
           assign a domain to reach it.
         </p>
         <div className="flex flex-wrap gap-2">
+          <button className="btn-secondary" onClick={detect}
+            title="Read the uploaded code and set the framework + run command">🔍 Detect app</button>
           <button className="btn-secondary" onClick={installDeps}>📦 Install deps</button>
           <button className="btn-secondary" onClick={() => action('start')}>▶ Start</button>
           <button className="btn-secondary" onClick={() => action('stop')}>⏹ Stop</button>
@@ -305,18 +346,41 @@ function RunTab({ site, onChanged }) {
         )}
       </div>
 
-      <div className="card space-y-2">
-        <h3 className="font-semibold">Run command</h3>
-        <p className="text-xs text-slate-500">
-          Use <span className="font-mono">{'{port}'}</span> for the port. The app’s venv is on PATH,
-          so <span className="font-mono">uvicorn</span>/<span className="font-mono">gunicorn</span>/<span className="font-mono">python</span> resolve to it.
-        </p>
-        <input className="input font-mono text-sm" value={cmd} onChange={(e) => setCmd(e.target.value)} />
-        <div className="flex gap-2">
+      <div className="card space-y-3">
+        <h3 className="font-semibold">Framework &amp; run command</h3>
+
+        <div>
+          <label className="block text-sm text-slate-400 mb-1">Framework</label>
+          <select className="input max-w-xs" value={framework}
+            onChange={(e) => changeFramework(e.target.value)}>
+            <option value="flask">Flask — served by gunicorn</option>
+            <option value="fastapi">FastAPI — served by uvicorn</option>
+            <option value="other">Other — custom command</option>
+          </select>
+          <p className="text-xs text-slate-500 mt-1">
+            Picks the server installed with your deps and the nginx proxy style
+            (Flask/WSGI has no websockets). Save to apply.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm text-slate-400 mb-1">Run command</label>
+          <input className="input font-mono text-sm" value={cmd} onChange={(e) => setCmd(e.target.value)} />
+          <p className="text-xs text-slate-500 mt-1">
+            Use <span className="font-mono">{'{port}'}</span> for the port. The app’s venv is on PATH,
+            so <span className="font-mono">gunicorn</span>/<span className="font-mono">uvicorn</span>/<span className="font-mono">python</span> resolve to it.
+            The import path is <span className="font-mono">module:variable</span> —
+            e.g. <span className="font-mono">app:app</span> for an <span className="font-mono">app = Flask(__name__)</span> in <span className="font-mono">app.py</span>.
+          </p>
+        </div>
+
+        <div className="flex gap-2 flex-wrap">
           <button className="btn-primary" onClick={saveCmd}>Save</button>
-          <button className="btn-secondary" onClick={() => setCmd('uvicorn app_server:app --host 127.0.0.1 --port {port}')}>
-            Reset default
-          </button>
+          {framework !== 'other' && defaultFor(framework) && (
+            <button className="btn-secondary" onClick={() => setCmd(defaultFor(framework))}>
+              Reset to {framework} default
+            </button>
+          )}
         </div>
       </div>
 

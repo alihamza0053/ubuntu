@@ -21,10 +21,9 @@ SITES_ENABLED = Path("/etc/nginx/sites-enabled")
 # ---------- templates ----------
 
 def streamlit_block(domain: str, port: int) -> str:
-    return f"""server {{
-    listen 80;
-    server_name {domain};
-    client_max_body_size 64M;
+    """Websocket-capable reverse proxy (Streamlit, uvicorn/ASGI apps)."""
+    locations = f"""    client_max_body_size 64M;
+
     location / {{
         proxy_pass http://127.0.0.1:{port};
         proxy_http_version 1.1;
@@ -35,9 +34,13 @@ def streamlit_block(domain: str, port: int) -> str:
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 3600s;
-    }}
-}}
-"""
+    }}"""
+    return _wrap_server(domain, locations)
+
+
+# ASGI apps (FastAPI/uvicorn) want exactly the Streamlit treatment: HTTP/1.1
+# with the websocket upgrade passed through.
+asgi_block = streamlit_block
 
 
 def _cert_paths(domain: str) -> tuple[str, str] | None:
@@ -67,6 +70,73 @@ def _cert_paths(domain: str) -> tuple[str, str] | None:
     except OSError:
         pass
     return None
+
+
+def _wrap_server(domain: str, locations: str) -> str:
+    """
+    Wrap location blocks in a server block, keeping any existing SSL setup.
+
+    If a Let's Encrypt cert already exists for the domain we emit an HTTPS
+    server (plus an HTTP → HTTPS redirect), so regenerating a config never wipes
+    the certificate lines certbot added.
+    """
+    cert = _cert_paths(domain)
+    if not cert:
+        # No cert yet — plain HTTP block (certbot adds SSL when you click SSL).
+        return f"server {{\n    listen 80;\n    server_name {domain};\n{locations}\n}}\n"
+
+    fullchain, privkey = cert
+    ssl_opts = ""
+    if Path("/etc/letsencrypt/options-ssl-nginx.conf").exists():
+        ssl_opts += "    include /etc/letsencrypt/options-ssl-nginx.conf;\n"
+    if Path("/etc/letsencrypt/ssl-dhparams.pem").exists():
+        ssl_opts += "    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;\n"
+
+    return f"""server {{
+    listen 80;
+    server_name {domain};
+    location / {{ return 301 https://$host$request_uri; }}
+}}
+
+server {{
+    listen 443 ssl;
+    server_name {domain};
+    ssl_certificate {fullchain};
+    ssl_certificate_key {privkey};
+{ssl_opts}{locations}
+}}
+"""
+
+
+def wsgi_block(domain: str, port: int) -> str:
+    """
+    Reverse proxy for a WSGI app (Flask behind gunicorn) on 127.0.0.1:{port}.
+
+    Deliberately does NOT send `Connection: upgrade` — a WSGI app has no
+    websockets, and pinning that header on every request kills upstream
+    keep-alive. `proxy_redirect off` keeps Flask's own redirects (url_for,
+    redirect-after-login) pointing at the public domain instead of 127.0.0.1.
+    """
+    locations = f"""    client_max_body_size 64M;
+
+    location / {{
+        proxy_pass http://127.0.0.1:{port};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+        proxy_read_timeout 300s;
+    }}"""
+    return _wrap_server(domain, locations)
+
+
+def webapp_block(domain: str, port: int, framework: str | None) -> str:
+    """Pick the right proxy block for a "python" website's framework."""
+    if (framework or "").lower() == "flask":
+        return wsgi_block(domain, port)
+    return asgi_block(domain, port)
 
 
 def project_block(domain: str, port: int, project: str, panel_port: int) -> str:
@@ -104,33 +174,7 @@ def project_block(domain: str, port: int, project: str, panel_port: int) -> str:
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 3600s;
     }}"""
-
-    cert = _cert_paths(domain)
-    if not cert:
-        # No cert yet — plain HTTP block (certbot adds SSL when you click SSL).
-        return f"server {{\n    listen 80;\n    server_name {domain};\n{locations}\n}}\n"
-
-    fullchain, privkey = cert
-    ssl_opts = ""
-    if Path("/etc/letsencrypt/options-ssl-nginx.conf").exists():
-        ssl_opts += "    include /etc/letsencrypt/options-ssl-nginx.conf;\n"
-    if Path("/etc/letsencrypt/ssl-dhparams.pem").exists():
-        ssl_opts += "    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;\n"
-
-    return f"""server {{
-    listen 80;
-    server_name {domain};
-    location / {{ return 301 https://$host$request_uri; }}
-}}
-
-server {{
-    listen 443 ssl;
-    server_name {domain};
-    ssl_certificate {fullchain};
-    ssl_certificate_key {privkey};
-{ssl_opts}{locations}
-}}
-"""
+    return _wrap_server(domain, locations)
 
 
 def react_block(domain: str, folder: str) -> str:

@@ -83,6 +83,13 @@ def run_migrations() -> None:
                 conn.execute(text("ALTER TABLE websites ADD COLUMN status VARCHAR(16) DEFAULT 'STOPPED'"))
             if "hidden" not in wcols:
                 conn.execute(text("ALTER TABLE websites ADD COLUMN hidden BOOLEAN DEFAULT 0"))
+            # Flask/FastAPI selection (added with first-class Flask deploys).
+            # Existing python websites predate it and ran the old uvicorn
+            # default, so they are backfilled as fastapi.
+            if "framework" not in wcols:
+                conn.execute(text("ALTER TABLE websites ADD COLUMN framework VARCHAR(16)"))
+                conn.execute(text("UPDATE websites SET framework = 'fastapi' "
+                                  "WHERE type = 'python'"))
 
     # NOTE: the old `apps` / `proxies` tables belonged to the removed Apps and
     # Proxies sections. Their rows are deliberately left untouched in existing

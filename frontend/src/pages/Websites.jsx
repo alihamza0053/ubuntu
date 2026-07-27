@@ -8,7 +8,7 @@ export default function Websites() {
   const [sites, setSites] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ name: '', type: 'html', db_name: '' })
+  const [form, setForm] = useState({ name: '', type: 'html', db_name: '', framework: '' })
   const [error, setError] = useState('')
 
   const refresh = useCallback(() => {
@@ -23,9 +23,9 @@ export default function Websites() {
     e.preventDefault()
     setError('')
     try {
-      await api.post('/websites', form)
+      await api.post('/websites', { ...form, framework: form.type === 'python' ? form.framework : null })
       setShowModal(false)
-      setForm({ name: '', type: 'html', db_name: '' })
+      setForm({ name: '', type: 'html', db_name: '', framework: '' })
       refresh()
     } catch (err) {
       setError(errorMessage(err))
@@ -64,7 +64,8 @@ export default function Websites() {
         <p className="text-slate-500">Loading…</p>
       ) : sites.length === 0 ? (
         <div className="card text-center py-12 text-slate-500">
-          No websites yet — create one, then upload a .zip of your React build, PHP, or static HTML site.
+          No websites yet — create one, then upload a .zip of your Flask/FastAPI app,
+          React build, PHP, or static HTML site.
         </div>
       ) : (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -84,13 +85,35 @@ export default function Websites() {
               onChange={(e) => setForm({ ...form, name: e.target.value })} required />
             <div>
               <label className="block text-sm text-slate-400 mb-1">Type</label>
-              <select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+              <select className="input" value={form.type}
+                onChange={(e) => setForm({
+                  ...form,
+                  type: e.target.value,
+                  // Flask is the common case for "I wrote a Python web app".
+                  framework: e.target.value === 'python' ? (form.framework || 'flask') : '',
+                })}>
                 <option value="html">Static HTML/CSS/JS</option>
                 <option value="react">React (build → dist/)</option>
                 <option value="php">PHP</option>
-                <option value="python">Python (FastAPI/Flask) — upload &amp; run</option>
+                <option value="python">Python app — upload &amp; run</option>
               </select>
             </div>
+
+            {form.type === 'python' && (
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Framework</label>
+                <select className="input" value={form.framework}
+                  onChange={(e) => setForm({ ...form, framework: e.target.value })}>
+                  <option value="flask">Flask — served by gunicorn</option>
+                  <option value="fastapi">FastAPI — served by uvicorn</option>
+                  <option value="other">Other — I&apos;ll write the run command</option>
+                </select>
+                <p className="text-xs text-slate-500 mt-1">
+                  Sets the default run command and installs the right server. After you
+                  upload your zip the panel reads your code and adjusts this automatically.
+                </p>
+              </div>
+            )}
             <input className="input" placeholder="linked database name (optional)" value={form.db_name}
               onChange={(e) => setForm({ ...form, db_name: e.target.value })} />
             <div className="flex justify-end gap-2">

@@ -1,8 +1,8 @@
 # ServerHub
 
 Self-hosted web panel to manage an Ubuntu VPS from the browser: Python project
-workspaces, Streamlit dashboards, script running/scheduling, websites, MySQL,
-a file manager and a built-in code editor.
+workspaces, Streamlit dashboards, script running/scheduling, websites, Flask /
+FastAPI apps, MySQL, a file manager and a built-in code editor.
 
 **Sections:** Dashboard · Projects · Websites · Files · Recycle Bin ·
 Databases · Settings.
@@ -11,14 +11,16 @@ Databases · Settings.
 file uploads, Monaco editor, script runner with live WebSocket output, project
 pipelines, Streamlit dashboards via Supervisor, dashboard cards + server stats,
 APScheduler cron scheduling with a visual builder, website deploys (zip + React
-build + run-your-own Python services), automatic nginx config generation with
+build + Flask/FastAPI apps run under Supervisor with the entrypoint auto-detected
+from your code), automatic nginx config generation with
 domain assignment + Certbot SSL, global file manager with a recycle bin, MySQL
 manager (create/drop/query/import/export), OneDrive sync, backup & restore,
 panel self-update and system cleanup.
 
 ## Guides
 
-- **`DEPLOYMENT.md`** — install from zero on a fresh Ubuntu VPS (every dependency).
+- **`DEPLOYMENT.md`** — install from zero on a fresh Ubuntu VPS (every dependency),
+  plus *Deploy a Flask (or FastAPI) app* in §7.
 - **`UPDATING.md`** — push code changes to an installed panel (`deploy/update.sh`).
 - **`DASHBOARD_GUIDE.md`** — deploy Streamlit dashboards + fix every common issue
   (per-project venv, spawn errors, `.xls`/`xlrd`, missing modules).

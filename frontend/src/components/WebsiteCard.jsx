@@ -24,7 +24,11 @@ export default function WebsiteCard({ site, onDelete, onToggleHidden }) {
               🙈 hidden
             </span>
           )}
-          <span className={`badge ${TYPE_STYLES[site.type] || ''}`}>{site.type.toUpperCase()}</span>
+          <span className={`badge ${TYPE_STYLES[site.type] || ''}`}>
+            {site.type === 'python' && site.framework && site.framework !== 'other'
+              ? site.framework.toUpperCase()
+              : site.type.toUpperCase()}
+          </span>
         </span>
       </div>
 

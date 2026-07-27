@@ -27,12 +27,17 @@ router = APIRouter(
 ws_router = APIRouter(tags=["websites"])   # logs WS authenticates via ?token=
 
 VALID_TYPES = {"react", "php", "html", "python"}
+# "python" websites additionally pick a framework: it decides the default run
+# command (flask → gunicorn, fastapi → uvicorn), which server package gets
+# installed, and which nginx proxy block is generated.
+VALID_FRAMEWORKS = {"flask", "fastapi", "other"}
 
 
 class WebsiteCreate(BaseModel):
     name: str
     type: str
     db_name: str | None = None
+    framework: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -47,6 +52,16 @@ class WebsiteCreate(BaseModel):
     def type_ok(cls, v: str) -> str:
         if v not in VALID_TYPES:
             raise ValueError(f"type must be one of {VALID_TYPES}")
+        return v
+
+    @field_validator("framework")
+    @classmethod
+    def framework_ok(cls, v: str | None) -> str | None:
+        if v is None or v == "":
+            return None
+        v = v.strip().lower()
+        if v not in VALID_FRAMEWORKS:
+            raise ValueError(f"framework must be one of {VALID_FRAMEWORKS}")
         return v
 
 
@@ -72,7 +87,7 @@ def _to_out(site: Website) -> dict:
         "folder_path": site.folder_path, "domain": site.domain,
         "db_name": site.db_name, "created_at": site.created_at,
         "run_command": site.run_command, "port": site.port, "status": site.status,
-        "hidden": site.hidden,
+        "hidden": site.hidden, "framework": site.framework,
     }
     if site.type == "python":
         try:
@@ -115,8 +130,9 @@ def create_website(body: WebsiteCreate, db: Session = Depends(get_db)):
     root.mkdir(parents=True, exist_ok=True)
     site = Website(name=body.name, type=body.type, folder_path=str(root), db_name=body.db_name)
     if body.type == "python":
+        site.framework = webapp_service.normalise_framework(body.framework)
         site.port = webapp_service.allocate_port(db)
-        site.run_command = webapp_service.default_run_command()
+        site.run_command = webapp_service.default_run_command(site.framework)
     db.add(site)
     db.commit()
     db.refresh(site)
@@ -176,6 +192,30 @@ async def upload_website(website_id: int, file: UploadFile,
         code, output = await website_service.build_react(site.name)
         result = {"detail": "Built" if code == 0 else "Build failed",
                   "build_exit_code": code, "build_output": output[-4000:]}
+    elif site.type == "python":
+        # Read the uploaded code and work out how to start it, so a plain zip
+        # upload needs no manual setup. A run command the user typed themselves
+        # is never overwritten — we only report what we found.
+        found = webapp_service.detect_app(site.name)
+        if found:
+            result["detected"] = found
+            if webapp_service.is_default_run_command(site.run_command):
+                site.framework = found["framework"]
+                site.run_command = found["run_command"]
+                db.commit()
+                if webapp_service.config_path(site.name).exists():
+                    webapp_service.write_program(site)
+                result["applied"] = True
+                result["detail"] = (f"Uploaded — detected {found['framework']} app in "
+                                    f"{found['file']}, run command set to: {found['run_command']}")
+            else:
+                result["applied"] = False
+                result["detail"] = (f"Uploaded — detected {found['framework']} app in "
+                                    f"{found['file']}, but your custom run command was kept. "
+                                    f"Suggested: {found['run_command']}")
+        else:
+            result["detail"] = ("Uploaded — no Flask/FastAPI app object found; "
+                                "set the run command yourself in the Run tab.")
     return result
 
 
@@ -219,8 +259,11 @@ def assign_domain(website_id: int, body: DomainRequest, db: Session = Depends(ge
     if site.type == "python":
         if not site.port:
             raise HTTPException(status_code=400, detail="This app has no port yet")
-        # Reverse-proxy the domain to the app's localhost port.
-        content = nginx_service.streamlit_block(domain=body.domain, port=site.port)
+        # Reverse-proxy the domain to the app's localhost port, with the proxy
+        # block that suits the framework (WSGI for Flask, websocket-capable
+        # for ASGI).
+        content = nginx_service.webapp_block(domain=body.domain, port=site.port,
+                                             framework=site.framework)
     else:
         content = nginx_service.build_block(site.type, domain=body.domain, folder=site.name)
     config_path = nginx_service.write_site(slug, content)
@@ -252,6 +295,17 @@ def website_ssl(website_id: int, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 class RunCommandRequest(BaseModel):
     run_command: str
+    framework: str | None = None
+
+    @field_validator("framework")
+    @classmethod
+    def framework_ok(cls, v: str | None) -> str | None:
+        if v is None or v == "":
+            return None
+        v = v.strip().lower()
+        if v not in VALID_FRAMEWORKS:
+            raise ValueError(f"framework must be one of {VALID_FRAMEWORKS}")
+        return v
 
 
 def _require_python(site: Website) -> None:
@@ -259,12 +313,54 @@ def _require_python(site: Website) -> None:
         raise HTTPException(status_code=400, detail="Only Python websites can be run")
 
 
+@router.get("/{website_id}/frameworks")
+def list_frameworks(website_id: int, db: Session = Depends(get_db)):
+    """The frameworks the panel can start, with their default run commands —
+    drives the preset buttons in the Run tab."""
+    site = get_website_or_404(website_id, db)
+    _require_python(site)
+    return [
+        {"key": key, "label": spec["label"],
+         "run_command": webapp_service.build_run_command(key)}
+        for key, spec in webapp_service.FRAMEWORKS.items()
+    ]
+
+
+@router.post("/{website_id}/detect")
+def detect_app(website_id: int, apply: bool = Query(True, description="Save what was found"),
+               db: Session = Depends(get_db)):
+    """
+    Scan the uploaded code for a Flask/FastAPI app and derive the run command.
+
+    With apply=true (the default) the framework and run command are saved.
+    """
+    site = get_website_or_404(website_id, db)
+    _require_python(site)
+    found = webapp_service.detect_app(site.name)
+    if not found:
+        return {"detected": False, "applied": False,
+                "detail": "No Flask or FastAPI app object found — upload your code "
+                          "first, or set the run command manually."}
+    if apply:
+        site.framework = found["framework"]
+        site.run_command = found["run_command"]
+        db.commit()
+        if webapp_service.config_path(site.name).exists():
+            webapp_service.write_program(site)
+    return {
+        "detected": True, "applied": apply, **found,
+        "detail": (f"Found a {found['framework']} app ({found['target']}) in {found['file']}"
+                   + (" — run command saved. Restart the app to apply." if apply
+                      else f" — suggested command: {found['run_command']}")),
+    }
+
+
 @router.post("/{website_id}/install-deps", response_model=DetailResponse)
 def install_deps(website_id: int, db: Session = Depends(get_db)):
     """Build the venv and pip-install requirements.txt in the background."""
     site = get_website_or_404(website_id, db)
     _require_python(site)
-    started = webapp_service.build_env_async(site.name)
+    started = webapp_service.build_env_async(site.name, site.framework)
     if not started:
         return DetailResponse(detail="Already installing… watch the setup log")
     return DetailResponse(detail="Installing dependencies… watch the setup log")
@@ -275,6 +371,8 @@ def set_run_command(website_id: int, body: RunCommandRequest, db: Session = Depe
     site = get_website_or_404(website_id, db)
     _require_python(site)
     site.run_command = body.run_command.strip()
+    if body.framework:
+        site.framework = body.framework
     db.commit()
     # Refresh the supervisor program if it already exists.
     if webapp_service.config_path(site.name).exists():

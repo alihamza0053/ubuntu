@@ -82,6 +82,11 @@ class Website(Base):
     domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     db_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # --- "python" type only: a run-it-yourself web service ---
+    # Which web framework the uploaded app uses — decides the default run
+    # command (flask → gunicorn, fastapi → uvicorn) and the deps we make sure
+    # are installed. NULL on rows created before frameworks existed; those are
+    # treated as "fastapi" (the old hardcoded default).
+    framework: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Start command (with a {port} placeholder), the localhost port it runs on,
     # and the cached supervisor status.
     run_command: Mapped[str | None] = mapped_column(String(512), nullable=True)
