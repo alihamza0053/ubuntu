@@ -263,7 +263,14 @@ stdout_logfile={log_dir}/{program}.out.log
 
 
 def write_program(site: Website) -> None:
-    """Write/refresh the supervisor program that runs the app."""
+    """
+    Write/refresh the supervisor program that runs the app.
+
+    Preserves the on-disk `autostart` and skips identical writes, for the same
+    reason as supervisor_service.write_config: `update` stops and re-adds any
+    program whose config changed, so a pointless rewrite would kill a running
+    app and make the next restart report "ERROR (not running)".
+    """
     if not site.run_command or not site.port:
         raise HTTPException(status_code=400, detail="Set a run command and port first")
     settings.SUPERVISOR_CONF_DIR.mkdir(parents=True, exist_ok=True)
@@ -278,7 +285,18 @@ def write_program(site: Website) -> None:
         venv_bin=venv_dir(site.name) / "bin",
         log_dir=settings.SUPERVISOR_LOG_DIR,
     )
-    config_path(site.name).write_text(content, encoding="utf-8")
+    path = config_path(site.name)
+    existing = path.read_text(encoding="utf-8") if path.exists() else None
+
+    if existing is not None:
+        current = re.search(r"(?m)^autostart=(.*)$", existing)
+        if current:
+            content = re.sub(r"(?m)^autostart=.*$",
+                             f"autostart={current.group(1)}", content)
+        if content == existing:
+            return                  # unchanged — leave a running app alone
+
+    path.write_text(content, encoding="utf-8")
     supervisor_service.run_supervisorctl("reread")
     supervisor_service.run_supervisorctl("update")
 
@@ -306,7 +324,7 @@ def control(site: Website, action: str) -> str:
         set_autostart(site.name, True)
     result = supervisor_service.run_supervisorctl(action, program_name(site.name))
     out = (result.stdout + result.stderr).strip()
-    if "ERROR" in out and "already started" not in out:
+    if "ERROR" in out and not supervisor_service.is_benign_output(out):
         raise HTTPException(status_code=500, detail=f"supervisorctl {action}: {out}")
     if action == "stop":
         set_autostart(site.name, False)

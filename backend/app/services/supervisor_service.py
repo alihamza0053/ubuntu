@@ -141,7 +141,21 @@ def allocate_port(db: Session) -> int:
 
 def write_config(project_name: str, port: int, framework: str | None = None,
                  target: str | None = None) -> Path:
-    """Render and write the supervisor program config for a project."""
+    """
+    Render and write the supervisor program config for a project.
+
+    Rewritten on every Start/Restart so the config always matches the code in
+    dashboard/, which means it must be a genuine no-op when nothing changed:
+    `update` STOPS and re-adds any program whose config differs, so a needless
+    rewrite would kill a running dashboard and make the following `restart`
+    report "ERROR (not running)".
+
+    Two things guard against that:
+      * the on-disk `autostart` value is preserved — the template always renders
+        `false`, but set_autostart() writes `true` for a running dashboard, and
+        flip-flopping between the two made every restart look like a change;
+      * identical content is not written at all.
+    """
     settings.SUPERVISOR_CONF_DIR.mkdir(parents=True, exist_ok=True)
     content = SUPERVISOR_TEMPLATE.format(
         name=project_name,
@@ -151,6 +165,16 @@ def write_config(project_name: str, port: int, framework: str | None = None,
         log_dir=settings.SUPERVISOR_LOG_DIR,
     )
     path = config_path(project_name)
+    existing = path.read_text(encoding="utf-8") if path.exists() else None
+
+    if existing is not None:
+        current = re.search(r"(?m)^autostart=(.*)$", existing)
+        if current:
+            content = re.sub(r"(?m)^autostart=.*$",
+                             f"autostart={current.group(1)}", content)
+        if content == existing:
+            return path          # unchanged — leave a running program alone
+
     path.write_text(content, encoding="utf-8")
     # Tell supervisor about the new/changed program definition
     _supervisorctl("reread")
@@ -203,11 +227,27 @@ def restart(project_name: str) -> str:
     return _action("restart", project_name)
 
 
+def is_benign_output(output: str) -> bool:
+    """
+    True when supervisorctl printed ERROR but nothing actually went wrong.
+
+    supervisorctl exits 0 even on real failures, so the text has to be read —
+    but some of its complaints are noise:
+      * "already started" — Start pressed on a running program
+      * "already stopped" / "not running" — Stop pressed on a stopped one, and
+        `restart` of a stopped program, which reports the failed *stop* before
+        happily starting it ("ERROR (not running)" then "<name>: started")
+    Real failures (spawn error, no such process, abnormal termination) say so.
+    """
+    lowered = output.lower()
+    return any(phrase in lowered for phrase in
+               ("already started", "already stopped", "not running"))
+
+
 def _action(action: str, project_name: str) -> str:
     result = _supervisorctl(action, program_name(project_name))
     output = (result.stdout + result.stderr).strip()
-    # supervisorctl exits 0 even on some failures, so inspect the text too
-    if "ERROR" in output and "already started" not in output:
+    if "ERROR" in output and not is_benign_output(output):
         raise HTTPException(status_code=500, detail=f"supervisorctl {action}: {output}")
     return output
 
