@@ -209,12 +209,6 @@ export default function DashboardTab({ project, onChanged }) {
           </p>
         </div>
 
-        {detect?.command && (
-          <div>
-            <p className="text-xs text-slate-500 mb-1">Command Supervisor will run</p>
-            <pre className="bg-black text-slate-300 text-xs p-3 rounded-lg overflow-x-auto">{detect.command}</pre>
-          </div>
-        )}
         {fwMsg && <p className="text-sm text-slate-300 break-words">{fwMsg}</p>}
       </div>
 
