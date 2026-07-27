@@ -80,6 +80,9 @@ class ProjectOut(BaseModel):
     folder_path: str
     dashboard_port: int
     dashboard_status: str
+    # streamlit / flask / fastapi — how dashboard/ is served
+    dashboard_framework: str | None = None
+    dashboard_target: str | None = None
     domain: str | None
     onedrive_path: str | None = None
     portal_username: str | None = None

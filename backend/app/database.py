@@ -70,6 +70,16 @@ def run_migrations() -> None:
             # admin-only visibility (added with the hide-from-non-admins feature)
             if "hidden" not in pcols:
                 conn.execute(text("ALTER TABLE projects ADD COLUMN hidden BOOLEAN DEFAULT 0"))
+            # Flask/FastAPI dashboards (added when dashboard/ stopped being
+            # Streamlit-only). Left NULL on purpose: NULL means "detect from the
+            # code", which resolves existing Streamlit dashboards to streamlit
+            # anyway, and keeps working if their code is later replaced.
+            if "dashboard_framework" not in pcols:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN "
+                                  "dashboard_framework VARCHAR(16)"))
+            if "dashboard_target" not in pcols:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN "
+                                  "dashboard_target VARCHAR(255)"))
 
     # websites: run-it-yourself Python web services (added with the "python" type).
     if "websites" in insp.get_table_names():

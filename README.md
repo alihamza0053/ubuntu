@@ -9,7 +9,8 @@ Databases · Settings.
 
 **Status: complete.** Auth with per-tab user permissions, project workspaces,
 file uploads, Monaco editor, script runner with live WebSocket output, project
-pipelines, Streamlit dashboards via Supervisor, dashboard cards + server stats,
+pipelines, project dashboards via Supervisor (Streamlit / Flask / FastAPI,
+picked automatically from the code), dashboard cards + server stats,
 APScheduler cron scheduling with a visual builder, website deploys (zip + React
 build + Flask/FastAPI apps run under Supervisor with the entrypoint auto-detected
 from your code), automatic nginx config generation with
@@ -22,8 +23,9 @@ panel self-update and system cleanup.
 - **`DEPLOYMENT.md`** — install from zero on a fresh Ubuntu VPS (every dependency),
   plus *Deploy a Flask (or FastAPI) app* in §7.
 - **`UPDATING.md`** — push code changes to an installed panel (`deploy/update.sh`).
-- **`DASHBOARD_GUIDE.md`** — deploy Streamlit dashboards + fix every common issue
-  (per-project venv, spawn errors, `.xls`/`xlrd`, missing modules).
+- **`DASHBOARD_GUIDE.md`** — deploy project dashboards (Streamlit, Flask or
+  FastAPI — detected from your code) + fix every common issue (per-project venv,
+  spawn errors, `.xls`/`xlrd`, missing modules).
 - **`SCRIPTS_GUIDE.md`** — run Python/Selenium scripts (headless Chrome, scheduling).
 - **`MASTER_BUILD_PROMPT.md`** — the full feature specification.
 

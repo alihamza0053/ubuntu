@@ -288,7 +288,10 @@ async def upload_script(
 @router.post("/{project_id}/upload-dashboard", response_model=list[FileInfo])
 async def upload_dashboard(project_id: int, files: list[UploadFile],
                            db: Session = Depends(get_db)):
-    """Upload Streamlit dashboard files (entrypoint must be app.py)."""
+    """Upload dashboard files (entrypoint must be app.py).
+
+    The app may be Streamlit, Flask or FastAPI — which one is read from the
+    code when the dashboard is started."""
     project = get_project_or_404(project_id, db)
     return [await _save_upload(project, "dashboard", f) for f in files]
 
@@ -423,9 +426,16 @@ def _upsert_nginx_config(db: Session, entity_type: str, entity_id: int,
 def _write_project_site(project: Project, domain: str) -> str:
     """(Re)write the project's nginx block (dashboard + /onedrivefiles/ portal)."""
     slug = f"project-{project.name}"
+    # A Flask dashboard is proxied as plain WSGI; Streamlit needs the websocket
+    # upgrade. Fall back to what the code says when nothing is pinned.
+    framework = project.dashboard_framework
+    if not framework:
+        detected = supervisor_service.detect_framework(project.name)
+        framework = detected["framework"] if detected else None
     content = nginx_service.project_block(
         domain=domain, port=project.dashboard_port,
         project=project.name, panel_port=settings.PANEL_PORT,
+        framework=framework,
     )
     return str(nginx_service.write_site(slug, content))
 

@@ -18,7 +18,6 @@ configuration at all.
 Runs as the panel's `serverhub` user, which owns /srv/websites — no sudo for the
 venv/pip work; supervisorctl uses the existing restricted sudo rule.
 """
-import os
 import re
 import subprocess
 import threading
@@ -31,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import Website
-from . import supervisor_service
+from . import app_detect, supervisor_service
 
 WEBAPP_PORT_START = 8600
 
@@ -142,117 +141,21 @@ def allocate_port(db: Session) -> int:
 
 # ---------- app detection ----------
 
-# Directories that never contain the app entrypoint (and that we must not walk
-# — venv/node_modules are huge).
-_SKIP_DIRS = {"venv", ".venv", "env", "node_modules", "__pycache__", ".git",
-              "static", "staticfiles", "dist", "build", "migrations", "tests",
-              "logs", ".idea", ".vscode"}
-
-# Filenames checked first — the conventional entrypoints, best guess on top.
-_PREFERRED = ["app.py", "wsgi.py", "application.py", "main.py", "app_server.py",
-              "server.py", "run.py", "asgi.py", "manage.py"]
-
-_FLASK_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*Flask\s*\(", re.M)
-_FASTAPI_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*FastAPI\s*\(", re.M)
-_FACTORY_RE = re.compile(r"^\s*def\s+(create_app|make_app)\s*\(", re.M)
-
-_MAX_SCAN_BYTES = 2 * 1024 * 1024      # don't read giant data files
-_MAX_SCAN_DEPTH = 2                    # root + two levels is plenty
-
-
-def _module_path(root: Path, file: Path) -> str:
-    """`/srv/websites/x/pkg/app.py` → `pkg.app` (a gunicorn/uvicorn import path)."""
-    rel = file.relative_to(root).with_suffix("")
-    return ".".join(rel.parts)
-
-
-def _candidate_files(root: Path) -> list[Path]:
-    """
-    Python files worth scanning, conventional entrypoints first.
-
-    Walks manually rather than with rglob so that venv/ and node_modules/ are
-    pruned instead of merely filtered out after being descended into — the
-    site's own virtualenv holds tens of thousands of .py files.
-    """
-    found: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        here = Path(dirpath)
-        depth = len(here.relative_to(root).parts)
-        if depth >= _MAX_SCAN_DEPTH:
-            dirnames[:] = []            # deep enough — don't go further
-        else:
-            dirnames[:] = [d for d in dirnames
-                           if d not in _SKIP_DIRS and not d.startswith(".")]
-        for filename in filenames:
-            if not filename.endswith(".py"):
-                continue
-            path = here / filename
-            try:
-                if path.stat().st_size > _MAX_SCAN_BYTES:
-                    continue
-            except OSError:
-                continue
-            found.append(path)
-
-    def rank(p: Path) -> tuple[int, int, str]:
-        name_rank = _PREFERRED.index(p.name) if p.name in _PREFERRED else len(_PREFERRED)
-        depth = len(p.relative_to(root).parts) - 1
-        return (depth, name_rank, p.name)
-
-    return sorted(found, key=rank)
-
-
 def detect_app(name: str) -> dict | None:
     """
     Work out how to start the uploaded app.
 
     Returns {framework, module, variable, target, run_command, file} for the
     first file that defines a Flask/FastAPI app (or an app factory), or None
-    when nothing recognisable was uploaded.
+    when nothing recognisable was uploaded. Streamlit is excluded: a website
+    is served over a port by a WSGI/ASGI server, and a Streamlit script has
+    no import target to hand one. (Streamlit belongs in Projects → dashboard/.)
     """
-    root = site_dir(name)
-    if not root.is_dir():
+    found = app_detect.detect(site_dir(name), allowed=("flask", "fastapi"))
+    if found is None:
         return None
-
-    factory_hit: dict | None = None
-
-    for path in _candidate_files(root):
-        try:
-            source = path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-
-        for framework, regex in (("flask", _FLASK_RE), ("fastapi", _FASTAPI_RE)):
-            match = regex.search(source)
-            if not match:
-                continue
-            module, variable = _module_path(root, path), match.group(1)
-            target = f"{module}:{variable}"
-            return {
-                "framework": framework,
-                "module": module,
-                "variable": variable,
-                "target": target,
-                "run_command": build_run_command(framework, target),
-                "file": str(path.relative_to(root)),
-            }
-
-        # An app factory only counts if nothing exports a module-level app.
-        if factory_hit is None and "Flask" in source:
-            match = _FACTORY_RE.search(source)
-            if match:
-                module, variable = _module_path(root, path), f"{match.group(1)}()"
-                target = f"{module}:{variable}"
-                factory_hit = {
-                    "framework": "flask",
-                    "module": module,
-                    "variable": variable,
-                    "target": target,
-                    "run_command": build_run_command("flask", target),
-                    "file": str(path.relative_to(root)),
-                }
-
-    return factory_hit
+    return {**found,
+            "run_command": build_run_command(found["framework"], found["target"])}
 
 
 # ---------- venv + dependency build (background) ----------

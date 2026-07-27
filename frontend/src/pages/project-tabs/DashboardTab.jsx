@@ -3,7 +3,13 @@ import api, { errorMessage } from '../../api/client'
 import LiveLog from '../../components/LiveLog'
 import StatusBadge from '../../components/StatusBadge'
 
-/** Streamlit dashboard control: start/stop/restart, status, live logs. */
+const FRAMEWORK_LABELS = {
+  streamlit: 'Streamlit',
+  flask: 'Flask (gunicorn)',
+  fastapi: 'FastAPI (uvicorn)',
+}
+
+/** Dashboard control: framework, start/stop/restart, status, live logs. */
 export default function DashboardTab({ project, onChanged }) {
   const [status, setStatus] = useState(project.dashboard_status)
   const [raw, setRaw] = useState('')
@@ -12,6 +18,28 @@ export default function DashboardTab({ project, onChanged }) {
   const [domain, setDomain] = useState(project.domain || '')
   const [domainMsg, setDomainMsg] = useState('')
   const [venv, setVenv] = useState(project.venv_status || 'MISSING')
+  const [detect, setDetect] = useState(null)      // { detected, pinned, framework, command }
+  const [fwMsg, setFwMsg] = useState('')
+
+  async function refreshDetect() {
+    try {
+      const res = await api.get(`/projects/${project.id}/dashboard/detect`)
+      setDetect(res.data)
+    } catch { /* ignore — the panel falls back to Streamlit */ }
+  }
+
+  async function pinFramework(value) {
+    setFwMsg('')
+    try {
+      const res = await api.put(`/projects/${project.id}/dashboard/framework`,
+        { framework: value || null })
+      setFwMsg(res.data.detail)
+      await refreshDetect()
+      onChanged?.()
+    } catch (err) {
+      setFwMsg(errorMessage(err))
+    }
+  }
 
   async function refreshStatus() {
     try {
@@ -44,6 +72,7 @@ export default function DashboardTab({ project, onChanged }) {
   useEffect(() => {
     refreshStatus()
     refreshVenv()
+    refreshDetect()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id])
 
@@ -103,8 +132,13 @@ export default function DashboardTab({ project, onChanged }) {
     <div className="space-y-4">
       <div className="card">
         <div className="flex items-center gap-3 flex-wrap">
-          <h3 className="font-semibold">Streamlit Dashboard</h3>
+          <h3 className="font-semibold">Dashboard</h3>
           <StatusBadge status={status} />
+          {detect?.framework && (
+            <span className="badge bg-emerald-500/15 text-emerald-400">
+              {FRAMEWORK_LABELS[detect.framework] || detect.framework}
+            </span>
+          )}
           <span className="text-sm text-slate-500">port {project.dashboard_port}</span>
           <a href={liveUrl} target="_blank" rel="noreferrer" className="text-sm text-sky-400 hover:underline">
             Open live URL ↗
@@ -138,8 +172,50 @@ export default function DashboardTab({ project, onChanged }) {
 
         <p className="mt-3 text-xs text-slate-600">
           The dashboard runs <span className="font-mono">dashboard/app.py</span> under Supervisor
-          (auto-restart on crash). Upload your Streamlit files on the Files tab.
+          (auto-restart on crash). Upload it on the Files tab — Streamlit, Flask and
+          FastAPI apps are all supported, and the right server is picked from your code.
         </p>
+      </div>
+
+      {/* How the app is served */}
+      <div className="card space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="font-semibold">How it runs</h3>
+          <button className="btn-secondary ml-auto" onClick={refreshDetect}>🔍 Re-detect</button>
+        </div>
+
+        <p className="text-sm text-slate-400">
+          {detect?.detected
+            ? <>Found a <b>{FRAMEWORK_LABELS[detect.detected.framework] || detect.detected.framework}</b> app
+                in <span className="font-mono">dashboard/{detect.detected.file}</span>
+                {detect.detected.target && <> (<span className="font-mono">{detect.detected.target}</span>)</>}.</>
+            : <>No Streamlit, Flask or FastAPI app recognised in <span className="font-mono">dashboard/</span> yet
+                — it will be started as Streamlit.</>}
+        </p>
+
+        <div>
+          <label className="block text-sm text-slate-400 mb-1">Run as</label>
+          <select className="input max-w-xs" value={detect?.pinned || ''}
+            onChange={(e) => pinFramework(e.target.value)}>
+            <option value="">Auto — detect from the code</option>
+            <option value="streamlit">Streamlit</option>
+            <option value="flask">Flask (gunicorn)</option>
+            <option value="fastapi">FastAPI (uvicorn)</option>
+          </select>
+          <p className="text-xs text-slate-500 mt-1">
+            Leave on Auto and the panel re-reads your code every time you start or
+            restart — swap app.py from Streamlit to Flask and it just follows.
+            Pick one to override. Restart to apply.
+          </p>
+        </div>
+
+        {detect?.command && (
+          <div>
+            <p className="text-xs text-slate-500 mb-1">Command Supervisor will run</p>
+            <pre className="bg-black text-slate-300 text-xs p-3 rounded-lg overflow-x-auto">{detect.command}</pre>
+          </div>
+        )}
+        {fwMsg && <p className="text-sm text-slate-300 break-words">{fwMsg}</p>}
       </div>
 
       {/* Domain / SSL */}

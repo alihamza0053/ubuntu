@@ -124,7 +124,6 @@ export default function Files() {
       <div className="card">
         {/* Toolbar */}
         <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <button className="btn-secondary" onClick={() => browse('/opt')}>Open /opt</button>
           <button className="btn-secondary" onClick={() => browse('')}>🏠 Roots</button>
           {data.parent !== null && (
             <button className="btn-secondary" onClick={() => browse(data.parent)}>⬆ Up</button>

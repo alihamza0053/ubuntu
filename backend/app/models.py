@@ -36,6 +36,13 @@ class Project(Base):
     dashboard_port: Mapped[int] = mapped_column(Integer, unique=True)
     # Cached status string: RUNNING / STOPPED / ERROR / UNKNOWN
     dashboard_status: Mapped[str] = mapped_column(String(16), default="STOPPED")
+    # How dashboard/ is served: streamlit (the original behaviour) / flask /
+    # fastapi. Detected from the code on upload; NULL means "not detected yet"
+    # and is treated as streamlit.
+    dashboard_framework: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Import path for flask/fastapi dashboards, e.g. "app:app". Unused by
+    # Streamlit, which is given the file path instead.
+    dashboard_target: Mapped[str | None] = mapped_column(String(255), nullable=True)
     domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # OneDrive subfolder (relative to ONEDRIVE_ROOT) this project reads from.
     onedrive_path: Mapped[str | None] = mapped_column(String(512), nullable=True)

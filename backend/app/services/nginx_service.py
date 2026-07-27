@@ -139,16 +139,37 @@ def webapp_block(domain: str, port: int, framework: str | None) -> str:
     return asgi_block(domain, port)
 
 
-def project_block(domain: str, port: int, project: str, panel_port: int) -> str:
+def project_block(domain: str, port: int, project: str, panel_port: int,
+                  framework: str | None = None) -> str:
     """
-    A project's nginx block: the Streamlit dashboard at / (websocket-capable),
-    plus the per-project public upload portal at /onedrivefiles/ proxied to the
-    panel backend (which password-protects it per project).
+    A project's nginx block: the dashboard at / , plus the per-project public
+    upload portal at /onedrivefiles/ proxied to the panel backend (which
+    password-protects it per project).
+
+    Streamlit needs the websocket upgrade passed through; a Flask dashboard is
+    plain WSGI and gets `proxy_redirect off` instead so its redirects point at
+    the public domain.
 
     SSL-aware: if a Let's Encrypt cert already exists for the domain, emit an
     HTTPS server (and redirect HTTP → HTTPS) so regenerating this block never
     wipes the certificate config certbot added.
     """
+    if (framework or "").lower() == "flask":
+        dashboard_headers = """        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+        proxy_read_timeout 300s;"""
+    else:
+        dashboard_headers = """        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;"""
+
     locations = f"""    client_max_body_size 1024M;
 
     # Public, password-protected upload portal (panel-hosted)
@@ -166,13 +187,7 @@ def project_block(domain: str, port: int, project: str, panel_port: int) -> str:
     location / {{
         proxy_pass http://127.0.0.1:{port};
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 3600s;
+{dashboard_headers}
     }}"""
     return _wrap_server(domain, locations)
 

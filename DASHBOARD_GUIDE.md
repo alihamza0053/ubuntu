@@ -1,7 +1,23 @@
-# Running Streamlit Dashboards on ServerHub
+# Running Dashboards on ServerHub
 
-How to deploy a Streamlit dashboard (`app.py`) on the panel, and how to fix
-every issue that commonly comes up. This is the runbook — keep it handy.
+How to deploy a project dashboard (`dashboard/app.py`) on the panel, and how to
+fix every issue that commonly comes up. This is the runbook — keep it handy.
+
+> **Streamlit, Flask or FastAPI.** The entry file is always
+> `dashboard/app.py`, but it doesn't have to be Streamlit. The panel reads the
+> code each time you Start or Restart and serves it accordingly:
+>
+> | Your `app.py` contains | Started with |
+> |---|---|
+> | `import streamlit` | `streamlit run app.py --server.port N` |
+> | `app = Flask(__name__)` | `gunicorn app:app --bind 0.0.0.0:N --workers 2` |
+> | `app = FastAPI()` | `uvicorn app:app --host 0.0.0.0 --port N` |
+>
+> Nothing to configure — replace a Streamlit `app.py` with a Flask one, hit
+> Restart, and it follows. The Dashboard tab shows what was detected and the
+> exact command, and its **Run as** dropdown pins a framework if you ever need
+> to override the guess. A Flask dashboard also gets a plain-WSGI nginx block
+> (no websocket upgrade) when you assign a domain.
 
 > **Golden rule:** every dashboard gets its **own virtualenv** at
 > `/srv/projects/<name>/venv`. Do **not** run dashboards from the panel's shared
@@ -17,7 +33,9 @@ every issue that commonly comes up. This is the runbook — keep it handy.
 #    This makes /srv/projects/operations/ with code/ dashboard/ data/ etc.
 
 # 2. Upload app.py to the project's "dashboard" folder (Dashboard/Files tab).
-#    The Streamlit entry file MUST be named app.py.
+#    The entry file MUST be named app.py. It can be a Streamlit script, a
+#    Flask app or a FastAPI app — the panel works out which and serves it
+#    the right way.
 
 # 3. Create the dashboard's virtualenv with all common deps (incl. xlrd):
 sudo bash /opt/serverhub-src/deploy/dashboard-venv.sh operations
@@ -38,10 +56,19 @@ always uses the project venv if one exists — no manual config editing.
 - Each dashboard runs as a **Supervisor program** `<name>_dashboard`, defined in
   `/srv/serverhub/supervisor.d/<name>_dashboard.conf`.
 - The panel writes that config when you **create** the project and **every time
-  you click Start**. It chooses the Streamlit binary like this:
-  - if `/srv/projects/<name>/venv/bin/streamlit` exists → use it (per-project)
-  - else → fall back to the panel's global `STREAMLIT_BIN`
+  you click Start or Restart**. Each time it re-reads `dashboard/` to decide the
+  framework, then picks the server binary like this:
+  - if `/srv/projects/<name>/venv/bin/<streamlit|gunicorn|uvicorn>` exists → use
+    it (per-project)
+  - else → the global `STREAMLIT_BIN`, or the bare name resolved through the
+    venv-first `PATH` set in the program config
+- The project venv installs `gunicorn` alongside `streamlit`, so a Flask
+  dashboard starts without any extra setup. A FastAPI one needs
+  `uvicorn` added: `sudo bash deploy/dashboard-venv.sh <name> uvicorn`.
 - So the correct workflow is: create project → make the venv → Start.
+- A Flask dashboard must keep `app.run(...)` inside `if __name__ == "__main__":`
+  — gunicorn *imports* `app.py`, and a bare `app.run()` at import time hangs the
+  worker.
 - Data files live in `/srv/projects/<name>/data/`. Your `app.py` should read
   from there (use an absolute path or a `DATA_DIR` env var).
 
@@ -131,6 +158,26 @@ Reminder: `import streamlit_autorefresh` → the pip package is
 sudo tail -n 50 /var/log/supervisor/<name>.err.log
 ```
 The traceback names the problem (missing file, bad sheet name, missing import).
+
+### A Flask dashboard was started as Streamlit (or vice versa)
+
+Open **Dashboard → How it runs**: it shows what was detected, in which file, and
+the exact command. Common causes:
+
+- **The framework is pinned.** Set **Run as** back to *Auto — detect from the
+  code* and Restart.
+- **`app.py` imports streamlit anywhere** — a Streamlit import wins, on purpose.
+  Drop the import, or pin *Flask* in **Run as**.
+- **No app object at module level.** `gunicorn` needs `app = Flask(__name__)` (or
+  a `create_app()` factory) importable from `app.py`; an app built inside
+  `main()` can't be found. Detection also only looks two folders deep and skips
+  `venv/`, `tests/`, `static/`.
+
+### A Flask dashboard hangs on start, or the worker times out
+
+`app.run(...)` is running at import time. Put it back under
+`if __name__ == "__main__":` — gunicorn imports the module and never calls
+`__main__`, so a top-level `app.run()` blocks the worker forever.
 
 ### Changed `app.py` but the dashboard didn't update
 
