@@ -11,7 +11,11 @@ fix every issue that commonly comes up. This is the runbook — keep it handy.
 > |---|---|
 > | `import streamlit` | `streamlit run app.py --server.port N` |
 > | `app = Flask(__name__)` | `gunicorn app:app --bind 0.0.0.0:N --workers 2` |
+> | `app = Dash(__name__)` | `gunicorn app:app.server --bind 0.0.0.0:N --workers 2` |
 > | `app = FastAPI()` | `uvicorn app:app --host 0.0.0.0 --port N` |
+>
+> Dash (and Plotly Dash) apps are Flask underneath: the panel serves them
+> through their `.server` attribute, which is the real WSGI object.
 >
 > Nothing to configure — replace a Streamlit `app.py` with a Flask one, hit
 > Restart, and it follows. The Dashboard tab shows what was detected and the
@@ -172,6 +176,18 @@ the exact command. Common causes:
   a `create_app()` factory) importable from `app.py`; an app built inside
   `main()` can't be found. Detection also only looks two folders deep and skips
   `venv/`, `tests/`, `static/`.
+
+### `ValueError: signal only works in main thread of the main interpreter`
+
+A Dash/Flask dashboard is being run as **Streamlit**. `streamlit run` executes
+your script on a worker thread *and* sets `__name__` to `"__main__"` — so even a
+properly guarded `app.run(debug=True)` fires, Flask's dev server tries to install
+a SIGTERM handler off the main thread, and Python refuses.
+
+The guard is not the bug: the framework choice is. Open **Dashboard → How it
+runs** and check the detected framework. Dash apps are recognised automatically
+(served as `app:app.server`); if yours still says Streamlit, make sure nothing in
+`app.py` imports streamlit, or pin **Run as → Flask (gunicorn)** and Restart.
 
 ### A Flask dashboard hangs on start, or the worker times out
 

@@ -193,6 +193,12 @@ export default function DashboardTab({ project, onChanged }) {
                 — it will be started as Streamlit.</>}
         </p>
 
+        {detect?.warning && (
+          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-600/40 text-sm text-amber-200">
+            {detect.warning}
+          </div>
+        )}
+
         <div>
           <label className="block text-sm text-slate-400 mb-1">Run as</label>
           <select className="input max-w-xs" value={detect?.pinned || ''}

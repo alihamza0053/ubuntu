@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import authenticate_websocket, get_current_user
 from ..schemas import DashboardStatusOut, DetailResponse
-from ..services import supervisor_service
+from ..services import app_detect, supervisor_service
 from ..services.activity import log_activity
 from ..services.streaming import tail_file
 from ..services.supervisor_service import dashboard_log_path
@@ -81,6 +81,9 @@ def detect_dashboard(project_id: int, db: Session = Depends(get_db)):
         "pinned": project.dashboard_framework,      # None = auto-detect
         "framework": framework,
         "target": target,
+        # Set when dashboard/ calls app.run() at import time — the single most
+        # common reason a dashboard starts and then dies.
+        "warning": app_detect.blocking_run_warning(detected),
         "command": supervisor_service.build_command(
             project.name, project.dashboard_port, framework, target),
     }

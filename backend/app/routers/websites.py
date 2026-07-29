@@ -16,7 +16,8 @@ from ..deps import authenticate_websocket, get_current_user, require_admin
 from ..models import NginxConfig, User, Website
 from ..permissions import hidden_for
 from ..schemas import DetailResponse, FileInfo
-from ..services import nginx_service, webapp_service, website_service
+from ..services import (app_detect, nginx_service, webapp_service,
+                        website_service)
 from ..services.streaming import tail_file
 
 router = APIRouter(
@@ -347,11 +348,14 @@ def detect_app(website_id: int, apply: bool = Query(True, description="Save what
         db.commit()
         if webapp_service.config_path(site.name).exists():
             webapp_service.write_program(site)
+    warning = app_detect.blocking_run_warning(found)
     return {
         "detected": True, "applied": apply, **found,
+        "warning": warning,
         "detail": (f"Found a {found['framework']} app ({found['target']}) in {found['file']}"
                    + (" — run command saved. Restart the app to apply." if apply
-                      else f" — suggested command: {found['run_command']}")),
+                      else f" — suggested command: {found['run_command']}")
+                   + (f"\n\n{warning}" if warning else "")),
     }
 
 
