@@ -154,7 +154,9 @@ def create_backup(components: list[str]) -> dict:
 
             manifest = {
                 "version": 1,
-                "created": datetime.now().isoformat(timespec="seconds"),
+                # UTC, like every other timestamp the API returns — the UI
+                # converts to the configured display timezone.
+                "created": datetime.utcnow().isoformat(timespec="seconds") + "Z",
                 "components": included,
             }
             mpath = Path(tmp) / "manifest.json"

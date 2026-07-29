@@ -157,6 +157,32 @@ def _blocking_run(source: str) -> str | None:
     return match.group(0).strip() if match else None
 
 
+def mismatch_warning(found: dict | None, effective: str) -> str | None:
+    """
+    Warn when the app will be started as something other than what it is.
+
+    The damaging case is a Flask/Dash app started as Streamlit: `streamlit run`
+    executes the script on a worker thread *and* sets __name__ to "__main__", so
+    even a correctly guarded `app.run(...)` fires and dies with
+    "signal only works in main thread of the main interpreter".
+    """
+    if not found or found["framework"] == effective:
+        return None
+    if effective == "streamlit" and found["framework"] in ("flask", "fastapi"):
+        return (
+            f"⚠ {found['file']} is a {found['framework']} app but this dashboard is "
+            f"set to run as Streamlit. `streamlit run` executes it on a worker "
+            f"thread as __main__, so its app.run(...) fires and crashes with "
+            f'"signal only works in main thread of the main interpreter". '
+            f"Set Run as → Auto (or Flask) and Restart."
+        )
+    return (
+        f"⚠ {found['file']} looks like a {found['framework']} app, but this "
+        f"dashboard is pinned to run as {effective}. Set Run as → Auto to use "
+        f"the detected framework."
+    )
+
+
 def blocking_run_warning(found: dict | None) -> str | None:
     """A ready-to-show explanation of a `blocking_run`, or None if all is well."""
     if not found or not found.get("blocking_run"):

@@ -3,6 +3,7 @@ import api, { errorMessage } from '../api/client'
 import SpreadsheetModal from './SpreadsheetModal'
 import EditorModal from './EditorModal'
 import ProgressBar from './ProgressBar'
+import { formatDateTime } from '../lib/datetime'
 
 const EDITABLE_EXT = ['.py', '.txt', '.json', '.yaml', '.yml', '.md', '.toml', '.cfg', '.ini', '.log', '.sh', '.js', '.html', '.css', '.xml', '.sql', '.php', '.conf']
 function isEditable(name) {
@@ -16,9 +17,7 @@ function formatSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-function formatTime(iso) {
-  return iso ? new Date(iso + 'Z').toLocaleString() : '—'
-}
+const formatTime = (iso) => formatDateTime(iso)
 
 const SPREADSHEET_EXT = ['.csv', '.xlsx', '.xls']
 function isSpreadsheet(name) {

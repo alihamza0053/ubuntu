@@ -5,6 +5,8 @@ import Backups from '../components/Backups'
 import OneDriveSetup from '../components/OneDriveSetup'
 import Users from '../components/Users'
 import { useAuth } from '../context/AuthContext'
+import { usePanelSettings } from '../context/SettingsContext'
+import { TIMEZONES, formatDateTime, offsetLabel, resolveTimezone } from '../lib/datetime'
 
 /** Settings: change password, panel key/value settings, DB backup, self-update. */
 export default function Settings() {
@@ -111,6 +113,9 @@ export default function Settings() {
           onChange={(e) => setPw({ ...pw, confirm: e.target.value })} required />
         <button className="btn-primary" type="submit">Change Password</button>
       </form>
+
+      {/* Date & time display */}
+      <TimezoneCard />
 
       {/* Panel settings */}
       <form onSubmit={saveSettings} className="card space-y-3">
@@ -462,7 +467,7 @@ function SystemCleanup() {
                     </span>
                     {info.auto_clean_temp.enabled && info.auto_clean_temp.next_run && (
                       <span className="block text-xs text-slate-600 mt-0.5">
-                        Next run: {new Date(info.auto_clean_temp.next_run).toLocaleString()}
+                        Next run: {formatDateTime(info.auto_clean_temp.next_run)}
                       </span>
                     )}
                   </span>
@@ -476,5 +481,95 @@ function SystemCleanup() {
         )}
       </div>
     </>
+  )
+}
+
+/**
+ * Display timezone: how every timestamp in the panel is rendered.
+ *
+ * The API always returns UTC; this only changes the reading. It deliberately
+ * shows the server's own clock too, because that — not this setting — is what
+ * decides when scheduled scripts actually fire.
+ */
+function TimezoneCard() {
+  const { timezone, setTimezone } = usePanelSettings()
+  const [choice, setChoice] = useState(timezone)
+  const [msg, setMsg] = useState('')
+  const [server, setServer] = useState(null)
+  const [now, setNow] = useState(new Date())
+
+  useEffect(() => { setChoice(timezone) }, [timezone])
+
+  useEffect(() => {
+    api.get('/settings/time').then((res) => setServer(res.data)).catch(() => {})
+  }, [])
+
+  // Tick so the preview reads like a clock rather than a frozen sample.
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  async function save() {
+    setMsg('')
+    try {
+      await setTimezone(choice)
+      setMsg('Saved ✓')
+    } catch (err) {
+      setMsg(errorMessage(err))
+    }
+  }
+
+  const resolved = resolveTimezone(choice)
+  const serverMismatch = server && server.server_timezone
+    && resolveTimezone(choice) !== server.server_timezone
+
+  return (
+    <div className="card space-y-3">
+      <h3 className="font-semibold">Date &amp; Time</h3>
+      {msg && <p className={`text-sm ${msg.includes('✓') ? 'text-green-400' : 'text-red-400'}`}>{msg}</p>}
+
+      <div>
+        <label className="block text-sm text-slate-400 mb-1">Display timezone</label>
+        <select className="input" value={choice} onChange={(e) => setChoice(e.target.value)}>
+          {TIMEZONES.map((tz) => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+        </select>
+        <p className="text-xs text-slate-500 mt-1">
+          Every date in the panel — files, backups, script runs, schedules — is
+          stored in UTC and shown in this zone.
+        </p>
+      </div>
+
+      <div className="rounded-lg bg-slate-800/50 border border-panel-border p-3 text-sm space-y-1">
+        <div className="flex justify-between gap-3">
+          <span className="text-slate-500">Preview</span>
+          <span className="font-mono">{formatDateTime(now, choice)}</span>
+        </div>
+        <div className="flex justify-between gap-3">
+          <span className="text-slate-500">Using</span>
+          <span className="font-mono">{resolved} {offsetLabel(choice)}</span>
+        </div>
+        {server && (
+          <div className="flex justify-between gap-3">
+            <span className="text-slate-500">Server clock</span>
+            <span className="font-mono">
+              {server.server_timezone} (UTC{server.server_utc_offset})
+            </span>
+          </div>
+        )}
+      </div>
+
+      <button className="btn-primary" onClick={save}>Save</button>
+
+      {serverMismatch && (
+        <p className="text-xs text-amber-300/90">
+          ⚠ The server's own clock is <span className="font-mono">{server.server_timezone}</span>,
+          which is what <b>cron schedules run on</b> — a scheduled job set for 09:00
+          fires at 09:00 <i>server</i> time, no matter what is displayed here. To move
+          the server itself, run{' '}
+          <code>sudo timedatectl set-timezone {resolved}</code> and restart the panel.
+        </p>
+      )}
+    </div>
   )
 }

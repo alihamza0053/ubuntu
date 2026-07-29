@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import EditorModal from '../components/EditorModal'
+import { formatDateTime } from '../lib/datetime'
 
 const EDITABLE = ['.py', '.txt', '.json', '.yaml', '.yml', '.csv', '.md', '.html', '.htm',
   '.css', '.js', '.jsx', '.ts', '.tsx', '.php', '.sql', '.conf', '.cfg', '.ini', '.toml',
@@ -16,11 +17,7 @@ function formatSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-function formatDate(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z') // backend sends UTC
-  return isNaN(d.getTime()) ? '—' : d.toLocaleString()
-}
+const formatDate = (iso) => formatDateTime(iso)
 
 /** Global server file manager confined to the panel-managed roots under /srv. */
 export default function Files() {

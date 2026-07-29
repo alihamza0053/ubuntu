@@ -1,11 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom'
 import api, { errorMessage } from '../api/client'
 import StatusBadge from './StatusBadge'
+import { formatDateTime } from '../lib/datetime'
 
-function formatTime(iso) {
-  if (!iso) return '—'
-  return new Date(iso + 'Z').toLocaleString()
-}
+const formatTime = (iso) => formatDateTime(iso)
 
 /**
  * Home-page card for one Python project: status, domain, last run,

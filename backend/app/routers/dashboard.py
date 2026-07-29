@@ -81,9 +81,11 @@ def detect_dashboard(project_id: int, db: Session = Depends(get_db)):
         "pinned": project.dashboard_framework,      # None = auto-detect
         "framework": framework,
         "target": target,
-        # Set when dashboard/ calls app.run() at import time — the single most
-        # common reason a dashboard starts and then dies.
-        "warning": app_detect.blocking_run_warning(detected),
+        # Set when the dashboard will be started as the wrong kind of app, or
+        # when dashboard/ calls app.run() at import time — between them, the two
+        # commonest reasons a dashboard starts and then dies.
+        "warning": (app_detect.mismatch_warning(detected, framework)
+                    or app_detect.blocking_run_warning(detected)),
         "command": supervisor_service.build_command(
             project.name, project.dashboard_port, framework, target),
     }

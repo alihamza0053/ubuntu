@@ -4,7 +4,7 @@ of the panel SQLite database for backup, panel self-update, and system cleanup.
 """
 import asyncio
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import psutil
@@ -52,6 +52,33 @@ def update_settings(body: SettingsUpdate, db: Session = Depends(get_db)):
             db.add(Setting(key=key, value=value))
     db.commit()
     return DetailResponse(detail="Settings saved")
+
+
+@router.get("/time")
+def get_time():
+    """
+    The server's own clock, for the Settings timezone card.
+
+    Every timestamp the API returns is UTC; the browser renders it in the
+    display timezone chosen in Settings. This endpoint exposes what the server
+    itself thinks the time and zone are, which is what actually decides when
+    cron schedules fire — a display timezone never changes that.
+    """
+    now = datetime.now().astimezone()
+    zone = now.tzname()
+    try:                                   # /etc/timezone on Debian/Ubuntu
+        zone = Path("/etc/timezone").read_text(encoding="utf-8").strip() or zone
+    except OSError:
+        pass
+    offset = now.utcoffset() or timedelta(0)
+    minutes = int(offset.total_seconds() // 60)
+    sign = "+" if minutes >= 0 else "-"
+    return {
+        "utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "server_local": now.isoformat(timespec="seconds"),
+        "server_timezone": zone,
+        "server_utc_offset": f"{sign}{abs(minutes) // 60:02d}:{abs(minutes) % 60:02d}",
+    }
 
 
 @router.post("/backup-db")

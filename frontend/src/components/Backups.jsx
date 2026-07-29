@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import ProgressBar from './ProgressBar'
+import { formatDateTime } from '../lib/datetime'
 
 const LABELS = {} // filled from catalog
 
-function fmtDate(iso) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  return isNaN(d) ? iso : d.toLocaleString()
-}
+const fmtDate = (iso) => formatDateTime(iso, undefined, '')
 
 /** Backup & restore: choose what to back up, list/download/delete/restore, import. */
 export default function Backups() {

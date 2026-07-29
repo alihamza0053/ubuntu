@@ -741,6 +741,28 @@ are a missing dependency (add it to `requirements.txt`, install deps again), a
 wrong import path in the run command (`module:variable` — press **🔍 Detect
 app** to have it worked out for you), or a port already taken by another site.
 
+### Dates showing the wrong time
+
+**Settings → Date & Time → Display timezone.** Every timestamp the panel stores
+is UTC; this setting only changes how it is *read*. Pick your zone (e.g.
+`Asia/Karachi`), Save, and file lists, backups, script runs and schedules all
+re-render. The choice is stored in the panel database, so it follows you to any
+browser. *Auto* uses whatever zone the browser reports.
+
+The card also shows the **server clock**, and that is the one that matters for
+automation: cron schedules, the pipeline runner and log timestamps all fire on
+the *server's* timezone, not the display setting. If the server is on UTC and
+you want 09:00 jobs to mean 09:00 local:
+
+```bash
+timedatectl                                   # what the server thinks it is
+sudo timedatectl set-timezone Asia/Karachi    # move the server itself
+sudo supervisorctl restart serverhub          # pick up the new zone
+```
+
+The panel warns in that card whenever the display zone and the server zone
+disagree, so the mismatch is visible rather than silent.
+
 ### Change the admin password
 
 Either in the UI (**Settings → Change Password**) or from the CLI:

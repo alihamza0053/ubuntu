@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import api, { errorMessage } from '../../api/client'
+import { formatDateTime } from '../../lib/datetime'
 
 /** Visual cron builder → cron expression. */
 const FREQUENCIES = [
@@ -27,11 +28,9 @@ function buildCron(b) {
   }
 }
 
-function formatTime(iso) {
-  if (!iso) return '—'
-  // next_run from APScheduler is tz-aware ISO; last_run is naive UTC
-  return new Date(iso).toLocaleString()
-}
+// next_run from APScheduler is tz-aware ISO; last_run is naive UTC. The shared
+// formatter handles both: it only assumes UTC when no zone is present.
+const formatTime = (iso) => formatDateTime(iso)
 
 /** Scheduler tab: cron builder + list of this project's schedules. */
 export default function SchedulerTab({ project }) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api, { errorMessage } from '../../api/client'
+import { formatDateTime } from '../../lib/datetime'
 
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`
@@ -8,9 +9,7 @@ function formatSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-function formatTime(iso) {
-  return new Date(iso + 'Z').toLocaleString()
-}
+const formatTime = (iso) => formatDateTime(iso)
 
 /**
  * OneDrive tab: read-only view of the project's mapped OneDrive subfolder.

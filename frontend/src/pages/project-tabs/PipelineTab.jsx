@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import api, { errorMessage } from '../../api/client'
 import LiveLog from '../../components/LiveLog'
 import StatusBadge from '../../components/StatusBadge'
+import { formatDateTime } from '../../lib/datetime'
 
 // Simple frequency → cron builder (same idea as the per-script scheduler).
 const FREQUENCIES = [
@@ -22,10 +23,7 @@ function buildCron(b) {
   }
 }
 
-function fmt(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString()
-}
+const fmt = (iso) => formatDateTime(iso)
 
 /**
  * Pipeline tab: run ALL code/ scripts in order, mark each pass/fail (red),

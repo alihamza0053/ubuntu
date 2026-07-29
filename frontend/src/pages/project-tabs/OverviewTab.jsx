@@ -1,9 +1,7 @@
 import StatusBadge from '../../components/StatusBadge'
+import { formatDateTime } from '../../lib/datetime'
 
-function formatTime(iso) {
-  if (!iso) return '—'
-  return new Date(iso + 'Z').toLocaleString()
-}
+const formatTime = (iso) => formatDateTime(iso)
 
 /** Read-only summary of the whole project. */
 export default function OverviewTab({ project, files }) {

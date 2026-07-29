@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import api, { errorMessage } from '../api/client'
+import { formatDateTime, parseServerDate } from '../lib/datetime'
 
 function formatSize(bytes) {
   if (bytes == null) return '—'
@@ -8,14 +9,14 @@ function formatSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-function formatTime(iso) {
-  return iso ? new Date(iso + (iso.endsWith('Z') ? '' : 'Z')).toLocaleString() : '—'
-}
+const formatTime = (iso) => formatDateTime(iso)
 
 /** "in 5h 12m" until the item is auto-purged (or "expired"). */
 function timeLeft(expiresIso) {
   if (!expiresIso) return '—'
-  const ms = new Date(expiresIso + (expiresIso.endsWith('Z') ? '' : 'Z')).getTime() - Date.now()
+  const expiry = parseServerDate(expiresIso)
+  if (!expiry) return '—'
+  const ms = expiry.getTime() - Date.now()
   if (ms <= 0) return 'expiring…'
   const h = Math.floor(ms / 3_600_000)
   const m = Math.floor((ms % 3_600_000) / 60_000)

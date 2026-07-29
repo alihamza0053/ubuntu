@@ -2,11 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import api, { errorMessage } from '../../api/client'
 import LiveLog from '../../components/LiveLog'
 import StatusBadge from '../../components/StatusBadge'
+import { formatDateTime } from '../../lib/datetime'
 
-function formatTime(iso) {
-  if (!iso) return 'never'
-  return new Date(iso + 'Z').toLocaleString()
-}
+const formatTime = (iso) => formatDateTime(iso, undefined, 'never')
 
 /** Scripts tab: run scripts with live output, view last run logs. */
 export default function ScriptsTab({ project, onChanged }) {
