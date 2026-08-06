@@ -105,3 +105,8 @@ def run_migrations() -> None:
     # Proxies sections. Their rows are deliberately left untouched in existing
     # databases (dropping them would be destructive and buys nothing) — the
     # panel simply no longer reads or writes them.
+    #
+    # The Apps section that exists now stores its state in `managed_apps`, a
+    # different table on purpose: create_all() never alters a table that is
+    # already there, so reusing the name `apps` would silently keep the old,
+    # incompatible schema and break every query against it.

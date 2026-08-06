@@ -42,6 +42,17 @@ class Settings:
     # File Manager shortcut. It is not shown in the default roots listing.
     OPT_ROOT: Path = _env_path("OPT_ROOT", "/opt")
 
+    # --- Apps section (Chromium / Brave / n8n) ---
+    # Per-app data, generated run scripts and install logs live here; the
+    # privileged installer helper creates each subfolder and hands it to the
+    # panel user. Desktop apps start at APP_DISPLAY_START (X display number)
+    # and are viewed over noVNC on the port stored with the app.
+    APPS_ROOT: Path = _env_path("APPS_ROOT", "/srv/apps")
+    APPS_BIN: Path = _env_path("APPS_BIN", "/srv/serverhub/bin/serverhub-apps")
+    APP_DISPLAY_START: int = int(os.getenv("APP_DISPLAY_START", "90"))
+    # Screen size of the virtual display a browser app is drawn on.
+    APP_SCREEN: str = os.getenv("APP_SCREEN", "1440x900x24")
+
     # --- Recycle bin ---
     # Deleted project/website files are moved here (with metadata) instead of
     # being erased, and auto-purged after TRASH_RETENTION_HOURS.

@@ -97,6 +97,9 @@ echo "==> Updating helpers + sudoers"
 mkdir -p "$PANEL_ROOT/bin"
 [ -f "$SRC/deploy/serverhub-self-update.sh" ] && install -m 0755 "$SRC/deploy/serverhub-self-update.sh" "$PANEL_ROOT/bin/serverhub-self-update"
 [ -f "$SRC/deploy/serverhub-cleanup.sh" ] && install -m 0755 "$SRC/deploy/serverhub-cleanup.sh" "$PANEL_ROOT/bin/serverhub-cleanup"
+[ -f "$SRC/deploy/serverhub-apps.sh" ] && install -m 0755 "$SRC/deploy/serverhub-apps.sh" "$PANEL_ROOT/bin/serverhub-apps"
+# Apps section data root — the helper needs it to exist and be panel-owned.
+mkdir -p /srv/apps && chown "$PANEL_USER:$PANEL_USER" /srv/apps
 # Retire helpers belonging to sections that no longer exist in the panel.
 rm -f "$PANEL_ROOT/bin/serverhub-app-install" \
       "$PANEL_ROOT/bin/serverhub-webtop" \

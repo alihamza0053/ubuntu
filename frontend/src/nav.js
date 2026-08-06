@@ -7,6 +7,7 @@ export const NAV = [
   { to: '/files', label: 'Files', icon: '📁', perm: 'files' },
   { to: '/recycle-bin', label: 'Recycle Bin', icon: '🗑️', perm: 'files' },
   { to: '/databases', label: 'Databases', icon: '🗄️', perm: 'databases' },
+  { to: '/apps', label: 'Apps', icon: '🧩', perm: 'apps' },
   { to: '/settings', label: 'Settings', icon: '🔧', perm: 'settings' },
 ]
 

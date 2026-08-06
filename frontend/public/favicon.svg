@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="ServerHub">
+  <title>ServerHub</title>
+  <!-- Panel-dark tile, the same slate as the app background, so the mark holds
+       its shape on a light and a dark browser tab alike. -->
+  <rect width="32" height="32" rx="7" fill="#0f172a"/>
+  <!-- Three rack units in the panel accent, each with a status LED punched out
+       of it. At 16px the LEDs and vents fade to texture and the three stacked
+       bars are what still reads. -->
+  <g fill="#38bdf8">
+    <rect x="5.5" y="6" width="21" height="5.5" rx="1.8"/>
+    <rect x="5.5" y="20.5" width="21" height="5.5" rx="1.8"/>
+  </g>
+  <rect x="5.5" y="13.25" width="21" height="5.5" rx="1.8" fill="#0ea5e9"/>
+  <g fill="#0f172a">
+    <circle cx="22.6" cy="8.75" r="1.15"/>
+    <circle cx="22.6" cy="16" r="1.15"/>
+    <circle cx="22.6" cy="23.25" r="1.15"/>
+  </g>
+  <g fill="#0f172a" opacity="0.45">
+    <rect x="8.4" y="8.2" width="6" height="1.1" rx="0.55"/>
+    <rect x="8.4" y="15.45" width="6" height="1.1" rx="0.55"/>
+    <rect x="8.4" y="22.7" width="6" height="1.1" rx="0.55"/>
+  </g>
+</svg>

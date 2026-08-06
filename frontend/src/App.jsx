@@ -2,6 +2,8 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import { useAuth } from './context/AuthContext'
 import { firstAllowed } from './nav'
+import AppDetail from './pages/AppDetail'
+import Apps from './pages/Apps'
 import Databases from './pages/Databases'
 import Files from './pages/Files'
 import Home from './pages/Home'
@@ -50,6 +52,8 @@ export default function App() {
         <Route path="files" element={<Guard perm="files"><Files /></Guard>} />
         <Route path="recycle-bin" element={<Guard perm="files"><RecycleBin /></Guard>} />
         <Route path="databases" element={<Guard perm="databases"><Databases /></Guard>} />
+        <Route path="apps" element={<Guard perm="apps"><Apps /></Guard>} />
+        <Route path="apps/:key" element={<Guard perm="apps"><AppDetail /></Guard>} />
         <Route path="settings" element={<Guard perm="settings"><Settings /></Guard>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

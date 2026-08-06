@@ -17,6 +17,7 @@ TABS: list[tuple[str, str]] = [
     ("websites", "Websites"),
     ("files", "Files"),
     ("databases", "Databases"),
+    ("apps", "Apps"),
     ("settings", "Settings"),
 ]
 TAB_KEYS = [k for k, _ in TABS]
@@ -35,6 +36,8 @@ _PREFIX_TAB: list[tuple[str, str]] = [
     ("/ws/websites", "websites"),
     ("/api/files", "files"),
     ("/api/databases", "databases"),
+    ("/api/apps", "apps"),
+    ("/ws/apps", "apps"),
     ("/api/settings", "settings"),
     ("/ws/settings", "settings"),
 ]

@@ -84,6 +84,7 @@ Afterwards:
 /srv/projects/<name>/      workspaces: code/ allscripts/ data/ dashboard/ logs/
 /srv/websites/             deployed sites (Phase 3)
 /srv/nginx-configs/        panel-generated nginx blocks (Phase 3)
+/srv/apps/<key>/           Apps section: data, generated run.sh, install logs
 ```
 
 Each project gets a Supervisor program `<name>_dashboard` running
@@ -113,6 +114,14 @@ Configs live in `/srv/serverhub/supervisor.d/` (included from
   OneDrive folder mapping and a password-protected upload portal.
 - **Websites** — zip deploys (static / PHP / React build) plus run-your-own
   Python services, nginx config generation, domain assignment + Certbot SSL.
+- **Apps** — install and run ready-made software: **n8n** (workflow automation)
+  and **Chromium** / **Brave**, which run on a virtual display (Xvfb + x11vnc +
+  noVNC) so you drive a real browser from inside the panel. Each app is a
+  Supervisor program `app_<key>` with start/stop/restart, live logs, domain
+  assignment and Certbot SSL, exactly like a website. Installing needs root, so
+  it goes through `deploy/serverhub-apps.sh` under one narrow sudoers rule —
+  that helper accepts only those three app names and hard-codes every package
+  list.
 - **Files** — global file manager with a 24h recycle bin.
 - **Databases** — MySQL create/drop/query/import/export.
 - **Settings** — users & permissions, password, OneDrive sync, backup &

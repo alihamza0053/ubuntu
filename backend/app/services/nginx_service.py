@@ -72,6 +72,15 @@ def _cert_paths(domain: str) -> tuple[str, str] | None:
     return None
 
 
+def has_cert(domain: str) -> bool:
+    """True when a Let's Encrypt cert is already in place for `domain`.
+
+    Callers use it to decide whether the public URL is https — an app that
+    generates its own links (n8n's webhook URLs) has to be told.
+    """
+    return _cert_paths(domain) is not None
+
+
 def _wrap_server(domain: str, locations: str) -> str:
     """
     Wrap location blocks in a server block, keeping any existing SSL setup.

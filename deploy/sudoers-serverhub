@@ -29,3 +29,8 @@ serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-self-update *
 
 # --- System cleanup (Settings → System Cleanup) ---
 serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-cleanup *
+
+# --- Apps section (install/remove Chromium, Brave, n8n) ---
+# The helper only accepts three fixed app names and hard-codes every package
+# list, so this is not a general-purpose apt/npm escape hatch.
+serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-apps *

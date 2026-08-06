@@ -19,9 +19,9 @@ from .database import Base, SessionLocal, engine, run_migrations
 from .models import User
 from .permissions import targets_hidden_entity, user_can
 from .security import decode_access_token
-from .routers import (auth, dashboard, databases, files, onedrive, packages,
-                      pipeline, portal, projects, schedules, scripts, server,
-                      settings_router, trash, websites)
+from .routers import (apps, auth, dashboard, databases, files, onedrive,
+                      packages, pipeline, portal, projects, schedules, scripts,
+                      server, settings_router, trash, websites)
 from .services import pipeline_service, scheduler_service
 
 # Create any missing tables on startup (idempotent), then run column migrations
@@ -109,6 +109,8 @@ app.include_router(pipeline.ws_router)        # pipeline live-stream WebSocket
 app.include_router(websites.router)
 app.include_router(websites.ws_router)        # python web-service logs WebSocket
 app.include_router(databases.router)
+app.include_router(apps.router)               # Apps section (Chromium/Brave/n8n)
+app.include_router(apps.ws_router)            # app + install log WebSocket
 app.include_router(files.router)
 app.include_router(trash.router)               # recycle bin (deleted project/website files)
 app.include_router(server.router)             # /api/server/stats — Dashboard cards

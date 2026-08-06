@@ -47,7 +47,7 @@ fi
 
 echo "==> Creating panel user and directories"
 id -u "$PANEL_USER" >/dev/null 2>&1 || useradd --system --create-home --shell /bin/bash "$PANEL_USER"
-mkdir -p "$PANEL_ROOT"/{db,supervisor.d} /srv/projects /srv/websites /srv/nginx-configs
+mkdir -p "$PANEL_ROOT"/{db,supervisor.d} /srv/projects /srv/websites /srv/nginx-configs /srv/apps
 mkdir -p /var/log/supervisor
 
 echo "==> Copying application code"
@@ -86,6 +86,10 @@ fi
 
 echo "==> Permissions"
 chown -R "$PANEL_USER:$PANEL_USER" /srv/projects /srv/websites /srv/nginx-configs
+# /srv/apps (Apps section) is chowned at the top level only — the per-app data
+# directories underneath are created and owned by the installer helper, and a
+# recursive chown would fight with a browser profile it is still writing.
+chown "$PANEL_USER:$PANEL_USER" /srv/apps
 # $PANEL_ROOT but NOT $PANEL_ROOT/apps — leftover containers from the retired
 # Apps section may own data there; chowning e.g. Postgres's data dir breaks it.
 find "$PANEL_ROOT" -path "$PANEL_ROOT/apps" -prune -o -exec chown "$PANEL_USER:$PANEL_USER" {} +
@@ -99,6 +103,7 @@ echo "==> Panel helpers"
 mkdir -p "$PANEL_ROOT/bin" "$PANEL_ROOT/backups"
 install -m 0755 "$REPO_DIR/deploy/serverhub-self-update.sh" "$PANEL_ROOT/bin/serverhub-self-update"
 install -m 0755 "$REPO_DIR/deploy/serverhub-cleanup.sh" "$PANEL_ROOT/bin/serverhub-cleanup"
+install -m 0755 "$REPO_DIR/deploy/serverhub-apps.sh" "$PANEL_ROOT/bin/serverhub-apps"
 
 echo "==> Sudoers rule"
 install -m 0440 "$REPO_DIR/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub

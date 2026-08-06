@@ -104,6 +104,42 @@ class Website(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class ManagedApp(Base):
+    """
+    An off-the-shelf app the panel installs and runs for you (Apps section):
+    a browser (Chromium/Brave) shown over noVNC, or n8n.
+
+    One row per catalogue key — these are singletons, you either have n8n on
+    this server or you don't. The catalogue itself lives in
+    services/appstore_service.py; this table only holds the per-server state
+    (which port it took, which domain points at it, is it running).
+
+    Deliberately NOT called `apps`: databases from before the old Apps section
+    was removed may still carry an incompatible `apps` table, and create_all
+    would leave it in place and then fail on every query.
+    """
+    __tablename__ = "managed_apps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Catalogue key: "chromium" / "brave" / "n8n"
+    key: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    # HTTP port the app is reached on (noVNC's web port for browsers).
+    port: Mapped[int] = mapped_column(Integer)
+    # X display number for browser apps; NULL for anything headless.
+    display: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Cached supervisor status: RUNNING / STOPPED / ERROR
+    status: Mapped[str] = mapped_column(String(16), default="STOPPED")
+    # Password a viewer types into noVNC (browser apps only, plain text: it is
+    # what x11vnc -passwdfile expects, and the file itself is chmod 600).
+    vnc_password: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Page a browser app opens on start.
+    start_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Admin-hidden: invisible and unreachable for non-admin users.
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class Schedule(Base):
     """A cron schedule attached to a script (Phase 2)."""
     __tablename__ = "schedules"
