@@ -11,10 +11,10 @@ export default function Toggle({ checked, onChange, label, hint, disabled }) {
                   disabled:cursor-not-allowed disabled:opacity-50
                   ${checked ? 'bg-mint-grad' : 'border border-panel-border bg-panel-raise'}`}
     >
-      {/* Knob: 2.25rem track − 1rem knob − 0.125rem inset = 1.125rem of travel. */}
+      {/* Knob travel: 2.25rem track − 1rem knob − two 0.125rem insets = 1rem. */}
       <span
-        className={`absolute top-0.5 h-4 w-4 rounded-full shadow transition-transform duration-200
-                    ${checked ? 'translate-x-[1.125rem] bg-white' : 'translate-x-0.5 bg-slate-400'}`}
+        className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full shadow transition-transform duration-200
+                    ${checked ? 'translate-x-4 bg-white' : 'translate-x-0 bg-slate-400'}`}
       />
     </button>
   )
