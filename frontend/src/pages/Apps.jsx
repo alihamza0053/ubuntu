@@ -2,13 +2,15 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api, { errorMessage } from '../api/client'
 import StatusBadge from '../components/StatusBadge'
+import Icon from '../components/ui/Icon'
+import PageHeader from '../components/ui/PageHeader'
 import { useAuth } from '../context/AuthContext'
 import { appUrl } from '../lib/appUrl'
 
 const INSTALL_BADGE = {
-  INSTALLED: 'bg-green-500/15 text-green-400',
-  INSTALLING: 'bg-yellow-500/15 text-yellow-400',
-  MISSING: 'bg-slate-500/15 text-slate-400',
+  INSTALLED: 'border-mint-400/25 bg-mint-400/[0.12] text-mint-300',
+  INSTALLING: 'border-amber-400/25 bg-amber-400/[0.12] text-amber-300',
+  MISSING: 'border-panel-border bg-panel-raise/70 text-slate-400',
 }
 
 /**
@@ -59,26 +61,46 @@ export default function Apps() {
     }
   }
 
-  if (loading) return <p className="text-slate-500">Loading…</p>
-
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Apps</h2>
-        <p className="text-sm text-slate-500 mt-1">
-          Ready-made software this panel installs, runs and puts behind one of your
-          domains. Browsers run on a virtual display you view right here.
+      <PageHeader
+        title="Apps"
+        crumbs={[{ label: 'Catalogue' }, { label: 'Apps' }]}
+        actions={
+          <button className="btn-secondary" onClick={refresh}>
+            <Icon name="refresh" size={15} />
+            Refresh
+          </button>
+        }
+      >
+        <p className="max-w-2xl text-sm text-slate-500">
+          Ready-made software this panel installs, runs and puts behind one of your domains.
+          Browsers run on a virtual display you view right here.
         </p>
-      </div>
+      </PageHeader>
 
-      {msg && <p className="text-sm text-slate-300 break-words">{msg}</p>}
+      {msg && (
+        <div className="flex items-start gap-2 rounded-lg border border-panel-border bg-panel-card/70 px-3.5 py-2.5 text-sm text-slate-300">
+          <Icon name="info" size={15} className="mt-0.5 text-mint-400" />
+          <span className="min-w-0 break-words">{msg}</span>
+        </div>
+      )}
 
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {apps.map((app) => (
-          <AppCard key={app.key} app={app} isAdmin={isAdmin}
-            onInstall={() => install(app)} onAction={(n) => action(app, n)} />
-        ))}
-      </div>
+      {loading ? (
+        <div className="empty-state">Loading…</div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {apps.map((app) => (
+            <AppCard
+              key={app.key}
+              app={app}
+              isAdmin={isAdmin}
+              onInstall={() => install(app)}
+              onAction={(n) => action(app, n)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -90,58 +112,85 @@ function AppCard({ app, isAdmin, onInstall, onAction }) {
   const openUrl = appUrl(app)
 
   return (
-    <div className="card flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">{app.icon}</span>
-          <div>
-            <h3 className="font-semibold leading-tight">{app.label}</h3>
-            <span className="text-[11px] text-slate-500">
+    <article className="card card-hover flex flex-col">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl
+                       border border-panel-border bg-panel-raise text-lg"
+          >
+            {app.icon}
+          </span>
+          <div className="min-w-0">
+            <h3 className="truncate font-semibold text-slate-100">{app.label}</h3>
+            <span className="text-xs text-slate-500">
               {app.kind === 'desktop' ? 'browser · noVNC' : 'web service'}
             </span>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <span className={`badge ${INSTALL_BADGE[app.install_state]}`}>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <span className={`badge ${INSTALL_BADGE[app.install_state] || INSTALL_BADGE.MISSING}`}>
             {app.install_state}
           </span>
           {installed && <StatusBadge status={app.status} />}
         </div>
       </div>
 
-      <p className="text-sm text-slate-400">{app.summary}</p>
+      <p className="mt-4 text-sm text-slate-400">{app.summary}</p>
 
       {installed && (
-        <dl className="text-xs text-slate-500 space-y-1">
-          <div className="flex justify-between">
-            <dt>Port</dt><dd className="font-mono">{app.port}</dd>
+        <dl className="mt-4 space-y-2 border-t border-panel-border/50 pt-4 text-sm">
+          <div className="flex justify-between gap-3">
+            <dt className="text-xs uppercase tracking-wide text-slate-500">Port</dt>
+            <dd className="font-mono text-slate-300">{app.port}</dd>
           </div>
-          <div className="flex justify-between">
-            <dt>Domain</dt><dd>{app.domain || '—'}</dd>
+          <div className="flex justify-between gap-3">
+            <dt className="text-xs uppercase tracking-wide text-slate-500">Domain</dt>
+            <dd className="min-w-0 truncate text-slate-300">{app.domain || '—'}</dd>
           </div>
         </dl>
       )}
 
-      <div className="flex items-center gap-2 flex-wrap mt-auto pt-1">
+      <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-panel-border/50 pt-4">
         {!installed && !installing && isAdmin && (
-          <button className="btn-primary" onClick={onInstall}>⬇ Install</button>
+          <button className="btn-primary btn-sm" onClick={onInstall}>
+            <Icon name="download" size={14} />
+            Install
+          </button>
         )}
         {!installed && !installing && !isAdmin && (
           <span className="text-xs text-slate-500">Ask an admin to install this.</span>
         )}
-        {installing && <span className="text-xs text-yellow-400">Installing…</span>}
+        {installing && (
+          <span className="badge-warn">
+            <span className="dot animate-pulse-ring bg-amber-400" />
+            Installing…
+          </span>
+        )}
 
         {installed && !running && (
-          <button className="btn-primary" onClick={() => onAction('start')}>▶ Start</button>
+          <button className="btn-primary btn-sm" onClick={() => onAction('start')}>
+            <Icon name="play" size={14} />
+            Start
+          </button>
         )}
         {installed && running && (
           <>
-            <a className="btn-primary" href={openUrl} target="_blank" rel="noreferrer">↗ Open</a>
-            <button className="btn-secondary" onClick={() => onAction('stop')}>■ Stop</button>
+            <a className="btn-primary btn-sm" href={openUrl} target="_blank" rel="noreferrer">
+              <Icon name="external" size={14} />
+              Open
+            </a>
+            <button className="btn-secondary btn-sm" onClick={() => onAction('stop')}>
+              <Icon name="stop" size={14} />
+              Stop
+            </button>
           </>
         )}
-        <Link to={`/apps/${app.key}`} className="btn-secondary">Manage</Link>
+        <Link to={`/apps/${app.key}`} className="btn-secondary btn-sm ml-auto">
+          Manage
+          <Icon name="chevron-right" size={14} />
+        </Link>
       </div>
-    </div>
+    </article>
   )
 }

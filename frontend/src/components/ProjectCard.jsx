@@ -1,15 +1,26 @@
 import { Link, useNavigate } from 'react-router-dom'
 import api, { errorMessage } from '../api/client'
-import StatusBadge from './StatusBadge'
 import { formatDateTime } from '../lib/datetime'
+import StatusBadge from './StatusBadge'
+import Icon from './ui/Icon'
 
 const formatTime = (iso) => formatDateTime(iso)
 
+/** One label/value line in the card body. */
+function Meta({ label, children }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className="min-w-0 truncate text-right text-sm text-slate-300">{children}</dd>
+    </div>
+  )
+}
+
 /**
- * Home-page card for one Python project: status, domain, last run,
+ * Grid card for one Python project: status, dashboard URL, last run,
  * file counts and quick start/stop/restart actions.
  */
-export default function ProjectCard({ project, onChanged }) {
+export default function ProjectCard({ project, onChanged, onDelete, onToggleHidden }) {
   const navigate = useNavigate()
 
   async function action(name) {
@@ -26,68 +37,109 @@ export default function ProjectCard({ project, onChanged }) {
     : `http://${window.location.hostname}:${project.dashboard_port}`
 
   return (
-    <div className="card hover:border-sky-700 transition-colors">
-      {/* Header: name + status */}
-      <div className="flex items-start justify-between gap-2">
-        <Link to={`/projects/${project.id}`} className="text-lg font-semibold text-sky-300 hover:underline">
-          {project.name}
-        </Link>
-        <span className="flex items-center gap-1.5">
+    <article className="card card-hover flex flex-col">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl
+                       border border-mint-400/25 bg-mint-400/10 text-mint-300"
+          >
+            <Icon name="code" size={18} />
+          </span>
+          <div className="min-w-0">
+            <Link
+              to={`/projects/${project.id}`}
+              className="block truncate font-semibold text-slate-100 transition-colors hover:text-mint-300"
+            >
+              {project.name}
+            </Link>
+            <span className="text-xs text-slate-500">port {project.dashboard_port}</span>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1.5">
           {project.hidden && (
-            <span className="badge bg-slate-500/15 text-slate-400" title="Only admins can see this project">
-              🙈 hidden
+            <span className="badge-muted" title="Only admins can see this project">
+              <Icon name="eye-off" size={11} /> hidden
             </span>
           )}
           <StatusBadge status={project.dashboard_status} />
-        </span>
+        </div>
       </div>
 
       {/* Details */}
-      <dl className="mt-3 space-y-1.5 text-sm">
-        <div className="flex justify-between">
-          <dt className="text-slate-500">Dashboard</dt>
-          <dd>
-            <a href={liveUrl} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">
-              {project.domain || `:${project.dashboard_port}`} ↗
-            </a>
-          </dd>
-        </div>
-        <div className="flex justify-between">
-          <dt className="text-slate-500">Last script run</dt>
-          <dd className="flex items-center gap-1.5">
+      <dl className="mt-5 space-y-2.5 border-t border-panel-border/50 pt-4">
+        <Meta label="Dashboard">
+          <a href={liveUrl} target="_blank" rel="noreferrer"
+             className="inline-flex items-center gap-1 text-mint-400 hover:text-mint-300 hover:underline">
+            {project.domain || `:${project.dashboard_port}`}
+            <Icon name="external" size={12} />
+          </a>
+        </Meta>
+        <Meta label="Last run">
+          <span className="inline-flex items-center gap-1.5">
             {formatTime(project.last_script_run)}
             {project.last_script_status && (
-              <span className={project.last_script_status === 'SUCCESS' ? 'text-green-400' : 'text-red-400'}>
-                {project.last_script_status === 'SUCCESS' ? '✓' : '✗'}
-              </span>
+              <Icon
+                name={project.last_script_status === 'SUCCESS' ? 'check' : 'x'}
+                size={13}
+                className={project.last_script_status === 'SUCCESS' ? 'text-mint-400' : 'text-red-400'}
+              />
             )}
-          </dd>
-        </div>
-        <div className="flex justify-between">
-          <dt className="text-slate-500">Next scheduled</dt>
-          <dd>{formatTime(project.next_scheduled_run)}</dd>
-        </div>
-        <div className="flex justify-between">
-          <dt className="text-slate-500">Files</dt>
-          <dd className="text-slate-300">
-            {project.file_counts?.code ?? 0} scripts · {project.file_counts?.data ?? 0} data ·{' '}
-            {project.file_counts?.dashboard ?? 0} dashboard
-          </dd>
-        </div>
+          </span>
+        </Meta>
+        <Meta label="Next run">{formatTime(project.next_scheduled_run)}</Meta>
+        <Meta label="Files">
+          {project.file_counts?.code ?? 0} scripts · {project.file_counts?.data ?? 0} data ·{' '}
+          {project.file_counts?.dashboard ?? 0} dashboard
+        </Meta>
       </dl>
 
-      {/* Quick actions */}
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button className="btn-secondary" onClick={() => action('start')}>▶ Start</button>
-        <button className="btn-secondary" onClick={() => action('stop')}>⏹ Stop</button>
-        <button className="btn-secondary" onClick={() => action('restart')}>🔄 Restart</button>
-        <button className="btn-secondary" onClick={() => navigate(`/projects/${project.id}?tab=scripts`)}>
-          ▶ Run Script
+      {/* Actions */}
+      <div className="mt-5 flex items-center gap-1 border-t border-panel-border/50 pt-4">
+        <button className="btn-icon" onClick={() => action('start')} title="Start dashboard">
+          <Icon name="play" size={15} />
         </button>
-        <button className="btn-secondary" onClick={() => navigate(`/projects/${project.id}?tab=files`)}>
-          📁 Files
+        <button className="btn-icon" onClick={() => action('stop')} title="Stop dashboard">
+          <Icon name="stop" size={15} />
         </button>
+        <button className="btn-icon" onClick={() => action('restart')} title="Restart dashboard">
+          <Icon name="refresh" size={15} />
+        </button>
+        <span className="mx-1 h-5 w-px bg-panel-border" />
+        <button
+          className="btn-icon"
+          onClick={() => navigate(`/projects/${project.id}?tab=scripts`)}
+          title="Run a script"
+        >
+          <Icon name="terminal" size={15} />
+        </button>
+        <button
+          className="btn-icon"
+          onClick={() => navigate(`/projects/${project.id}?tab=files`)}
+          title="Browse files"
+        >
+          <Icon name="folder" size={15} />
+        </button>
+
+        <span className="ml-auto flex items-center gap-1">
+          {onToggleHidden && (
+            <button
+              className="btn-icon"
+              onClick={() => onToggleHidden(project)}
+              title={project.hidden ? 'Hidden from non-admins — click to unhide' : 'Hide from non-admins'}
+            >
+              <Icon name={project.hidden ? 'eye-off' : 'eye'} size={15} />
+            </button>
+          )}
+          {onDelete && (
+            <button className="btn-icon-danger" onClick={() => onDelete(project)} title="Delete project">
+              <Icon name="trash" size={15} />
+            </button>
+          )}
+        </span>
       </div>
-    </div>
+    </article>
   )
 }

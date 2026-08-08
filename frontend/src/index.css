@@ -2,35 +2,263 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base dark theme */
-body {
-  @apply bg-panel-bg text-slate-200 antialiased;
+/* ─────────────────────────────────────────────────────────────────────────
+   Base
+   ───────────────────────────────────────────────────────────────────────── */
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-panel-bg text-slate-200 antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+  }
+
+  /* Ambient corner glow — the teal/mint bloom from the reference shell.
+     Fixed + non-interactive so it never affects layout or clicks. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(60rem 34rem at 108% -8%, rgba(34, 229, 206, 0.20), transparent 62%),
+      radial-gradient(46rem 30rem at 100% 18%, rgba(34, 208, 126, 0.14), transparent 60%),
+      radial-gradient(34rem 26rem at -6% 96%, rgba(34, 229, 206, 0.13), transparent 62%);
+  }
+
+  ::selection {
+    background: rgba(63, 227, 155, 0.28);
+    color: #eaf7f2;
+  }
+
+  /* Slim, themed scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #1d3d49 transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1d3d49;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #2b5a68;
+    background-clip: content-box;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-mint-400/60 ring-offset-2 ring-offset-panel-bg;
+  }
+
+  /* Native checkboxes/radios pick up the mint accent everywhere. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: #22d07e;
+    width: 0.95rem;
+    height: 0.95rem;
+    cursor: pointer;
+  }
 }
 
-/* Reusable building blocks */
+/* ─────────────────────────────────────────────────────────────────────────
+   Components
+   ───────────────────────────────────────────────────────────────────────── */
 @layer components {
+  /* ── Surfaces ─────────────────────────────────────────────────────── */
   .card {
-    @apply bg-panel-card border border-panel-border rounded-xl p-4;
+    @apply relative rounded-2xl border border-panel-border/80 bg-panel-card/85
+           p-5 shadow-card backdrop-blur-sm;
   }
+  /* Card that lifts + rims mint on hover (grid tiles, list entries) */
+  .card-hover {
+    @apply transition-all duration-200 hover:-translate-y-0.5
+           hover:border-mint-400/45 hover:shadow-glow;
+  }
+  .panel {
+    @apply rounded-2xl border border-panel-border/70 bg-panel-card/60 backdrop-blur-sm;
+  }
+
+  /* ── Buttons ──────────────────────────────────────────────────────── */
   .btn {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
-           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap
+           rounded-lg px-3.5 py-2 text-sm font-medium leading-none
+           transition-all duration-150 active:scale-[0.98]
+           disabled:pointer-events-none disabled:opacity-45;
   }
   .btn-primary {
-    @apply btn bg-sky-600 hover:bg-sky-500 text-white;
+    @apply btn bg-mint-grad font-semibold text-[#04231a]
+           shadow-[0_6px_18px_-8px_rgba(34,208,126,0.9)]
+           hover:brightness-110 hover:shadow-[0_8px_22px_-8px_rgba(34,208,126,1)];
   }
   .btn-secondary {
-    @apply btn bg-slate-700 hover:bg-slate-600 text-slate-100;
+    @apply btn border border-panel-border bg-panel-raise/70 text-slate-200
+           hover:border-mint-400/40 hover:bg-panel-raise hover:text-mint-300;
+  }
+  .btn-ghost {
+    @apply btn border border-transparent text-slate-400
+           hover:border-panel-border hover:bg-panel-raise/60 hover:text-slate-100;
   }
   .btn-danger {
-    @apply btn bg-red-700 hover:bg-red-600 text-white;
+    @apply btn border border-red-500/30 bg-red-500/[0.12] text-red-300
+           hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200;
   }
-  .input {
-    @apply w-full px-3 py-2 rounded-lg bg-slate-900 border border-panel-border
-           text-slate-100 placeholder-slate-500
-           focus:outline-none focus:ring-2 focus:ring-sky-500;
+  .btn-sm {
+    @apply px-2.5 py-1.5 text-xs;
   }
+  /* Square icon button — the copy/delete/edit cluster in table rows */
+  .btn-icon {
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg
+           border border-transparent text-slate-400 transition-all duration-150
+           hover:border-panel-border hover:bg-panel-raise hover:text-mint-300
+           disabled:pointer-events-none disabled:opacity-40;
+  }
+  .btn-icon-danger {
+    @apply btn-icon hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300;
+  }
+  /* ── Form controls ────────────────────────────────────────────────── */
+  .input,
+  .select,
+  .textarea {
+    @apply w-full rounded-lg border border-panel-border bg-panel-bg/80 px-3.5 py-2.5
+           text-sm text-slate-100 placeholder-slate-500 transition-colors
+           hover:border-panel-border focus:border-mint-400/70 focus:outline-none
+           focus:ring-2 focus:ring-mint-400/25;
+  }
+  .select {
+    @apply cursor-pointer appearance-none bg-no-repeat pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235F7E89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.75rem center;
+  }
+  .textarea {
+    @apply font-mono leading-relaxed;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-wider text-slate-500;
+  }
+  /* Rounded search pill from the top bar */
+  .search-pill {
+    @apply flex h-9 items-center gap-2 rounded-full border border-panel-border
+           bg-panel-bg/70 px-3.5 text-sm text-slate-300 transition-colors
+           focus-within:border-mint-400/50 focus-within:bg-panel-bg;
+  }
+  .search-pill input {
+    @apply w-full bg-transparent text-sm text-slate-100
+           placeholder-slate-500 focus:outline-none;
+  }
+
+  /* ── Badges & chips ───────────────────────────────────────────────── */
   .badge {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold;
+    @apply inline-flex items-center gap-1 rounded-full border border-transparent
+           px-2.5 py-0.5 text-[11px] font-semibold leading-5 tracking-wide;
+  }
+  .badge-mint {
+    @apply badge border-mint-400/25 bg-mint-400/[0.12] text-mint-300;
+  }
+  .badge-muted {
+    @apply badge border-panel-border bg-panel-raise/70 text-slate-400;
+  }
+  .badge-danger {
+    @apply badge border-red-500/25 bg-red-500/[0.12] text-red-300;
+  }
+  .badge-warn {
+    @apply badge border-amber-500/25 bg-amber-500/[0.12] text-amber-300;
+  }
+  /* Small count bubble beside a tab label */
+  .count-chip {
+    @apply ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full
+           bg-panel-raise px-1.5 py-0.5 text-[10px] font-bold text-slate-400;
+  }
+  .count-chip-active {
+    @apply bg-mint-400/15 text-mint-300;
+  }
+  /* Status dot with a soft halo */
+  .dot {
+    @apply inline-block h-2 w-2 shrink-0 rounded-full;
+  }
+
+  /* ── Tabs ─────────────────────────────────────────────────────────── */
+  .tab-bar {
+    @apply flex items-center gap-1 overflow-x-auto border-b border-panel-border/70;
+  }
+  .tab {
+    @apply -mb-px flex items-center whitespace-nowrap border-b-2 border-transparent
+           px-4 py-2.5 text-sm font-medium text-slate-400 transition-colors
+           hover:text-slate-100;
+  }
+  .tab-active {
+    @apply border-mint-400 text-mint-300;
+  }
+
+  /* ── Tables ───────────────────────────────────────────────────────── */
+  .table-wrap {
+    @apply overflow-x-auto rounded-2xl border border-panel-border/70 bg-panel-card/70;
+  }
+  .table {
+    @apply w-full border-collapse text-sm;
+  }
+  .table thead th {
+    @apply whitespace-nowrap border-b border-panel-border/80 px-4 py-3 text-left
+           text-[11px] font-semibold uppercase tracking-wider text-slate-500;
+  }
+  .table tbody td {
+    @apply border-b border-panel-border/40 px-4 py-3 align-middle text-slate-300;
+  }
+  .table tbody tr {
+    @apply transition-colors hover:bg-mint-400/[0.04];
+  }
+  .table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  /* ── Navigation rail ──────────────────────────────────────────────── */
+  .rail-btn {
+    @apply relative flex h-11 w-11 items-center justify-center rounded-xl
+           border border-transparent text-slate-400 transition-all duration-200
+           hover:border-panel-border hover:bg-panel-raise hover:text-mint-300;
+  }
+  .rail-btn-active {
+    @apply border-transparent bg-mint-grad text-[#04231a] shadow-rail
+           hover:bg-mint-grad hover:text-[#04231a];
+  }
+
+  /* Card section heading — mint tick, then the label */
+  .section-title {
+    @apply flex items-center gap-2.5 text-sm font-semibold tracking-wide text-slate-100;
+  }
+  .section-title::before {
+    content: '';
+    @apply h-3.5 w-0.5 shrink-0 rounded-full bg-mint-grad;
+  }
+
+  /* ── Misc ─────────────────────────────────────────────────────────── */
+  .link {
+    @apply text-mint-400 underline-offset-4 transition-colors hover:text-mint-300 hover:underline;
+  }
+  .muted {
+    @apply text-sm text-slate-500;
+  }
+  .empty-state {
+    @apply flex flex-col items-center justify-center gap-2 rounded-2xl
+           border border-dashed border-panel-border/80 bg-panel-card/40
+           px-6 py-14 text-center text-slate-500;
+  }
+  /* Full-screen modal scrim */
+  .scrim {
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-[#03080b]/80 px-4 backdrop-blur-sm;
+  }
+  .kbd {
+    @apply rounded border border-panel-border bg-panel-raise px-1.5 py-0.5
+           font-mono text-[10px] text-slate-400;
   }
 }

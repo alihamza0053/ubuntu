@@ -2,6 +2,7 @@ import Editor from '@monaco-editor/react'
 import { useEffect, useState } from 'react'
 import api, { errorMessage } from '../../api/client'
 import LiveLog from '../../components/LiveLog'
+import Icon from '../../components/ui/Icon'
 
 // Map file extension → Monaco language id
 const LANGUAGES = {
@@ -146,10 +147,10 @@ export default function EditorTab({ project, files, initialFile }) {
           {message && <span className="text-xs text-green-400">{message}</span>}
           <div className="ml-auto flex gap-2">
             {canRun && (
-              <button className="btn-secondary" onClick={runCurrent}>▶ Run this file</button>
+              <button className="btn-secondary" onClick={runCurrent}><Icon name="play" size={15} />Run this file</button>
             )}
             <button className="btn-primary" onClick={save} disabled={!current || !dirty || saving}>
-              {saving ? 'Saving…' : '💾 Save (Ctrl+S)'}
+              {saving ? 'Saving…' : <>Save<span className="kbd ml-1">Ctrl S</span></>}
             </button>
           </div>
         </div>

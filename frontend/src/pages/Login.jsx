@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { errorMessage } from '../api/client'
+import Icon from '../components/ui/Icon'
+import { FormError } from '../components/ui/Modal'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
@@ -29,43 +31,55 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <form onSubmit={handleSubmit} className="card w-full max-w-sm space-y-4">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-sky-400">ServerHub</h1>
-          <p className="text-sm text-slate-500 mt-1">Sign in to manage your server</p>
+    <div className="relative z-10 flex min-h-screen items-center justify-center px-4">
+      <form onSubmit={handleSubmit} className="card w-full max-w-sm animate-fade-up p-7">
+        {/* Brand */}
+        <div className="mb-7 flex flex-col items-center text-center">
+          <span
+            className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-mint-grad
+                       text-base font-black tracking-tight text-[#04231a] shadow-rail"
+          >
+            SH
+          </span>
+          <h1 className="text-xl font-semibold tracking-tight text-slate-100">ServerHub</h1>
+          <p className="mt-1 text-sm text-slate-500">Sign in to manage your server</p>
         </div>
 
-        {error && (
-          <div className="rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-3 py-2">
-            {error}
+        <div className="space-y-4">
+          <FormError>{error}</FormError>
+
+          <div>
+            <label className="label">Username</label>
+            <input
+              className="input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoFocus
+              required
+            />
           </div>
-        )}
+          <div>
+            <label className="label">Password</label>
+            <input
+              className="input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
 
-        <div>
-          <label className="block text-sm text-slate-400 mb-1">Username</label>
-          <input
-            className="input"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoFocus
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-slate-400 mb-1">Password</label>
-          <input
-            className="input"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+          <button type="submit" disabled={busy} className="btn-primary w-full">
+            {busy ? 'Signing in…' : (
+              <>
+                <Icon name="login" size={15} />
+                Sign in
+              </>
+            )}
+          </button>
         </div>
 
-        <button type="submit" disabled={busy} className="btn-primary w-full justify-center">
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
+        <p className="mt-6 text-center text-xs text-slate-600">VPS control panel</p>
       </form>
     </div>
   )

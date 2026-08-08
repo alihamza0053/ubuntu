@@ -86,25 +86,30 @@ export default function SpreadsheetModal({ entry, onClose }) {
   if (!entry) return null
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex flex-col p-4">
-      <div className="flex items-center gap-3 mb-2">
-        <span className="font-mono text-sm text-slate-300 truncate">📊 {entry.name}</span>
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#03080b]/90 p-4 backdrop-blur-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <span className="truncate font-mono text-sm text-slate-300">{entry.name}</span>
         {error && <span className="text-xs text-red-400">{error}</span>}
         <div className="ml-auto flex gap-2">
-          <button className="btn-secondary" onClick={download}>⬇ Download</button>
-          <button className="btn-secondary" onClick={onClose}>Close (Esc)</button>
+          <button className="btn-secondary" onClick={download}>Download</button>
+          <button className="btn-secondary" onClick={onClose}>
+            Close
+            <span className="kbd ml-1">Esc</span>
+          </button>
         </div>
       </div>
 
       {/* Sheet tabs (multi-sheet workbooks) */}
       {workbook && workbook.SheetNames.length > 1 && (
-        <div className="flex gap-1 mb-2 flex-wrap">
+        <div className="mb-3 flex flex-wrap gap-1.5">
           {workbook.SheetNames.map((name) => (
             <button
               key={name}
               onClick={() => setActive(name)}
-              className={`px-3 py-1 text-xs rounded ${
-                name === active ? 'bg-sky-600 text-white' : 'bg-panel-border text-slate-300'
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                name === active
+                  ? 'bg-mint-grad text-[#04231a]'
+                  : 'border border-panel-border bg-panel-raise text-slate-300 hover:text-mint-300'
               }`}
             >
               {name}
@@ -113,7 +118,7 @@ export default function SpreadsheetModal({ entry, onClose }) {
         </div>
       )}
 
-      <div className="flex-1 border border-panel-border rounded-lg overflow-auto bg-panel-card">
+      <div className="flex-1 overflow-auto rounded-xl border border-panel-border bg-panel-card">
         {loading ? (
           <div className="h-full flex items-center justify-center text-slate-500">Loading…</div>
         ) : rows.length === 0 ? (

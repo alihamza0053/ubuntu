@@ -8,10 +8,10 @@ function lineColor(line) {
     return 'text-red-400'
   }
   if (line.includes('✓') || l.includes('status=success') || l.includes(' ok')) {
-    return 'text-green-400'
+    return 'text-mint-400'
   }
   if (line.includes('[pipeline]') || line.includes('[serverhub]')) {
-    return 'text-sky-300'
+    return 'text-[#22E5CE]'
   }
   return 'text-slate-300'
 }
@@ -54,18 +54,20 @@ export default function LiveLog({ path, onClose }) {
   if (!path) return null
 
   return (
-    <div className="mt-3 rounded-lg border border-panel-border overflow-hidden">
-      <div className="flex items-center justify-between bg-slate-900 px-3 py-1.5 text-xs">
-        <span className={connected ? 'text-green-400' : 'text-slate-500'}>
-          {connected ? '● live' : '○ closed'}
+    <div className="mt-3 overflow-hidden rounded-xl border border-panel-border">
+      <div className="flex items-center justify-between border-b border-panel-border bg-panel-card px-3.5 py-2 text-xs">
+        <span className={`flex items-center gap-2 font-medium ${connected ? 'text-mint-300' : 'text-slate-500'}`}>
+          <span className={`dot ${connected ? 'animate-pulse-ring bg-mint-400' : 'bg-slate-600'}`} />
+          {connected ? 'live' : 'closed'}
         </span>
-        <button onClick={() => setLines([])} className="text-slate-500 hover:text-slate-300">
+        <button onClick={() => setLines([])} className="text-slate-500 transition-colors hover:text-mint-300">
           clear
         </button>
       </div>
       <div
         ref={boxRef}
-        className="bg-black text-green-300 text-xs font-mono p-3 h-64 overflow-y-auto whitespace-pre-wrap"
+        className="h-64 overflow-y-auto whitespace-pre-wrap bg-[#04090c] p-3.5 font-mono text-xs
+                   leading-relaxed text-slate-300"
       >
         {lines.length
           ? lines.map((line, i) => (

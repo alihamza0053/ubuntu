@@ -4,6 +4,9 @@ import api, { errorMessage } from '../api/client'
 import EditorModal from '../components/EditorModal'
 import LiveLog from '../components/LiveLog'
 import StatusBadge from '../components/StatusBadge'
+import Icon from '../components/ui/Icon'
+import PageHeader from '../components/ui/PageHeader'
+import Tabs from '../components/ui/Tabs'
 
 const BASE_TABS = [
   { key: 'overview', label: 'Overview' },
@@ -70,34 +73,40 @@ export default function WebsiteDetail() {
     }
   }
 
-  if (!site) return <p className="text-slate-500">Loading…</p>
+  if (!site) return <div className="empty-state">Loading…</div>
 
   const liveUrl = site.domain ? `http://${site.domain}` : null
   const editableFile = (name) => /\.(html?|css|js|jsx|ts|tsx|php|json|md|txt|xml|env|sql)$/i.test(name)
   const sitePath = (name) => `${site.folder_path}/${name.replace(/\/$/, '')}`
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Link to="/websites" className="text-slate-500 hover:text-slate-300">←</Link>
-        <h2 className="text-2xl font-bold">{site.name}</h2>
-        <span className="badge bg-slate-500/20 text-slate-300">{site.type.toUpperCase()}</span>
-        {liveUrl && <a href={liveUrl} target="_blank" rel="noreferrer" className="text-sm text-sky-400 hover:underline">{site.domain} ↗</a>}
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title={site.name}
+        crumbs={[{ label: 'Websites', to: '/websites' }, { label: site.name }]}
+        actions={
+          <>
+            <span className="badge-muted">{site.type.toUpperCase()}</span>
+            {liveUrl && (
+              <a href={liveUrl} target="_blank" rel="noreferrer" className="btn-secondary">
+                <Icon name="external" size={15} />
+                {site.domain}
+              </a>
+            )}
+            <Link to="/websites" className="btn-secondary">
+              <Icon name="arrow-left" size={15} />
+              All websites
+            </Link>
+          </>
+        }
+      />
 
-      <div className="flex gap-1 border-b border-panel-border overflow-x-auto">
-        {tabsFor(site.type).map((t) => (
-          <button key={t.key} onClick={() => setSearchParams({ tab: t.key })}
-            className={`px-4 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${
-              tab === t.key ? 'border-sky-400 text-sky-300' : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}>{t.label}</button>
-        ))}
-      </div>
+      <Tabs tabs={tabsFor(site.type)} active={tab} onChange={(key) => setSearchParams({ tab: key })} />
 
       {/* Overview */}
       {tab === 'overview' && (
         <div className="card max-w-xl">
-          <h3 className="font-semibold mb-3">Website Info</h3>
+          <h3 className="section-title mb-4">Website Info</h3>
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between"><dt className="text-slate-500">Type</dt><dd>{site.type}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">Folder</dt><dd className="font-mono break-all">{site.folder_path}</dd></div>
@@ -122,14 +131,14 @@ export default function WebsiteDetail() {
         <div className="space-y-4">
           <div className="card">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold">Deploy</h3>
-              <button className="btn-primary" onClick={() => uploadRef.current?.click()}>⬆ Upload .zip</button>
+              <h3 className="section-title">Deploy</h3>
+              <button className="btn-primary" onClick={() => uploadRef.current?.click()}><Icon name="upload" size={15} />Upload .zip</button>
               {site.type === 'react' && (
                 <button className="btn-secondary" onClick={() => {
                   const f = uploadRef.current?.files?.[0]
                   if (f) uploadZip(f, true)
                   else alert('Pick a zip first via Upload')
-                }}>⬆ Upload + npm build</button>
+                }}><Icon name="upload" size={15} />Upload + npm build</button>
               )}
               <input ref={uploadRef} type="file" accept=".zip" className="hidden"
                 onChange={(e) => { uploadZip(e.target.files[0], false); e.target.value = '' }} />
@@ -143,15 +152,20 @@ export default function WebsiteDetail() {
           </div>
 
           <div className="card">
-            <h3 className="font-semibold mb-2">Files</h3>
+            <h3 className="section-title mb-3">Files</h3>
             <table className="w-full text-sm">
               <tbody className="divide-y divide-panel-border">
                 {files.map((f) => (
                   <tr key={f.name}>
                     <td className="py-2">
                       {editableFile(f.name)
-                        ? <button className="text-sky-400 hover:underline" onClick={() => setEditorPath(sitePath(f.name))}>📝 {f.name}</button>
-                        : <span>{f.name.endsWith('/') ? '📁' : '📄'} {f.name}</span>}
+                        ? <button className="text-sky-400 hover:underline" onClick={() => setEditorPath(sitePath(f.name))}><Icon name="pencil" size={15} />{f.name}</button>
+                        : (
+                          <span className="inline-flex items-center gap-2">
+                            <Icon name={f.name.endsWith('/') ? 'folder' : 'file'} size={15} className="text-slate-500" />
+                            {f.name}
+                          </span>
+                        )}
                     </td>
                     <td className="text-right text-xs text-slate-500">{f.name.endsWith('/') ? '' : formatSize(f.size)}</td>
                   </tr>
@@ -201,7 +215,7 @@ function DatabaseTab({ site, onChanged }) {
 
   return (
     <div className="card max-w-xl space-y-3">
-      <h3 className="font-semibold">Linked Database</h3>
+      <h3 className="section-title">Linked Database</h3>
 
       <p className="text-sm text-slate-400">
         Current: {site.db_name
@@ -210,8 +224,8 @@ function DatabaseTab({ site, onChanged }) {
       </p>
 
       <div>
-        <label className="block text-sm text-slate-400 mb-1">Select a database to link</label>
-        <select className="input max-w-xs" value={selected} onChange={(e) => setSelected(e.target.value)}>
+        <label className="label">Select a database to link</label>
+        <select className="select max-w-xs" value={selected} onChange={(e) => setSelected(e.target.value)}>
           <option value="">— none (unlink) —</option>
           {databases.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
         </select>
@@ -312,7 +326,7 @@ function RunTab({ site, onChanged }) {
     <div className="space-y-4 max-w-2xl">
       <div className="card space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <h3 className="font-semibold">Service</h3>
+          <h3 className="section-title">Service</h3>
           <div className="flex items-center gap-2">
             <span className={`badge ${envBadge}`}>deps: {site.env_status || 'MISSING'}</span>
             <StatusBadge status={site.status} />
@@ -325,11 +339,11 @@ function RunTab({ site, onChanged }) {
         </p>
         <div className="flex flex-wrap gap-2">
           <button className="btn-secondary" onClick={detect}
-            title="Read the uploaded code and set the framework + run command">🔍 Detect app</button>
+            title="Read the uploaded code and set the framework + run command"><Icon name="search" size={15} />Detect app</button>
           <button className="btn-secondary" onClick={installDeps}>📦 Install deps</button>
-          <button className="btn-secondary" onClick={() => action('start')}>▶ Start</button>
-          <button className="btn-secondary" onClick={() => action('stop')}>⏹ Stop</button>
-          <button className="btn-secondary" onClick={() => action('restart')}>🔄 Restart</button>
+          <button className="btn-secondary" onClick={() => action('start')}><Icon name="play" size={15} />Start</button>
+          <button className="btn-secondary" onClick={() => action('stop')}><Icon name="stop" size={15} />Stop</button>
+          <button className="btn-secondary" onClick={() => action('restart')}><Icon name="refresh" size={15} />Restart</button>
           <button className="btn-secondary" onClick={() => setShowAppLogs((v) => !v)}>📜 Logs</button>
         </div>
         {setupWs && (
@@ -347,11 +361,11 @@ function RunTab({ site, onChanged }) {
       </div>
 
       <div className="card space-y-3">
-        <h3 className="font-semibold">Framework &amp; run command</h3>
+        <h3 className="section-title">Framework &amp; run command</h3>
 
         <div>
-          <label className="block text-sm text-slate-400 mb-1">Framework</label>
-          <select className="input max-w-xs" value={framework}
+          <label className="label">Framework</label>
+          <select className="select max-w-xs" value={framework}
             onChange={(e) => changeFramework(e.target.value)}>
             <option value="flask">Flask — served by gunicorn</option>
             <option value="fastapi">FastAPI — served by uvicorn</option>
@@ -364,7 +378,7 @@ function RunTab({ site, onChanged }) {
         </div>
 
         <div>
-          <label className="block text-sm text-slate-400 mb-1">Run command</label>
+          <label className="label">Run command</label>
           <input className="input font-mono text-sm" value={cmd} onChange={(e) => setCmd(e.target.value)} />
           <p className="text-xs text-slate-500 mt-1">
             Use <span className="font-mono">{'{port}'}</span> for the port. The app’s venv is on PATH,
@@ -414,7 +428,7 @@ function DomainTab({ site, onChanged }) {
 
   return (
     <div className="card max-w-xl space-y-3">
-      <h3 className="font-semibold">Domain & SSL</h3>
+      <h3 className="section-title">Domain & SSL</h3>
       <div className="flex gap-2 items-center flex-wrap">
         <input className="input max-w-xs" placeholder="example.com" value={domain} onChange={(e) => setDomain(e.target.value)} />
         <button className="btn-primary" onClick={assign} disabled={busy || !domain}>Assign domain</button>

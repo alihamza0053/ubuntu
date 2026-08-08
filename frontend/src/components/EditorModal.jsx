@@ -67,20 +67,22 @@ export default function EditorModal({ path, onClose }) {
   if (!path) return null
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex flex-col p-4">
-      <div className="flex items-center gap-3 mb-2">
-        <span className="font-mono text-sm text-slate-300 truncate">{path}</span>
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#03080b]/90 p-4 backdrop-blur-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <span className="truncate font-mono text-sm text-slate-300">{path}</span>
         {error && <span className="text-xs text-red-400">{error}</span>}
         <div className="ml-auto flex gap-2">
           <button className="btn-primary" onClick={save} disabled={saving || loading}>
-            {saving ? 'Saving…' : '💾 Save (Ctrl+S)'}
+            {saving ? 'Saving…' : 'Save'}
+            <span className="kbd ml-1">Ctrl S</span>
           </button>
           <button className="btn-secondary" onClick={() => onClose(false)}>
-            Close (Esc)
+            Close
+            <span className="kbd ml-1">Esc</span>
           </button>
         </div>
       </div>
-      <div className="flex-1 border border-panel-border rounded-lg overflow-hidden">
+      <div className="flex-1 overflow-hidden rounded-xl border border-panel-border">
         {loading ? (
           <div className="h-full flex items-center justify-center text-slate-500">Loading…</div>
         ) : (

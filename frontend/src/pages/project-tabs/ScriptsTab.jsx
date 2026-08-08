@@ -3,6 +3,7 @@ import api, { errorMessage } from '../../api/client'
 import LiveLog from '../../components/LiveLog'
 import StatusBadge from '../../components/StatusBadge'
 import { formatDateTime } from '../../lib/datetime'
+import Icon from '../../components/ui/Icon'
 
 const formatTime = (iso) => formatDateTime(iso, undefined, 'never')
 
@@ -86,11 +87,11 @@ export default function ScriptsTab({ project, onChanged }) {
               <div className="ml-auto flex gap-2">
                 {script.last_status === 'RUNNING' ? (
                   <button className="btn-danger" onClick={() => stopScript(script)}>
-                    ⏹ Stop
+                    <Icon name="stop" size={15} />Stop
                   </button>
                 ) : (
                   <button className="btn-primary" onClick={() => runLive(script)}>
-                    ▶ Run Now
+                    <Icon name="play" size={15} />Run Now
                   </button>
                 )}
                 <button className="btn-secondary" onClick={() => viewLog(script)}>

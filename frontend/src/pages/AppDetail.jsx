@@ -3,6 +3,9 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api, { errorMessage } from '../api/client'
 import LiveLog from '../components/LiveLog'
 import StatusBadge from '../components/StatusBadge'
+import Icon from '../components/ui/Icon'
+import PageHeader from '../components/ui/PageHeader'
+import Tabs from '../components/ui/Tabs'
 import { useAuth } from '../context/AuthContext'
 import { appUrl } from '../lib/appUrl'
 
@@ -57,44 +60,51 @@ export default function AppDetail() {
     }
   }
 
-  if (!app) return <p className="text-slate-500">Loading…</p>
+  if (!app) return <div className="empty-state">Loading…</div>
 
   const installed = app.install_state === 'INSTALLED'
   const tab = searchParams.get('tab') || 'overview'
   const openUrl = appUrl(app)
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Link to="/apps" className="text-slate-500 hover:text-slate-300">←</Link>
-        <span className="text-2xl">{app.icon}</span>
-        <h2 className="text-2xl font-bold">{app.label}</h2>
-        {installed && <StatusBadge status={app.status} />}
-        {installed && app.status === 'RUNNING' && (
-          <a href={openUrl} target="_blank" rel="noreferrer"
-            className="text-sm text-sky-400 hover:underline">open ↗</a>
-        )}
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2.5">
+            <span className="text-xl">{app.icon}</span>
+            {app.label}
+          </span>
+        }
+        crumbs={[{ label: 'Apps', to: '/apps' }, { label: app.label }]}
+        actions={
+          <>
+            {installed && <StatusBadge status={app.status} />}
+            {installed && app.status === 'RUNNING' && (
+              <a href={openUrl} target="_blank" rel="noreferrer" className="btn-secondary">
+                <Icon name="external" size={15} />
+                Open
+              </a>
+            )}
+            <Link to="/apps" className="btn-secondary">
+              <Icon name="arrow-left" size={15} />
+              All apps
+            </Link>
+          </>
+        }
+      />
 
       {!installed && (
-        <div className="card text-slate-400">
+        <div className="flex items-start gap-2 rounded-xl border border-panel-border bg-panel-card/70 px-4 py-3 text-sm text-slate-400">
+          <Icon name="info" size={15} className="mt-0.5 text-mint-400" />
           {app.install_state === 'INSTALLING'
             ? 'Installing right now — the Logs tab shows what the installer is doing.'
             : `${app.label} isn't installed on this server yet. Install it from the Apps page.`}
         </div>
       )}
 
-      <div className="flex gap-1 border-b border-panel-border overflow-x-auto">
-        {tabsFor(app).map((t) => (
-          <button key={t.key} onClick={() => setSearchParams({ tab: t.key })}
-            className={`px-4 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${
-              tab === t.key ? 'border-sky-400 text-sky-300'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}>{t.label}</button>
-        ))}
-      </div>
+      <Tabs tabs={tabsFor(app)} active={tab} onChange={(t) => setSearchParams({ tab: t })} />
 
-      {msg && <p className="text-sm text-slate-300 break-words">{msg}</p>}
+      {msg && <p className="break-words text-sm text-slate-300">{msg}</p>}
 
       {tab === 'overview' && (
         <OverviewTab app={app} installed={installed} isAdmin={isAdmin}
@@ -114,14 +124,14 @@ function OverviewTab({ app, installed, isAdmin, openUrl, onAction, onUninstall,
     <div className="space-y-4 max-w-2xl">
       <div className="card space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <h3 className="font-semibold">Service</h3>
+          <h3 className="section-title">Service</h3>
           <div className="flex gap-2 flex-wrap">
             <button className="btn-primary" disabled={!installed}
-              onClick={() => onAction('start')}>▶ Start</button>
+              onClick={() => onAction('start')}><Icon name="play" size={15} />Start</button>
             <button className="btn-secondary" disabled={!installed}
-              onClick={() => onAction('stop')}>■ Stop</button>
+              onClick={() => onAction('stop')}><Icon name="stop" size={15} />Stop</button>
             <button className="btn-secondary" disabled={!installed}
-              onClick={() => onAction('restart')}>⟳ Restart</button>
+              onClick={() => onAction('restart')}><Icon name="refresh" size={15} />Restart</button>
           </div>
         </div>
 
@@ -162,13 +172,13 @@ function OverviewTab({ app, installed, isAdmin, openUrl, onAction, onUninstall,
 
       {isAdmin && installed && (
         <div className="card space-y-2">
-          <h3 className="font-semibold text-red-400">Remove</h3>
+          <h3 className="section-title text-red-300">Remove</h3>
           <p className="text-xs text-slate-500">
             Stops {app.label}, removes its nginx block and uninstalls the packages.
             You choose whether its data goes too.
           </p>
           <button className="btn-secondary text-red-400" onClick={onUninstall}>
-            🗑 Uninstall {app.label}
+            <Icon name="trash" size={15} />Uninstall {app.label}
           </button>
         </div>
       )}
@@ -195,14 +205,14 @@ function BrowserSettings({ app, onChanged, setMsg }) {
 
   return (
     <div className="card space-y-3">
-      <h3 className="font-semibold">Browser settings</h3>
+      <h3 className="section-title">Browser settings</h3>
       <div>
-        <label className="block text-sm text-slate-400 mb-1">Start page</label>
+        <label className="label">Start page</label>
         <input className="input" value={startUrl} placeholder="https://example.com"
           onChange={(e) => setStartUrl(e.target.value)} />
       </div>
       <div>
-        <label className="block text-sm text-slate-400 mb-1">noVNC password</label>
+        <label className="label">noVNC password</label>
         <input className="input font-mono" value={password}
           onChange={(e) => setPassword(e.target.value)} />
         <p className="text-xs text-slate-500 mt-1">
@@ -295,7 +305,7 @@ function DomainTab({ app, onChanged }) {
 
   return (
     <div className="card max-w-xl space-y-3">
-      <h3 className="font-semibold">Domain &amp; SSL</h3>
+      <h3 className="section-title">Domain &amp; SSL</h3>
       <div className="flex gap-2 items-center flex-wrap">
         <input className="input max-w-xs" placeholder="n8n.example.com" value={domain}
           onChange={(e) => setDomain(e.target.value)} />
@@ -321,8 +331,8 @@ function LogsTab({ app }) {
   return (
     <div className="card space-y-2">
       <div className="flex items-center gap-2">
-        <h3 className="font-semibold">Logs</h3>
-        <select className="input max-w-[12rem]" value={source}
+        <h3 className="section-title">Logs</h3>
+        <select className="select max-w-[12rem]" value={source}
           onChange={(e) => setSource(e.target.value)}>
           <option value="app">Running app</option>
           <option value="install">Installer</option>

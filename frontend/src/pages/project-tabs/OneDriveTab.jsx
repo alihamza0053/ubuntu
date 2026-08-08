@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api, { errorMessage } from '../../api/client'
 import { formatDateTime } from '../../lib/datetime'
+import Icon from '../../components/ui/Icon'
 
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`
@@ -94,7 +95,7 @@ export default function OneDriveTab({ project }) {
   if (status && (!status.installed || !status.authorized)) {
     return (
       <div className="card">
-        <h3 className="font-semibold mb-2">☁️ OneDrive</h3>
+        <h3 className="section-title mb-3">☁️ OneDrive</h3>
         <p className="text-sm text-slate-400">
           {!status.installed
             ? 'The OneDrive client isn’t installed on this server yet.'
@@ -115,7 +116,7 @@ export default function OneDriveTab({ project }) {
     <div className="card">
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="min-w-0">
-          <h3 className="font-semibold">☁️ OneDrive files</h3>
+          <h3 className="section-title">☁️ OneDrive files</h3>
           <p className="text-xs text-slate-500">
             Mapped folder:{' '}
             <span className="font-mono text-slate-300">
@@ -127,8 +128,8 @@ export default function OneDriveTab({ project }) {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-secondary" onClick={openPicker}>📁 Change folder</button>
-          <button className="btn-secondary" onClick={syncNow}>🔄 Sync now</button>
+          <button className="btn-secondary" onClick={openPicker}><Icon name="folder" size={15} />Change folder</button>
+          <button className="btn-secondary" onClick={syncNow}><Icon name="refresh" size={15} />Sync now</button>
         </div>
       </div>
 
@@ -171,11 +172,12 @@ export default function OneDriveTab({ project }) {
               <tr key={e.rel}>
                 <td className="py-2 font-mono">
                   {e.is_dir ? (
-                    <button className="hover:text-sky-300" onClick={() => setSubpath(e.rel)}>
-                      📁 {e.name}
+                    <button className="inline-flex items-center gap-2 transition-colors hover:text-mint-300"
+                            onClick={() => setSubpath(e.rel)}>
+                      <Icon name="folder" size={15} className="text-slate-500" />{e.name}
                     </button>
                   ) : (
-                    <span>📄 {e.name}</span>
+                    <span className="inline-flex items-center gap-2"><Icon name="file" size={15} className="text-slate-500" />{e.name}</span>
                   )}
                 </td>
                 <td>{e.is_dir ? '—' : formatSize(e.size)}</td>
@@ -197,17 +199,17 @@ export default function OneDriveTab({ project }) {
 
       {/* Folder picker modal */}
       {picker && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+        <div className="scrim"
              onClick={() => setPicker(null)}>
           <div className="card max-w-lg w-full max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">Pick a OneDrive folder</h3>
+              <h3 className="section-title">Pick a OneDrive folder</h3>
               <button className="text-slate-500 hover:text-slate-300" onClick={() => setPicker(null)}>✕</button>
             </div>
             <p className="text-xs font-mono text-slate-400 mb-2 break-all">{picker.path || '/'}</p>
             <div className="flex gap-2 mb-3">
               {picker.parent != null && (
-                <button className="btn-secondary" onClick={() => browseTo(picker.parent)}>⬆ Up</button>
+                <button className="btn-secondary" onClick={() => browseTo(picker.parent)}><Icon name="chevron-up" size={15} />Up</button>
               )}
               <button className="btn-primary ml-auto" onClick={() => selectFolder(picker.path)}>
                 ✓ Use this folder
@@ -216,9 +218,9 @@ export default function OneDriveTab({ project }) {
             <ul className="divide-y divide-panel-border">
               {picker.entries.filter((e) => e.is_dir).map((e) => (
                 <li key={e.path}>
-                  <button className="w-full text-left py-2 font-mono hover:text-sky-300"
+                  <button className="flex w-full items-center gap-2 py-2 text-left font-mono transition-colors hover:text-mint-300"
                           onClick={() => browseTo(e.path)}>
-                    📁 {e.name}
+                    <Icon name="folder" size={15} className="text-slate-500" />{e.name}
                   </button>
                 </li>
               ))}

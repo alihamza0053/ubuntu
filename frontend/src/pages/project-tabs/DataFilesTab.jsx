@@ -9,7 +9,7 @@ export default function DataFilesTab({ project }) {
   return (
     <div className="card">
       <div className="mb-3">
-        <h3 className="font-semibold">Data Files</h3>
+        <h3 className="section-title">Data Files</h3>
         <p className="text-xs text-slate-500">
           Files in the project’s <span className="font-mono">data/</span> folder — used by your scripts.
           Click a spreadsheet to open it.

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import api, { errorMessage } from '../../api/client'
 import LiveLog from '../../components/LiveLog'
+import Icon from '../../components/ui/Icon'
 
 /**
  * Packages tab: pip-install Python libraries into the same interpreter that
@@ -48,7 +49,7 @@ export default function PackagesTab({ project }) {
   return (
     <div className="space-y-4">
       <div className="card">
-        <h3 className="font-semibold">📦 Install a Python package</h3>
+        <h3 className="section-title">📦 Install a Python package</h3>
         <p className="text-xs text-slate-500 mt-1">
           Installs into the scripts' Python ({pyver || 'python3'}). When a script fails with
           <span className="font-mono"> ModuleNotFoundError: No module named 'X'</span>, type
@@ -61,7 +62,7 @@ export default function PackagesTab({ project }) {
             value={spec}
             onChange={(e) => setSpec(e.target.value)}
           />
-          <button type="submit" className="btn-primary" disabled={!spec.trim()}>⬇ Install</button>
+          <button type="submit" className="btn-primary" disabled={!spec.trim()}><Icon name="download" size={15} />Install</button>
         </form>
         <div className="text-xs text-slate-600 mt-2 flex items-center gap-2 flex-wrap">
           <span>
@@ -79,7 +80,7 @@ export default function PackagesTab({ project }) {
 
       <div className="card">
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <h3 className="font-semibold">Installed packages {!loading && `(${pkgs.length})`}</h3>
+          <h3 className="section-title">Installed packages {!loading && `(${pkgs.length})`}</h3>
           <input
             className="input max-w-xs"
             placeholder="🔎 filter…"

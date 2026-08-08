@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import api, { errorMessage } from '../api/client'
+import Icon from './ui/Icon'
 import { useAuth } from '../context/AuthContext'
 
 /** Admin-only: create panel users and grant per-tab access with checkboxes. */
@@ -62,7 +63,7 @@ export default function Users() {
 
   return (
     <div className="card space-y-4">
-      <h3 className="font-semibold">Users &amp; Access</h3>
+      <h3 className="section-title">Users &amp; Access</h3>
       <p className="text-sm text-slate-500">
         Create users and tick the tabs each one may see. Admins see everything.
       </p>
@@ -97,7 +98,7 @@ export default function Users() {
           </div>
         )}
         <button className="btn-primary" disabled={creating}>
-          {creating ? 'Creating…' : '＋ Create user'}
+          {creating ? 'Creating…' : <><Icon name="plus" size={15} />Create user</>}
         </button>
       </form>
 

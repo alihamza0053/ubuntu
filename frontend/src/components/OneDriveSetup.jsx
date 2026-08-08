@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import api, { errorMessage } from '../api/client'
+import Icon from './ui/Icon'
 
 /**
  * OneDrive setup: authorize a Microsoft account, then start/stop the read-only
@@ -76,7 +77,7 @@ export default function OneDriveSetup() {
 
   return (
     <div className="card space-y-3">
-      <h3 className="font-semibold">☁️ OneDrive Sync</h3>
+      <h3 className="section-title">☁️ OneDrive Sync</h3>
       <p className="text-xs text-slate-500">
         Keeps <code>/srv/onedrive</code> in sync (read-only). Each project can map
         a subfolder of it in its own OneDrive tab.
@@ -103,7 +104,7 @@ export default function OneDriveSetup() {
         <div className="space-y-2">
           {!authUrl ? (
             <button className="btn-primary" disabled={busy} onClick={startAuth}>
-              {busy ? 'Starting…' : '🔑 Authorize OneDrive'}
+              {busy ? 'Starting…' : <><Icon name="shield" size={15} />Authorize OneDrive</>}
             </button>
           ) : (
             <div className="space-y-2 rounded-lg border border-panel-border bg-slate-900 p-3">
@@ -133,11 +134,11 @@ export default function OneDriveSetup() {
       ) : (
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2">
-            <button className="btn-secondary" onClick={() => monitor('start')}>▶ Start</button>
-            <button className="btn-secondary" onClick={() => monitor('stop')}>⏹ Stop</button>
-            <button className="btn-secondary" onClick={() => monitor('restart')}>🔄 Sync now</button>
+            <button className="btn-secondary" onClick={() => monitor('start')}><Icon name="play" size={15} />Start</button>
+            <button className="btn-secondary" onClick={() => monitor('stop')}><Icon name="stop" size={15} />Stop</button>
+            <button className="btn-secondary" onClick={() => monitor('restart')}><Icon name="refresh" size={15} />Sync now</button>
             <button className="btn-secondary" disabled={status.resyncing} onClick={resync}>
-              {status.resyncing ? '⏳ Resyncing…' : '⬇ Pull shared items (resync)'}
+              {status.resyncing ? 'Resyncing…' : <><Icon name="download" size={15} />Pull shared items (resync)</>}
             </button>
           </div>
           <p className="text-xs text-slate-500">

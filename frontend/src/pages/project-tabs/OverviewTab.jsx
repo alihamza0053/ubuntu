@@ -21,7 +21,7 @@ export default function OverviewTab({ project, files }) {
   return (
     <div className="grid lg:grid-cols-2 gap-4">
       <div className="card">
-        <h3 className="font-semibold mb-3">Project Info</h3>
+        <h3 className="section-title mb-4">Project Info</h3>
         <dl className="space-y-2 text-sm">
           {rows.map(([label, value]) => (
             <div key={label} className="flex justify-between gap-4">
@@ -45,7 +45,7 @@ export default function OverviewTab({ project, files }) {
       </div>
 
       <div className="card">
-        <h3 className="font-semibold mb-3">Folder Contents</h3>
+        <h3 className="section-title mb-4">Folder Contents</h3>
         {files ? (
           <ul className="space-y-2 text-sm">
             {Object.entries(files.folders).map(([folder, list]) => (

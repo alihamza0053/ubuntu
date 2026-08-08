@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api from '../api/client'
 import StatusBadge from '../components/StatusBadge'
+import Icon from '../components/ui/Icon'
+import PageHeader from '../components/ui/PageHeader'
+import Tabs from '../components/ui/Tabs'
 import DashboardTab from './project-tabs/DashboardTab'
 import DataFilesTab from './project-tabs/DataFilesTab'
 import EditorTab from './project-tabs/EditorTab'
@@ -52,34 +55,26 @@ export default function ProjectDetail() {
     setSearchParams({ tab: 'editor' })
   }
 
-  if (!project) return <p className="text-slate-500">Loading…</p>
+  if (!project) return <div className="empty-state">Loading…</div>
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <Link to="/projects" className="text-slate-500 hover:text-slate-300">←</Link>
-        <h2 className="text-2xl font-bold">{project.name}</h2>
-        <StatusBadge status={project.dashboard_status} />
-        <span className="text-sm text-slate-500">port {project.dashboard_port}</span>
-      </div>
+    <div className="space-y-5">
+      <PageHeader
+        title={project.name}
+        crumbs={[{ label: 'Projects', to: '/projects' }, { label: project.name }]}
+        actions={
+          <>
+            <StatusBadge status={project.dashboard_status} />
+            <span className="badge-muted">port {project.dashboard_port}</span>
+            <Link to="/projects" className="btn-secondary">
+              <Icon name="arrow-left" size={15} />
+              All projects
+            </Link>
+          </>
+        }
+      />
 
-      {/* Tab bar */}
-      <div className="flex gap-1 border-b border-panel-border overflow-x-auto">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setSearchParams({ tab: t.key })}
-            className={`px-4 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
-              tab === t.key
-                ? 'border-sky-400 text-sky-300'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs tabs={TABS} active={tab} onChange={(key) => setSearchParams({ tab: key })} />
 
       {/* Active tab */}
       {tab === 'overview' && <OverviewTab project={project} files={files} />}

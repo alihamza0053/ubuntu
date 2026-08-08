@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import api, { errorMessage } from '../../api/client'
 import { formatDateTime } from '../../lib/datetime'
+import Icon from '../../components/ui/Icon'
 
 /** Visual cron builder → cron expression. */
 const FREQUENCIES = [
@@ -100,20 +101,20 @@ export default function SchedulerTab({ project }) {
     <div className="space-y-4">
       {/* Builder */}
       <div className="card">
-        <h3 className="font-semibold mb-3">New Schedule</h3>
+        <h3 className="section-title mb-4">New Schedule</h3>
         {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Script</label>
-            <select className="input" value={builder.scriptId}
+            <label className="label">Script</label>
+            <select className="select" value={builder.scriptId}
               onChange={(e) => setBuilder({ ...builder, scriptId: e.target.value })}>
               <option value="">— select —</option>
               {scripts.map((s) => <option key={s.id} value={s.id}>{s.folder}/{s.filename}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Frequency</label>
-            <select className="input" value={builder.frequency}
+            <label className="label">Frequency</label>
+            <select className="select" value={builder.frequency}
               onChange={(e) => setBuilder({ ...builder, frequency: e.target.value })}>
               {FREQUENCIES.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
             </select>
@@ -121,29 +122,29 @@ export default function SchedulerTab({ project }) {
 
           {builder.frequency === 'minutely' && (
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Every N minutes</label>
+              <label className="label">Every N minutes</label>
               <input type="number" min="1" max="59" className="input" value={builder.interval}
                 onChange={(e) => setBuilder({ ...builder, interval: e.target.value })} />
             </div>
           )}
           {['hourly', 'daily', 'weekly', 'monthly'].includes(builder.frequency) && (
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Minute</label>
+              <label className="label">Minute</label>
               <input type="number" min="0" max="59" className="input" value={builder.minute}
                 onChange={(e) => setBuilder({ ...builder, minute: e.target.value })} />
             </div>
           )}
           {['daily', 'weekly', 'monthly'].includes(builder.frequency) && (
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Hour (0-23)</label>
+              <label className="label">Hour (0-23)</label>
               <input type="number" min="0" max="23" className="input" value={builder.hour}
                 onChange={(e) => setBuilder({ ...builder, hour: e.target.value })} />
             </div>
           )}
           {builder.frequency === 'weekly' && (
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Day of week</label>
-              <select className="input" value={builder.weekday}
+              <label className="label">Day of week</label>
+              <select className="select" value={builder.weekday}
                 onChange={(e) => setBuilder({ ...builder, weekday: e.target.value })}>
                 {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
               </select>
@@ -151,14 +152,14 @@ export default function SchedulerTab({ project }) {
           )}
           {builder.frequency === 'monthly' && (
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Day of month</label>
+              <label className="label">Day of month</label>
               <input type="number" min="1" max="31" className="input" value={builder.day}
                 onChange={(e) => setBuilder({ ...builder, day: e.target.value })} />
             </div>
           )}
           {builder.frequency === 'custom' && (
             <div className="sm:col-span-2">
-              <label className="block text-sm text-slate-400 mb-1">Cron expression</label>
+              <label className="label">Cron expression</label>
               <input className="input font-mono" value={builder.custom}
                 onChange={(e) => setBuilder({ ...builder, custom: e.target.value })} placeholder="0 9 * * 1-5" />
             </div>
@@ -167,13 +168,13 @@ export default function SchedulerTab({ project }) {
         <div className="mt-3 flex items-center gap-3">
           <span className="text-sm text-slate-500">Resulting cron:</span>
           <code className="text-sky-300 bg-slate-900 px-2 py-1 rounded">{cron}</code>
-          <button className="btn-primary ml-auto" onClick={create}>＋ Add schedule</button>
+          <button className="btn-primary ml-auto" onClick={create}><Icon name="plus" size={15} />Add schedule</button>
         </div>
       </div>
 
       {/* Existing schedules */}
       <div className="card">
-        <h3 className="font-semibold mb-3">Scheduled Scripts</h3>
+        <h3 className="section-title mb-4">Scheduled Scripts</h3>
         {schedules.length === 0 ? (
           <p className="text-slate-600 text-sm py-4 text-center">No schedules for this project yet.</p>
         ) : (
@@ -198,7 +199,10 @@ export default function SchedulerTab({ project }) {
                   </td>
                   <td className="text-right space-x-2 whitespace-nowrap">
                     {s.last_status === 'RUNNING' && (
-                      <button onClick={() => stopRun(s.script_id)} className="text-red-400 hover:underline">⏹ stop</button>
+                      <button onClick={() => stopRun(s.script_id)}
+                        className="inline-flex items-center gap-1.5 text-red-400 hover:underline">
+                        <Icon name="stop" size={13} />stop
+                      </button>
                     )}
                     <button onClick={() => remove(s.id)} className="text-red-400 hover:underline">delete</button>
                   </td>

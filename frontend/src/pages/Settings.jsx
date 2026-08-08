@@ -3,10 +3,12 @@ import api, { errorMessage } from '../api/client'
 import LiveLog from '../components/LiveLog'
 import Backups from '../components/Backups'
 import OneDriveSetup from '../components/OneDriveSetup'
+import PageHeader from '../components/ui/PageHeader'
 import Users from '../components/Users'
 import { useAuth } from '../context/AuthContext'
 import { usePanelSettings } from '../context/SettingsContext'
 import { TIMEZONES, formatDateTime, offsetLabel, resolveTimezone } from '../lib/datetime'
+import Icon from '../components/ui/Icon'
 
 /** Settings: change password, panel key/value settings, DB backup, self-update. */
 export default function Settings() {
@@ -95,15 +97,15 @@ export default function Settings() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <h2 className="text-2xl font-bold">Settings</h2>
+    <div className="max-w-3xl space-y-6">
+      <PageHeader title="Settings" crumbs={[{ label: 'Platform Settings' }, { label: 'Panel' }]} />
 
       {/* User management (admins only) */}
       {isAdmin && <Users />}
 
       {/* Change password */}
       <form onSubmit={changePassword} className="card space-y-3">
-        <h3 className="font-semibold">Change Admin Password</h3>
+        <h3 className="section-title">Change Admin Password</h3>
         {pwMsg && <p className={`text-sm ${pwMsg.includes('✓') ? 'text-green-400' : 'text-red-400'}`}>{pwMsg}</p>}
         <input className="input" type="password" placeholder="Current password" value={pw.current_password}
           onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required />
@@ -119,15 +121,15 @@ export default function Settings() {
 
       {/* Panel settings */}
       <form onSubmit={saveSettings} className="card space-y-3">
-        <h3 className="font-semibold">Panel Configuration</h3>
+        <h3 className="section-title">Panel Configuration</h3>
         {setMsg && <p className="text-sm text-green-400">{setMsg}</p>}
         <div>
-          <label className="block text-sm text-slate-400 mb-1">Panel port (informational)</label>
+          <label className="label">Panel port (informational)</label>
           <input className="input" value={settings.panel_port}
             onChange={(e) => setSettings({ ...settings, panel_port: e.target.value })} placeholder="8765" />
         </div>
         <div>
-          <label className="block text-sm text-slate-400 mb-1">Panel subdomain</label>
+          <label className="label">Panel subdomain</label>
           <input className="input" value={settings.panel_subdomain}
             onChange={(e) => setSettings({ ...settings, panel_subdomain: e.target.value })} placeholder="panel.yourdomain.com" />
         </div>
@@ -151,10 +153,10 @@ export default function Settings() {
       {/* Updates */}
       <div className="card space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Updates</h3>
-          <button className="text-xs text-slate-400 hover:text-slate-200"
+          <h3 className="section-title">Updates</h3>
+          <button className="btn-ghost btn-sm"
             onClick={checkUpdate} disabled={updLoading || !!updPath}>
-            {updLoading ? 'Checking…' : '↻ Check again'}
+            {updLoading ? 'Checking…' : 'Check again'}
           </button>
         </div>
 
@@ -182,7 +184,7 @@ export default function Settings() {
           <button className="btn-primary"
             onClick={startUpdate}
             disabled={!!updPath || (upd && upd.ready === false)}>
-            {updPath ? 'Updating…' : '⬆ Update now'}
+            {updPath ? 'Updating…' : <><Icon name="upload" size={15} />Update now</>}
           </button>
         )}
 
@@ -322,10 +324,10 @@ function SystemCleanup() {
   return (
     <>
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">System Cleanup</h3>
-        <button className="text-xs text-slate-400 hover:text-slate-200"
+        <h3 className="section-title">System Cleanup</h3>
+        <button className="btn-ghost btn-sm"
           onClick={refresh} disabled={loading}>
-          {loading ? 'Loading…' : '↻ Refresh'}
+          {loading ? 'Loading…' : 'Refresh'}
         </button>
       </div>
 
@@ -339,7 +341,7 @@ function SystemCleanup() {
 
       {/* ─── CPU ─── */}
       <div className="card space-y-3">
-        <h3 className="font-semibold">⚙️ CPU</h3>
+        <h3 className="section-title"><Icon name="gear" size={15} />️ CPU</h3>
         {cpu && (
           <>
             <StatBar label={`CPU (${cpu.cores} core${cpu.cores > 1 ? 's' : ''})`}
@@ -365,7 +367,7 @@ function SystemCleanup() {
 
       {/* ─── RAM ─── */}
       <div className="card space-y-3">
-        <h3 className="font-semibold">🧠 RAM</h3>
+        <h3 className="section-title">🧠 RAM</h3>
         {mem && (
           <>
             <StatBar label="RAM" percent={mem.percent}
@@ -397,7 +399,7 @@ function SystemCleanup() {
 
       {/* ─── Disk ─── */}
       <div className="card space-y-3">
-        <h3 className="font-semibold">💾 Disk</h3>
+        <h3 className="section-title"><Icon name="server" size={15} />Disk</h3>
         {disk && (
           <>
             <StatBar label="Disk (/)" percent={disk.percent}
@@ -526,12 +528,12 @@ function TimezoneCard() {
 
   return (
     <div className="card space-y-3">
-      <h3 className="font-semibold">Date &amp; Time</h3>
+      <h3 className="section-title">Date &amp; Time</h3>
       {msg && <p className={`text-sm ${msg.includes('✓') ? 'text-green-400' : 'text-red-400'}`}>{msg}</p>}
 
       <div>
-        <label className="block text-sm text-slate-400 mb-1">Display timezone</label>
-        <select className="input" value={choice} onChange={(e) => setChoice(e.target.value)}>
+        <label className="label">Display timezone</label>
+        <select className="select" value={choice} onChange={(e) => setChoice(e.target.value)}>
           {TIMEZONES.map((tz) => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
         </select>
         <p className="text-xs text-slate-500 mt-1">

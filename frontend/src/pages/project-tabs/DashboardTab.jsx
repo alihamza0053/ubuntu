@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import api, { errorMessage } from '../../api/client'
 import LiveLog from '../../components/LiveLog'
 import StatusBadge from '../../components/StatusBadge'
+import Icon from '../../components/ui/Icon'
 
 const FRAMEWORK_LABELS = {
   streamlit: 'Streamlit',
@@ -132,7 +133,7 @@ export default function DashboardTab({ project, onChanged }) {
     <div className="space-y-4">
       <div className="card">
         <div className="flex items-center gap-3 flex-wrap">
-          <h3 className="font-semibold">Dashboard</h3>
+          <h3 className="section-title">Dashboard</h3>
           <StatusBadge status={status} />
           {detect?.framework && (
             <span className="badge bg-emerald-500/15 text-emerald-400">
@@ -155,17 +156,17 @@ export default function DashboardTab({ project, onChanged }) {
         {venv === 'MISSING' && (
           <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-600/40 text-sm text-red-200 flex items-center gap-3 flex-wrap">
             <span>⚠️ The dashboard environment isn't built yet, so Start would fail.</span>
-            <button className="btn-secondary" onClick={buildVenv}>⚙ Build environment</button>
+            <button className="btn-secondary" onClick={buildVenv}><Icon name="gear" size={15} />Build environment</button>
           </div>
         )}
 
         <div className="mt-4 flex gap-2 flex-wrap">
           <button className="btn-primary" disabled={busy || venv !== 'READY'}
             title={venv !== 'READY' ? 'Dashboard environment is not ready yet' : ''}
-            onClick={() => action('start')}>▶ Start</button>
-          <button className="btn-secondary" disabled={busy} onClick={() => action('stop')}>⏹ Stop</button>
-          <button className="btn-secondary" disabled={busy || venv !== 'READY'} onClick={() => action('restart')}>🔄 Restart</button>
-          <button className="btn-secondary" onClick={refreshStatus}>↻ Refresh status</button>
+            onClick={() => action('start')}><Icon name="play" size={15} />Start</button>
+          <button className="btn-secondary" disabled={busy} onClick={() => action('stop')}><Icon name="stop" size={15} />Stop</button>
+          <button className="btn-secondary" disabled={busy || venv !== 'READY'} onClick={() => action('restart')}><Icon name="refresh" size={15} />Restart</button>
+          <button className="btn-secondary" onClick={refreshStatus}><Icon name="refresh" size={15} />Refresh status</button>
         </div>
 
         {raw && <p className="mt-3 text-xs font-mono text-slate-500 break-all">{raw}</p>}
@@ -180,8 +181,8 @@ export default function DashboardTab({ project, onChanged }) {
       {/* How the app is served */}
       <div className="card space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <h3 className="font-semibold">How it runs</h3>
-          <button className="btn-secondary ml-auto" onClick={refreshDetect}>🔍 Re-detect</button>
+          <h3 className="section-title">How it runs</h3>
+          <button className="btn-secondary ml-auto" onClick={refreshDetect}><Icon name="search" size={15} />Re-detect</button>
         </div>
 
         <p className="text-sm text-slate-400">
@@ -200,8 +201,8 @@ export default function DashboardTab({ project, onChanged }) {
         )}
 
         <div>
-          <label className="block text-sm text-slate-400 mb-1">Run as</label>
-          <select className="input max-w-xs" value={detect?.pinned || ''}
+          <label className="label">Run as</label>
+          <select className="select max-w-xs" value={detect?.pinned || ''}
             onChange={(e) => pinFramework(e.target.value)}>
             <option value="">Auto — detect from the code</option>
             <option value="streamlit">Streamlit</option>
@@ -220,7 +221,7 @@ export default function DashboardTab({ project, onChanged }) {
 
       {/* Domain / SSL */}
       <div className="card">
-        <h3 className="font-semibold mb-2">Domain & SSL</h3>
+        <h3 className="section-title mb-3">Domain & SSL</h3>
         <div className="flex gap-2 items-center flex-wrap">
           <input className="input max-w-xs" placeholder="dashboard.example.com" value={domain}
             onChange={(e) => setDomain(e.target.value)} />
@@ -237,7 +238,7 @@ export default function DashboardTab({ project, onChanged }) {
       {/* Live process logs */}
       <div className="card">
         <div className="flex items-center gap-2">
-          <h3 className="font-semibold">Process Logs</h3>
+          <h3 className="section-title">Process Logs</h3>
           <div className="ml-auto flex gap-2">
             <button
               className={logStream === 'out' ? 'btn-primary' : 'btn-secondary'}

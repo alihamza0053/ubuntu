@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import api, { errorMessage } from '../../api/client'
 import LiveLog from '../../components/LiveLog'
 import StatusBadge from '../../components/StatusBadge'
+import Toggle from '../../components/ui/Toggle'
 import { formatDateTime } from '../../lib/datetime'
+import Icon from '../../components/ui/Icon'
 
 // Simple frequency → cron builder (same idea as the per-script scheduler).
 const FREQUENCIES = [
@@ -127,17 +129,17 @@ export default function PipelineTab({ project }) {
       {/* Run-all panel */}
       <div className="card">
         <div className="flex items-center gap-3 flex-wrap">
-          <h3 className="font-semibold">Project Pipeline</h3>
+          <h3 className="section-title">Project Pipeline</h3>
           <span className="text-xs text-slate-500">
             Runs all {info?.scripts?.length ?? 0} code/ script(s) in order, retries any that fail
             at the end, then restarts the dashboard.
           </span>
           <div className="ml-auto flex gap-2">
             {running && (
-              <button className="btn-danger" onClick={stopNow}>⏹ Stop</button>
+              <button className="btn-danger" onClick={stopNow}><Icon name="stop" size={15} />Stop</button>
             )}
             <button className="btn-primary" onClick={runNow} disabled={running}>
-              {running ? 'Running…' : '▶ Run All Now'}
+              {running ? 'Running…' : <><Icon name="play" size={15} />Run All Now</>}
             </button>
           </div>
         </div>
@@ -158,7 +160,7 @@ export default function PipelineTab({ project }) {
       {/* Last run results */}
       <div className="card">
         <div className="flex items-center gap-2 mb-3">
-          <h3 className="font-semibold">Last Run</h3>
+          <h3 className="section-title">Last Run</h3>
           {lastRun && <StatusBadge status={lastRun.status} />}
           {lastRun && (
             <span className="text-xs text-slate-500">
@@ -189,7 +191,7 @@ export default function PipelineTab({ project }) {
                       {r.retried && (
                         <span className="badge bg-sky-500/15 text-sky-300"
                           title={`Re-run at the end (${r.attempts} attempts)`}>
-                          ↻ {r.status === 'SUCCESS' ? 'recovered on retry' : 'retried'}
+                          <Icon name="refresh" size={15} />{r.status === 'SUCCESS' ? 'recovered on retry' : 'retried'}
                         </span>
                       )}
                     </td>
@@ -209,7 +211,7 @@ export default function PipelineTab({ project }) {
 
       {/* Schedule the whole pipeline */}
       <div className="card">
-        <h3 className="font-semibold mb-3">Schedule the Pipeline</h3>
+        <h3 className="section-title mb-4">Schedule the Pipeline</h3>
         {msg && <p className={`text-sm mb-2 ${msg.includes('✓') ? 'text-green-400' : 'text-red-400'}`}>{msg}</p>}
 
         {/* Current schedule status + stop/delete */}
@@ -225,11 +227,11 @@ export default function PipelineTab({ project }) {
               )}
               <div className="ml-auto flex gap-2">
                 {info.is_active ? (
-                  <button className="btn-secondary" onClick={() => setActiveState(false)}>⏸ Stop</button>
+                  <button className="btn-secondary" onClick={() => setActiveState(false)}><Icon name="stop" size={15} />Stop</button>
                 ) : (
-                  <button className="btn-secondary" onClick={() => setActiveState(true)}>▶ Enable</button>
+                  <button className="btn-secondary" onClick={() => setActiveState(true)}><Icon name="play" size={15} />Enable</button>
                 )}
-                <button className="btn-secondary text-red-400" onClick={deleteSchedule}>🗑 Delete</button>
+                <button className="btn-secondary text-red-400" onClick={deleteSchedule}><Icon name="trash" size={15} />Delete</button>
               </div>
             </>
           ) : (
@@ -239,30 +241,30 @@ export default function PipelineTab({ project }) {
 
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Frequency</label>
-            <select className="input" value={builder.frequency}
+            <label className="label">Frequency</label>
+            <select className="select" value={builder.frequency}
               onChange={(e) => setBuilder({ ...builder, frequency: e.target.value })}>
               {FREQUENCIES.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
             </select>
           </div>
           {['hourly', 'daily', 'weekly'].includes(builder.frequency) && (
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Minute</label>
+              <label className="label">Minute</label>
               <input type="number" min="0" max="59" className="input" value={builder.minute}
                 onChange={(e) => setBuilder({ ...builder, minute: e.target.value })} />
             </div>
           )}
           {['daily', 'weekly'].includes(builder.frequency) && (
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Hour (0–23)</label>
+              <label className="label">Hour (0–23)</label>
               <input type="number" min="0" max="23" className="input" value={builder.hour}
                 onChange={(e) => setBuilder({ ...builder, hour: e.target.value })} />
             </div>
           )}
           {builder.frequency === 'weekly' && (
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Day of week</label>
-              <select className="input" value={builder.weekday}
+              <label className="label">Day of week</label>
+              <select className="select" value={builder.weekday}
                 onChange={(e) => setBuilder({ ...builder, weekday: e.target.value })}>
                 {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
               </select>
@@ -270,20 +272,17 @@ export default function PipelineTab({ project }) {
           )}
           {builder.frequency === 'custom' && (
             <div className="sm:col-span-2">
-              <label className="block text-sm text-slate-400 mb-1">Cron expression</label>
+              <label className="label">Cron expression</label>
               <input className="input font-mono" value={builder.custom}
                 onChange={(e) => setBuilder({ ...builder, custom: e.target.value })} placeholder="0 6 * * *" />
             </div>
           )}
         </div>
 
-        <div className="mt-3 flex items-center gap-3 flex-wrap">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-            Active
-          </label>
+        <div className="mt-4 flex items-center gap-3 flex-wrap">
+          <Toggle checked={active} onChange={setActive} label="Active" />
           <span className="text-sm text-slate-500">cron:</span>
-          <code className="text-sky-300 bg-slate-900 px-2 py-1 rounded">{cron}</code>
+          <code className="rounded-lg border border-panel-border bg-panel-bg px-2 py-1 font-mono text-xs text-mint-300">{cron}</code>
           {info?.next_run && (
             <span className="text-xs text-slate-500">next run: {fmt(info.next_run)}</span>
           )}

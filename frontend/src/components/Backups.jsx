@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import ProgressBar from './ProgressBar'
+import Icon from './ui/Icon'
 import { formatDateTime } from '../lib/datetime'
 
 const LABELS = {} // filled from catalog
@@ -142,7 +143,7 @@ export default function Backups() {
 
   return (
     <div className="card space-y-4">
-      <h3 className="font-semibold">Backup &amp; Restore</h3>
+      <h3 className="section-title">Backup &amp; Restore</h3>
 
       {msg && (
         <p className={`text-sm ${msg.error ? 'text-red-400' : 'text-green-400'}`}>{msg.text}</p>
@@ -175,10 +176,10 @@ export default function Backups() {
         </div>
         <div className="flex items-center gap-3 mt-3">
           <button className="btn-primary" onClick={createBackup} disabled={creating}>
-            {creating ? 'Creating backup…' : '＋ Create backup'}
+            {creating ? 'Creating backup…' : <><Icon name="plus" size={15} />Create backup</>}
           </button>
           <label className="btn-secondary cursor-pointer">
-            {busy === 'import' ? 'Importing…' : '⬆ Import backup'}
+            {busy === 'import' ? 'Importing…' : <><Icon name="upload" size={15} />Import backup</>}
             <input ref={fileRef} type="file" accept=".tar.gz,.tgz" className="hidden"
               onChange={importFile} disabled={busy === 'import'} />
           </label>

@@ -4,6 +4,7 @@ import SpreadsheetModal from './SpreadsheetModal'
 import EditorModal from './EditorModal'
 import ProgressBar from './ProgressBar'
 import { formatDateTime } from '../lib/datetime'
+import Icon from './ui/Icon'
 
 const EDITABLE_EXT = ['.py', '.txt', '.json', '.yaml', '.yml', '.md', '.toml', '.cfg', '.ini', '.log', '.sh', '.js', '.html', '.css', '.xml', '.sql', '.php', '.conf']
 function isEditable(name) {
@@ -132,25 +133,25 @@ export default function FolderBrowser({ rootPath, accept, viewer = true, editabl
   }
 
   function iconFor(entry) {
-    if (entry.is_dir) return '📁'
+    if (entry.is_dir) return 'folder'
     const n = entry.name.toLowerCase()
-    if (n.endsWith('.xlsx') || n.endsWith('.xls')) return '📊'
-    return '📄'
+    if (n.endsWith('.xlsx') || n.endsWith('.xls')) return 'chart'
+    return 'file'
   }
 
   return (
     <div>
       {/* Toolbar */}
       <div className="flex items-center gap-2 mb-3 text-sm flex-wrap">
-        <button className="btn-secondary py-1" onClick={() => browse(rootPath)}>🏠 {rootName}</button>
+        <button className="btn-secondary py-1" onClick={() => browse(rootPath)}><Icon name="server" size={15} />{rootName}</button>
         {!atRoot && (
-          <button className="btn-secondary py-1" onClick={() => browse(data.parent)}>⬆ Up</button>
+          <button className="btn-secondary py-1" onClick={() => browse(data.parent)}><Icon name="chevron-up" size={15} />Up</button>
         )}
         {rel && <span className="font-mono text-slate-400 truncate">/{rel}</span>}
         <div className="ml-auto flex gap-2">
-          <button className="btn-secondary py-1" onClick={mkdir}>📁＋ New folder</button>
+          <button className="btn-secondary py-1" onClick={mkdir}><Icon name="folder" size={15} />New folder</button>
           <button className="btn-primary py-1" disabled={busy} onClick={() => inputRef.current?.click()}>
-            {busy ? 'Uploading…' : '⬆ Upload'}
+            {busy ? 'Uploading…' : <><Icon name="upload" size={15} />Upload</>}
           </button>
         </div>
         <input
@@ -200,19 +201,19 @@ export default function FolderBrowser({ rootPath, accept, viewer = true, editabl
                   <tr key={entry.path}>
                     <td className="py-2 font-mono">
                       {entry.is_dir ? (
-                        <button className="hover:text-sky-400" onClick={() => browse(entry.path)}>
-                          {iconFor(entry)} {entry.name}
+                        <button className="text-left transition-colors hover:text-mint-300" onClick={() => browse(entry.path)}>
+                          <span className="inline-flex items-center gap-2"><Icon name={iconFor(entry)} size={15} className="text-slate-500" />{entry.name}</span>
                         </button>
                       ) : viewer && isSpreadsheet(entry.name) ? (
-                        <button className="hover:text-sky-400" onClick={() => setViewing(entry)}>
-                          {iconFor(entry)} {entry.name}
+                        <button className="text-left transition-colors hover:text-mint-300" onClick={() => setViewing(entry)}>
+                          <span className="inline-flex items-center gap-2"><Icon name={iconFor(entry)} size={15} className="text-slate-500" />{entry.name}</span>
                         </button>
                       ) : editable && isEditable(entry.name) ? (
-                        <button className="hover:text-sky-400" onClick={() => setEditing(entry.path)}>
-                          {iconFor(entry)} {entry.name}
+                        <button className="text-left transition-colors hover:text-mint-300" onClick={() => setEditing(entry.path)}>
+                          <span className="inline-flex items-center gap-2"><Icon name={iconFor(entry)} size={15} className="text-slate-500" />{entry.name}</span>
                         </button>
                       ) : (
-                        <span>{iconFor(entry)} {entry.name}</span>
+                        <span><span className="inline-flex items-center gap-2"><Icon name={iconFor(entry)} size={15} className="text-slate-500" />{entry.name}</span></span>
                       )}
                     </td>
                     <td>{entry.is_dir ? '—' : formatSize(entry.size)}</td>
