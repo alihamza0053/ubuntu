@@ -39,8 +39,12 @@ if [ ! -d "$PROJ_DIR" ]; then
 fi
 
 # Standard libraries a typical dashboard needs. xlrd is required to read old
-# .xls files (openpyxl only handles .xlsx). Add anything else as extra args.
-BASE_PKGS="streamlit streamlit-autorefresh plotly pandas openpyxl xlrd"
+# .xls files (openpyxl only handles .xlsx). flask+gunicorn are here so a Flask
+# dashboard starts without a separate install step, the same way streamlit is
+# here for a Streamlit one — supervisor_service falls back to a bare `gunicorn`
+# on PATH when the venv has none, which fails to spawn.
+# Keep this list in sync with BASE_PKGS in backend/app/services/venv_service.py.
+BASE_PKGS="streamlit streamlit-autorefresh plotly pandas openpyxl xlrd flask gunicorn"
 
 echo "==> Creating venv at $VENV"
 python3 -m venv "$VENV"

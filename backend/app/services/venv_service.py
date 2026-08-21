@@ -16,11 +16,12 @@ from datetime import datetime
 
 from ..config import settings
 
-# Packages every dashboard typically needs (mirrors deploy/dashboard-venv.sh).
-# gunicorn is included so a Flask dashboard can be started without a separate
-# install step, the same way streamlit is there for a Streamlit one.
+# Packages every dashboard typically needs (mirrors deploy/dashboard-venv.sh —
+# keep both lists in sync). flask+gunicorn are included so a Flask dashboard can
+# be started without a separate install step, the same way streamlit is there
+# for a Streamlit one; gunicorn alone only gets as far as ModuleNotFoundError.
 BASE_PKGS = ["streamlit", "streamlit-autorefresh", "plotly", "pandas",
-             "openpyxl", "xlrd", "gunicorn"]
+             "openpyxl", "xlrd", "flask", "gunicorn"]
 
 _building: set[str] = set()
 _lock = threading.Lock()
