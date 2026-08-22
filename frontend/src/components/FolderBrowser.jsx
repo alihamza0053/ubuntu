@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import api, { errorMessage } from '../api/client'
+import api, { errorMessage, isCancel } from '../api/client'
 import SpreadsheetModal from './SpreadsheetModal'
 import EditorModal from './EditorModal'
 import ProgressBar from './ProgressBar'
@@ -45,6 +45,7 @@ export default function FolderBrowser({ rootPath, accept, viewer = true, editabl
   const [editing, setEditing] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const [transfer, setTransfer] = useState(null)   // { dir, name, pct }
+  const transferRef = useRef(null)                 // AbortController for the above
   const inputRef = useRef(null)
 
   const path = data.path
@@ -71,25 +72,37 @@ export default function FolderBrowser({ rootPath, accept, viewer = true, editabl
     const form = new FormData()
     for (const f of fileList) form.append('files', f)
     const name = fileList.length > 1 ? `${fileList.length} files` : fileList[0].name
+    const controller = new AbortController()
+    transferRef.current = controller
     setBusy(true)
     setTransfer({ dir: 'up', name, pct: 0 })
     try {
       await api.post('/files/upload', form, {
         params: { path },
+        signal: controller.signal,
         onUploadProgress: (e) => {
           if (e.total) setTransfer((t) => t && { ...t, pct: Math.round((e.loaded / e.total) * 100) })
         },
       })
       browse(path)
       onChanged && onChanged()
-    } catch (e) { alert(errorMessage(e)) } finally { setBusy(false); setTransfer(null) }
+    } catch (e) {
+      // An aborted transfer is a deliberate user action, not an error to report.
+      if (!isCancel(e)) alert(errorMessage(e))
+      else browse(path)   // a cancelled upload may have landed partially
+    } finally {
+      setBusy(false); setTransfer(null); transferRef.current = null
+    }
   }
 
   function download(entry) {
+    const controller = new AbortController()
+    transferRef.current = controller
     setTransfer({ dir: 'down', name: entry.name, pct: 0 })
     api.get('/files/download', {
       params: { path: entry.path },
       responseType: 'blob',
+      signal: controller.signal,
       onDownloadProgress: (e) => {
         if (e.total) setTransfer((t) => t && { ...t, pct: Math.round((e.loaded / e.total) * 100) })
       },
@@ -102,8 +115,13 @@ export default function FolderBrowser({ rootPath, accept, viewer = true, editabl
         a.click()
         URL.revokeObjectURL(url)
       })
-      .catch((e) => alert(errorMessage(e)))
-      .finally(() => setTransfer(null))
+      .catch((e) => { if (!isCancel(e)) alert(errorMessage(e)) })
+      .finally(() => { setTransfer(null); transferRef.current = null })
+  }
+
+  /** Abort the in-flight upload/download behind the progress bar. */
+  function cancelTransfer() {
+    transferRef.current?.abort()
   }
 
   async function remove(entry) {
@@ -166,7 +184,10 @@ export default function FolderBrowser({ rootPath, accept, viewer = true, editabl
 
       {err && <p className="text-red-400 text-sm mb-2">{err}</p>}
 
-      {transfer && <ProgressBar dir={transfer.dir} name={transfer.name} pct={transfer.pct} />}
+      {transfer && (
+        <ProgressBar dir={transfer.dir} name={transfer.name} pct={transfer.pct}
+                     onCancel={cancelTransfer} />
+      )}
 
       {/* Drop zone wraps the listing */}
       <div

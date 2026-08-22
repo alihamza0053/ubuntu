@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import api, { errorMessage } from '../api/client'
+import api, { errorMessage, isCancel } from '../api/client'
 import ProgressBar from './ProgressBar'
 import Icon from './ui/Icon'
 import { formatDateTime } from '../lib/datetime'
@@ -19,6 +19,7 @@ export default function Backups() {
   const [restore, setRestore] = useState(null)  // { name, sel } restore dialog
   const [restarting, setRestarting] = useState(false)
   const [transfer, setTransfer] = useState(null) // { dir, name, pct }
+  const transferRef = useRef(null)               // AbortController for the above
   const fileRef = useRef(null)
 
   const load = useCallback(() => {
@@ -52,9 +53,12 @@ export default function Backups() {
   }
 
   function download(name) {
+    const controller = new AbortController()
+    transferRef.current = controller
     setTransfer({ dir: 'down', name, pct: 0 })
     api.get(`/settings/backups/${encodeURIComponent(name)}/download`, {
       responseType: 'blob',
+      signal: controller.signal,
       onDownloadProgress: (e) => {
         if (e.total) setTransfer((t) => t && { ...t, pct: Math.round((e.loaded / e.total) * 100) })
       },
@@ -65,8 +69,14 @@ export default function Backups() {
         a.href = url; a.download = name; a.click()
         URL.revokeObjectURL(url)
       })
-      .catch((err) => setMsg({ text: errorMessage(err), error: true }))
-      .finally(() => setTransfer(null))
+      // A cancelled download is deliberate — don't report it as a failure.
+      .catch((err) => { if (!isCancel(err)) setMsg({ text: errorMessage(err), error: true }) })
+      .finally(() => { setTransfer(null); transferRef.current = null })
+  }
+
+  /** Abort the in-flight backup download behind the progress bar. */
+  function cancelTransfer() {
+    transferRef.current?.abort()
   }
 
   async function remove(name) {
@@ -83,12 +93,15 @@ export default function Backups() {
   async function importFile(e) {
     const file = e.target.files?.[0]
     if (!file) return
+    const controller = new AbortController()
+    transferRef.current = controller
     setBusy('import'); setMsg(null)
     setTransfer({ dir: 'up', name: file.name, pct: 0 })
     try {
       const fd = new FormData()
       fd.append('file', file)
       const res = await api.post('/settings/backups/import', fd, {
+        signal: controller.signal,
         onUploadProgress: (e) => {
           if (e.total) setTransfer((t) => t && { ...t, pct: Math.round((e.loaded / e.total) * 100) })
         },
@@ -96,9 +109,10 @@ export default function Backups() {
       setMsg({ text: `Imported ${res.data.name}` })
       load()
     } catch (err) {
-      setMsg({ text: errorMessage(err), error: true })
+      if (!isCancel(err)) setMsg({ text: errorMessage(err), error: true })
     } finally {
-      setBusy(''); setTransfer(null); if (fileRef.current) fileRef.current.value = ''
+      setBusy(''); setTransfer(null); transferRef.current = null
+      if (fileRef.current) fileRef.current.value = ''
     }
   }
 
@@ -149,7 +163,10 @@ export default function Backups() {
         <p className={`text-sm ${msg.error ? 'text-red-400' : 'text-green-400'}`}>{msg.text}</p>
       )}
 
-      {transfer && <ProgressBar dir={transfer.dir} name={transfer.name} pct={transfer.pct} />}
+      {transfer && (
+        <ProgressBar dir={transfer.dir} name={transfer.name} pct={transfer.pct}
+                     onCancel={cancelTransfer} />
+      )}
 
       {restarting && (
         <p className="text-sm text-sky-300">

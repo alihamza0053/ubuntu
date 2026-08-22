@@ -26,4 +26,15 @@ export function errorMessage(error) {
   return error.response?.data?.detail || error.message || 'Something went wrong'
 }
 
+/**
+ * True when a request failed because it was deliberately aborted (an
+ * AbortController signal), rather than because something went wrong.
+ * Callers use this to stay quiet instead of showing an error.
+ */
+export function isCancel(error) {
+  return axios.isCancel(error)
+    || error?.code === 'ERR_CANCELED'
+    || error?.name === 'CanceledError'
+}
+
 export default api
