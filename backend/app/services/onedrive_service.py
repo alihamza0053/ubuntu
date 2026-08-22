@@ -17,7 +17,9 @@ the client writes the Microsoft login URL to <url> and waits for the browser
 redirect URL to appear in <resp>. The panel surfaces the URL, the admin signs in
 and pastes the redirect URL back, and the client finishes and exits.
 """
+import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import threading
@@ -35,8 +37,10 @@ MONITOR_INTERVAL = 300
 # Module-level handle for an in-progress authorization (single-flight).
 _auth: dict = {"proc": None, "resp": None, "tmp": None}
 
-# Whether a background resync is currently running.
-_resync: dict = {"running": False}
+# In-progress background resync. `proc` is the running onedrive client so the
+# download can be cancelled; `cancelled` distinguishes "the user stopped it"
+# from "it finished or failed" once the thread unwinds.
+_resync: dict = {"running": False, "proc": None, "cancelled": False}
 
 
 # ---------------------------------------------------------------------------
@@ -222,16 +226,26 @@ def resync() -> str:
         try:
             supervisor_service.run_supervisorctl("stop", PROGRAM)
             with open(log_path, "w", encoding="utf-8") as log:
-                subprocess.run(
+                # Popen rather than run(): cancel_resync() needs the handle.
+                # start_new_session puts the client in its own process group so
+                # a cancel kills any helper it spawned, not just the parent.
+                proc = subprocess.Popen(
                     [binary(), *_confdir_args(), "--download-only",
                      "--synchronize", "--resync", "--resync-auth"],
-                    stdout=log, stderr=subprocess.STDOUT, timeout=3600,
+                    stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
                 )
+                _resync["proc"] = proc
+                try:
+                    proc.wait(timeout=3600)
+                except subprocess.TimeoutExpired:
+                    _terminate(proc)
         except Exception:
             pass
         finally:
             _resync["running"] = False
-            # Always bring the live monitor back up.
+            _resync["proc"] = None
+            # Always bring the live monitor back up — including after a cancel,
+            # since the resync stopped it on the way in.
             try:
                 write_monitor_program()
                 supervisor_service.run_supervisorctl("restart", PROGRAM)
@@ -239,5 +253,42 @@ def resync() -> str:
                 pass
 
     _resync["running"] = True
+    _resync["cancelled"] = False
     threading.Thread(target=_run, daemon=True).start()
     return "Resync started — pulling all files incl. shared items (watch the monitor status)"
+
+
+def _terminate(proc: subprocess.Popen) -> None:
+    """SIGTERM the client's whole process group, then SIGKILL if it lingers."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        if proc.poll() is not None:
+            return
+        try:
+            os.killpg(os.getpgid(proc.pid), sig)
+        except (ProcessLookupError, PermissionError):
+            return
+        try:
+            proc.wait(timeout=10)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
+def cancel_resync() -> str:
+    """
+    Stop a running resync download.
+
+    The onedrive client is killed mid-transfer; whatever it had already written
+    stays on disk. The background thread's `finally` then restarts the monitor,
+    which picks the sync up again incrementally from where it stopped.
+    """
+    if not _resync["running"]:
+        raise HTTPException(status_code=400, detail="No resync is running")
+    proc = _resync["proc"]
+    if proc is None:
+        # Between the flag going up and Popen returning — a moment at most.
+        raise HTTPException(status_code=409,
+                            detail="Resync is still starting — try again in a second")
+    _resync["cancelled"] = True
+    _terminate(proc)
+    return "Resync cancelled — partial downloads kept, monitor restarting"

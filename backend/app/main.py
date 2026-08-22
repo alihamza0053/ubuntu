@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .config import settings
+from .credit import credit
 from .database import Base, SessionLocal, engine, run_migrations
 from .models import User
 from .permissions import targets_hidden_entity, user_can
@@ -123,6 +124,18 @@ app.include_router(portal.router)              # public per-project upload porta
 @app.get("/api/health", tags=["meta"])
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/meta", tags=["meta"])
+def meta():
+    """Panel version + authorship credit.
+
+    Deliberately unauthenticated so the credit renders on the login screen too.
+    PermissionMiddleware lets it through: `required_tab` doesn't map this path,
+    so `user_can` returns True, and a request with no token falls straight
+    through to this route.
+    """
+    return {"version": app.version, "credit": credit()}
 
 
 # ---------- Frontend (production build) ----------

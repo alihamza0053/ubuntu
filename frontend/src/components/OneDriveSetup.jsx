@@ -23,6 +23,14 @@ export default function OneDriveSetup() {
 
   useEffect(() => { refresh() }, [refresh])
 
+  // While a resync is downloading, poll so the Cancel button appears and then
+  // clears itself when the resync ends — on its own or because it was killed.
+  useEffect(() => {
+    if (!status?.resyncing) return undefined
+    const id = setInterval(refresh, 5000)
+    return () => clearInterval(id)
+  }, [status?.resyncing, refresh])
+
   async function startAuth() {
     setMsg(''); setBusy(true)
     try {
@@ -66,6 +74,19 @@ export default function OneDriveSetup() {
     setMsg('')
     try {
       const r = await api.post('/onedrive/resync')
+      setMsg(r.data.detail)
+      setTimeout(refresh, 1500)
+    } catch (err) {
+      setMsg(errorMessage(err))
+    }
+  }
+
+  async function cancelResync() {
+    if (!window.confirm('Stop the resync? Files already downloaded are kept, and '
+      + 'the monitor picks up where it left off.')) return
+    setMsg('')
+    try {
+      const r = await api.post('/onedrive/resync/cancel')
       setMsg(r.data.detail)
       setTimeout(refresh, 1500)
     } catch (err) {
@@ -140,6 +161,11 @@ export default function OneDriveSetup() {
             <button className="btn-secondary" disabled={status.resyncing} onClick={resync}>
               {status.resyncing ? 'Resyncing…' : <><Icon name="download" size={15} />Pull shared items (resync)</>}
             </button>
+            {status.resyncing && (
+              <button className="btn-secondary" onClick={cancelResync}>
+                <Icon name="stop" size={15} />Cancel download
+              </button>
+            )}
           </div>
           <p className="text-xs text-slate-500">
             Files others shared with you (Work/School) only appear after a one-time

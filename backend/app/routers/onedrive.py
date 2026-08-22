@@ -60,3 +60,11 @@ def resync():
     out = onedrive_service.resync()
     log_activity("onedrive resync started")
     return DetailResponse(detail=out)
+
+
+@router.post("/resync/cancel", response_model=DetailResponse)
+def cancel_resync():
+    """Stop a resync that's still downloading. Files already pulled are kept."""
+    out = onedrive_service.cancel_resync()
+    log_activity("onedrive resync cancelled")
+    return DetailResponse(detail=out)
