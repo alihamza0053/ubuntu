@@ -43,7 +43,9 @@ export default function PipelineTab({ project }) {
   const refresh = useCallback(() => {
     api.get(`/projects/${project.id}/pipeline`).then((res) => {
       setInfo(res.data)
-      setActive(res.data.is_active)
+      // No schedule yet → default the toggle to on: saving a new schedule
+      // that silently never runs is never what anyone wants.
+      setActive(res.data.cron_expression ? res.data.is_active : true)
       if (res.data.cron_expression) {
         setBuilder((b) => ({ ...b, frequency: 'custom', custom: res.data.cron_expression }))
       }
@@ -84,7 +86,8 @@ export default function PipelineTab({ project }) {
         cron_expression: cron,
         is_active: active,
       })
-      setMsg('Schedule saved ✓')
+      setMsg(active ? 'Schedule saved ✓'
+        : 'Schedule saved, but it is STOPPED — switch Active on and save to run it')
       refresh()
     } catch (err) {
       setMsg(errorMessage(err))

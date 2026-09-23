@@ -7,6 +7,7 @@ Scripts run in filename order — prefix names with 01_, 02_, ... to control the
 sequence. A failing script does not stop the pipeline; it's recorded as FAILED
 (shown red in the UI) and the run continues, then the dashboard is restarted.
 """
+import asyncio
 import json
 from datetime import datetime
 
@@ -248,7 +249,9 @@ async def run_pipeline(project_id: int, on_line=None) -> tuple[str, list]:
         elif dashboard_app.is_file():
             await emit("[pipeline] ↻ restarting dashboard to load fresh data")
             try:
-                supervisor_service.restart(name)
+                # supervisorctl blocks for seconds; keep the event loop (and
+                # every other scheduled job) running meanwhile.
+                await asyncio.to_thread(supervisor_service.restart, name)
                 restarted = True
                 await emit("[pipeline] ✓ dashboard restarted")
             except Exception as exc:  # supervisor/HTTPException — don't fail the run

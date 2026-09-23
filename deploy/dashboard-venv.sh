@@ -44,7 +44,7 @@ fi
 # here for a Streamlit one — supervisor_service falls back to a bare `gunicorn`
 # on PATH when the venv has none, which fails to spawn.
 # Keep this list in sync with BASE_PKGS in backend/app/services/venv_service.py.
-BASE_PKGS="streamlit streamlit-autorefresh plotly pandas openpyxl xlrd flask gunicorn"
+BASE_PKGS="streamlit streamlit-autorefresh plotly pandas openpyxl xlrd flask gunicorn fastapi uvicorn"
 
 echo "==> Creating venv at $VENV"
 python3 -m venv "$VENV"
@@ -56,8 +56,8 @@ echo "    base : $BASE_PKGS"
 # shellcheck disable=SC2086
 "$VENV/bin/pip" install $BASE_PKGS $EXTRA_PKGS
 
-# If the project has a requirements.txt (in code/ or its root), install it too
-for req in "$PROJ_DIR/requirements.txt" "$PROJ_DIR/code/requirements.txt"; do
+# If the project has a requirements.txt (root, code/ or dashboard/), install it too
+for req in "$PROJ_DIR/requirements.txt" "$PROJ_DIR/code/requirements.txt" "$PROJ_DIR/dashboard/requirements.txt"; do
   if [ -f "$req" ]; then
     echo "==> Installing from $req"
     "$VENV/bin/pip" install -r "$req"

@@ -6,6 +6,8 @@ The dashboard entrypoint is always `dashboard/app.py`, but it may be a
 Streamlit script, a Flask app or a FastAPI app: the framework is read from the
 code at start time unless the user pinned one in the UI.
 """
+from pathlib import Path, PurePosixPath
+
 from fastapi import (APIRouter, Depends, HTTPException, WebSocket,
                      WebSocketDisconnect)
 from pydantic import BaseModel, field_validator
@@ -14,7 +16,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import authenticate_websocket, get_current_user
 from ..schemas import DashboardStatusOut, DetailResponse
-from ..services import app_detect, supervisor_service
+from ..services import app_detect, supervisor_service, venv_service
 from ..services.activity import log_activity
 from ..services.streaming import tail_file
 from ..services.supervisor_service import dashboard_log_path
@@ -71,6 +73,50 @@ def _resolve_framework(project) -> tuple[str, str | None, dict | None]:
     return framework, target, detected
 
 
+def _ensure_runnable(project, framework: str) -> None:
+    """
+    Make sure the server binary for `framework` exists before supervisor is
+    asked to spawn it — otherwise all the user sees is "ERROR (spawn error)".
+
+    A new project's venv is built in the background after creation, so Start
+    can easily be pressed before it's ready (or after the build failed). And a
+    venv built earlier may lack the binary for the framework app.py now uses.
+    """
+    name = project.name
+    framework = supervisor_service.normalise_framework(framework)
+    binary = supervisor_service.project_bin(name, framework)
+    # A bare name ("gunicorn") means "not in the venv" — supervisord resolves it
+    # against its own PATH, where it almost never is.
+    if PurePosixPath(binary).is_absolute() and Path(binary).exists():
+        return
+
+    if venv_service.is_building(name):
+        raise HTTPException(
+            status_code=409,
+            detail="The dashboard's Python environment is still being built "
+                   "(streamlit + packages, takes a few minutes). Wait until "
+                   "logs/venv-setup.log says \"✓ environment ready\", then Start.",
+        )
+    if not venv_service.has_python(name):
+        venv_service.ensure_async(name)
+        raise HTTPException(
+            status_code=409,
+            detail="This project has no dashboard environment yet (or its build "
+                   "failed) — building it now. Watch logs/venv-setup.log and "
+                   "press Start once it says \"✓ environment ready\".",
+        )
+
+    # venv exists but lacks this framework's server: install it right now.
+    ok, out = venv_service.install_packages(name, venv_service.FRAMEWORK_PKGS[framework])
+    installed = supervisor_service.venv_bin_dir(name) / supervisor_service.FRAMEWORK_BINS[framework]
+    if not ok or not installed.exists():
+        raise HTTPException(
+            status_code=500,
+            detail=f"Couldn't install the {framework} server into the project "
+                   f"venv — see logs/venv-setup.log.\n{out[-500:]}",
+        )
+
+
 @router.get("/detect")
 def detect_dashboard(project_id: int, db: Session = Depends(get_db)):
     """What's in dashboard/ and how the panel would run it right now."""
@@ -116,6 +162,7 @@ def start_dashboard(project_id: int, db: Session = Depends(get_db)):
                    "FastAPI app first",
         )
     framework, target, _ = _resolve_framework(project)
+    _ensure_runnable(project, framework)
     # Regenerate the supervisor config so it picks up a per-project venv created
     # after the project was made (deploy/dashboard-venv.sh) and whatever code is
     # in dashboard/ right now. Self-healing: no manual config edit / reread needed.
@@ -142,6 +189,7 @@ def restart_dashboard(project_id: int, db: Session = Depends(get_db)):
     # Re-read the code first: restarting is how you pick up an app.py that
     # changed from Streamlit to Flask (or vice versa).
     framework, target, _ = _resolve_framework(project)
+    _ensure_runnable(project, framework)
     supervisor_service.write_config(project.name, project.dashboard_port,
                                     framework, target)
     output = supervisor_service.restart(project.name)

@@ -6,19 +6,44 @@ every active schedule from the DB and register a cron job. Each job triggers
 the same async run_script() used by manual runs, so logs and last-run status
 update identically.
 """
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MAX_INSTANCES, EVENT_JOB_MISSED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from ..config import settings as app_settings
 from ..database import SessionLocal
-from ..models import PipelineSchedule, Schedule, Script, Setting
+from ..models import PipelineSchedule, Project, Schedule, Script, Setting
 from . import trash_service
 from .activity import log_activity
-from .pipeline_service import run_pipeline
+from .pipeline_service import is_pipeline_running, run_pipeline
 from .script_runner import run_script
 from .streaming import run_command
 
-scheduler = AsyncIOScheduler()
+# APScheduler's default misfire_grace_time is 1 second: if the event loop is
+# busy for longer than that at the moment a job is due (a blocking call, another
+# job firing at :00), the run is silently dropped as "missed". Give jobs a
+# generous window, and collapse a backlog of missed runs into one.
+scheduler = AsyncIOScheduler(job_defaults={
+    "misfire_grace_time": 15 * 60,
+    "coalesce": True,
+    "max_instances": 1,
+})
+
+
+def _on_job_problem(event) -> None:
+    """Surface skipped/failed jobs in the activity feed instead of dropping them silently."""
+    if event.code == EVENT_JOB_MISSED:
+        log_activity(f"⚠ scheduled job {event.job_id} missed its run time "
+                     f"({event.scheduled_run_time:%Y-%m-%d %H:%M}) — skipped")
+    elif event.code == EVENT_JOB_MAX_INSTANCES:
+        log_activity(f"⚠ scheduled job {event.job_id} skipped — "
+                     f"the previous run is still going")
+    elif event.code == EVENT_JOB_ERROR:
+        log_activity(f"✗ scheduled job {event.job_id} crashed: {event.exception}")
+
+
+scheduler.add_listener(_on_job_problem,
+                       EVENT_JOB_MISSED | EVENT_JOB_MAX_INSTANCES | EVENT_JOB_ERROR)
 
 # Daily temp-file cleanup (Settings → System Cleanup → "Clean temp files daily")
 AUTO_CLEAN_TEMP_KEY = "auto_clean_temp"
@@ -75,6 +100,22 @@ def next_run_time(schedule_id: int):
 # ---------- Project pipeline jobs ----------
 
 async def _run_pipeline_job(project_id: int) -> None:
+    """Job body: pick up scripts added to code/ since the page was last opened, then run."""
+    from ..routers.projects import sync_scripts   # lazy: routers import this module
+
+    db = SessionLocal()
+    try:
+        project = db.get(Project, project_id)
+        if project is None:
+            return
+        name = project.name
+        sync_scripts(project, db)
+    finally:
+        db.close()
+
+    if is_pipeline_running(project_id):
+        log_activity(f"⚠ scheduled pipeline {name} skipped — a run is still in progress")
+        return
     await run_pipeline(project_id)
 
 

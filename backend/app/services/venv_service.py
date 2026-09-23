@@ -20,8 +20,17 @@ from ..config import settings
 # keep both lists in sync). flask+gunicorn are included so a Flask dashboard can
 # be started without a separate install step, the same way streamlit is there
 # for a Streamlit one; gunicorn alone only gets as far as ModuleNotFoundError.
+# fastapi+uvicorn likewise for a FastAPI dashboard — without them supervisor
+# falls back to a bare `uvicorn` that isn't on its PATH: "ERROR (spawn error)".
 BASE_PKGS = ["streamlit", "streamlit-autorefresh", "plotly", "pandas",
-             "openpyxl", "xlrd", "flask", "gunicorn"]
+             "openpyxl", "xlrd", "flask", "gunicorn", "fastapi", "uvicorn"]
+
+# What each dashboard framework needs in the venv to be spawnable at all.
+FRAMEWORK_PKGS = {
+    "streamlit": ["streamlit"],
+    "flask": ["flask", "gunicorn"],
+    "fastapi": ["fastapi", "uvicorn"],
+}
 
 _building: set[str] = set()
 _lock = threading.Lock()
@@ -76,8 +85,7 @@ def _build(name: str, extra) -> None:
             _log(name, "base packages installed")
 
         # Honour a project requirements.txt if present
-        for req in (settings.PROJECTS_ROOT / name / "requirements.txt",
-                    settings.PROJECTS_ROOT / name / "code" / "requirements.txt"):
+        for req in requirement_files(name):
             if req.is_file():
                 _log(name, f"installing from {req}")
                 _run([pip, "install", "-r", str(req)])
@@ -91,6 +99,38 @@ def _build(name: str, extra) -> None:
     finally:
         with _lock:
             _building.discard(name)
+
+
+def requirement_files(name: str) -> list:
+    """requirements.txt files the project ships (root, code/, dashboard/)."""
+    root = settings.PROJECTS_ROOT / name
+    return [root / "requirements.txt", root / "code" / "requirements.txt",
+            root / "dashboard" / "requirements.txt"]
+
+
+def has_python(name: str) -> bool:
+    """True once `python -m venv` has produced a usable interpreter + pip."""
+    return (venv_dir(name) / "bin" / "pip").exists()
+
+
+def install_packages(name: str, pkgs) -> tuple[bool, str]:
+    """
+    Synchronously pip-install `pkgs` into an existing project venv.
+
+    Used when a dashboard is started with a framework whose server binary the
+    venv lacks (e.g. a venv built before uvicorn was in BASE_PKGS).
+    Returns (ok, pip output tail).
+    """
+    pip = str(venv_dir(name) / "bin" / "pip")
+    _log(name, "installing for dashboard start: " + " ".join(pkgs))
+    try:
+        r = _run([pip, "install", *pkgs], timeout=600)
+    except subprocess.TimeoutExpired:
+        _log(name, "TIMED OUT installing " + " ".join(pkgs))
+        return False, "pip install timed out"
+    out = (r.stderr or r.stdout)[-2000:]
+    _log(name, "installed" if r.returncode == 0 else "install FAILED:\n" + out)
+    return r.returncode == 0, out
 
 
 def ensure_async(name: str, extra=None) -> bool:
