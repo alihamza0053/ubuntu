@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import api, { errorMessage } from '../../api/client'
 import FolderBrowser from '../../components/FolderBrowser'
 import Icon from '../../components/ui/Icon'
@@ -14,8 +14,35 @@ export default function UploadPortalTab({ project, onChanged }) {
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
 
+  const [check, setCheck] = useState(null)
+  const [reapplying, setReapplying] = useState(false)
+
   const enabled = !!project.portal_username
   const portalUrl = project.domain ? `https://${project.domain}/onedrivefiles/` : null
+
+  // Is <domain>/onedrivefiles/ actually routed to the portal? (nginx config
+  // present + current, and no other config claiming the same domain.)
+  const runCheck = useCallback(() => {
+    if (!project.domain) { setCheck(null); return }
+    api.get(`/projects/${project.id}/portal-check`)
+      .then((r) => setCheck(r.data))
+      .catch(() => setCheck(null))
+  }, [project.id, project.domain])
+
+  useEffect(() => { runCheck() }, [runCheck])
+
+  async function reapply() {
+    setMsg(''); setReapplying(true)
+    try {
+      const r = await api.post(`/projects/${project.id}/reapply-nginx`)
+      setMsg(r.data.detail)
+    } catch (err) {
+      setMsg(errorMessage(err))
+    } finally {
+      setReapplying(false)
+      runCheck()
+    }
+  }
 
   async function save() {
     setMsg(''); setBusy(true)
@@ -28,6 +55,7 @@ export default function UploadPortalTab({ project, onChanged }) {
       setMsg(errorMessage(err))
     } finally {
       setBusy(false)
+      runCheck()
     }
   }
 
@@ -77,6 +105,26 @@ export default function UploadPortalTab({ project, onChanged }) {
           </span>
         </div>
       </div>
+
+      {/* Routing problems: why the link might show a 404 instead of the portal */}
+      {enabled && check && !check.ok && (
+        <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3 space-y-2 text-sm">
+          <p className="font-medium text-yellow-300">⚠ The portal link may not work</p>
+          <ul className="list-disc list-inside text-xs text-yellow-100/90 space-y-1 break-words">
+            {check.problems.map((p) => <li key={p}>{p}</li>)}
+          </ul>
+          {check.conflicts.length > 0 && (
+            <p className="text-xs text-slate-300">
+              Fix: on the server, remove the other config (or the domain from it), e.g.{' '}
+              <span className="font-mono break-all">sudo rm /etc/nginx/sites-enabled/&lt;that file&gt;</span>
+              , then click <b>Re-apply nginx config</b>.
+            </p>
+          )}
+          <button className="btn-secondary" onClick={reapply} disabled={reapplying}>
+            {reapplying ? 'Re-applying…' : 'Re-apply nginx config'}
+          </button>
+        </div>
+      )}
 
       {/* Credentials form */}
       <div className="space-y-2">

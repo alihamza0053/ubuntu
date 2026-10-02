@@ -101,7 +101,8 @@ class Settings:
     SCRIPT_EXTENSIONS: set = {".py", ".txt", ".json", ".yaml", ".yml", ".csv", ".md", ".cfg", ".ini", ".toml"}
     DATA_EXTENSIONS: set = {".xlsx", ".xls", ".csv", ".json", ".txt"}
     DASHBOARD_EXTENSIONS: set = {".py", ".txt", ".json", ".yaml", ".yml", ".csv", ".md",
-                                 ".png", ".jpg", ".jpeg", ".svg", ".css", ".toml"}
+                                 ".png", ".jpg", ".jpeg", ".svg", ".css", ".toml",
+                                 ".html", ".js"}
 
     # Extensions the Monaco editor is allowed to open/save
     EDITABLE_EXTENSIONS: set = {".py", ".txt", ".json", ".yaml", ".yml", ".csv", ".md",

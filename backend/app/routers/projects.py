@@ -448,7 +448,8 @@ def assign_domain(project_id: int, body: DomainRequest, db: Session = Depends(ge
     project.domain = body.domain
     _upsert_nginx_config(db, "project", project.id, config_path, body.domain)
     db.commit()
-    return DetailResponse(detail=f"Domain {body.domain} assigned and nginx reloaded")
+    return DetailResponse(detail=f"Domain {body.domain} assigned and nginx reloaded"
+                                 + _conflict_warning(project, body.domain))
 
 
 # ---------- Upload portal (per-project, password-protected) ----------
@@ -480,7 +481,8 @@ def set_portal_auth(project_id: int, body: PortalAuthRequest, db: Session = Depe
         except HTTPException:
             return DetailResponse(detail="Credentials saved, but updating nginx failed — "
                                          "re-assign the project's domain to apply.")
-    return DetailResponse(detail="Upload portal enabled — share <domain>/onedrivefiles/")
+    return DetailResponse(detail="Upload portal enabled — share <domain>/onedrivefiles/"
+                                 + (_conflict_warning(project, project.domain) if project.domain else ""))
 
 
 @router.delete("/{project_id}/portal-auth", response_model=DetailResponse)
@@ -491,6 +493,57 @@ def disable_portal_auth(project_id: int, db: Session = Depends(get_db)):
     project.portal_password_hash = None
     db.commit()
     return DetailResponse(detail="Upload portal disabled")
+
+
+def _conflict_warning(project: Project, domain: str) -> str:
+    """' — but …' when another nginx config claims the domain, else ''."""
+    conflicts = nginx_service.find_domain_conflicts(domain, f"project-{project.name}")
+    if not conflicts:
+        return ""
+    return (f" — but another nginx config also serves {domain} and nginx may use it "
+            f"instead, so /onedrivefiles/ won't work: {', '.join(conflicts)}. "
+            f"Remove that config (or its domain) and re-apply.")
+
+
+@router.get("/{project_id}/portal-check")
+def portal_check(project_id: int, db: Session = Depends(get_db)):
+    """
+    Why <domain>/onedrivefiles/ might not reach the upload portal: the project's
+    nginx config is missing/disabled/outdated, or another config claims the
+    same domain (nginx then serves that one and ignores ours).
+    """
+    project = get_project_or_404(project_id, db)
+    if not project.domain:
+        return {"ok": False, "problems": ["No domain assigned to this project."],
+                "conflicts": []}
+    status = nginx_service.site_status(f"project-{project.name}")
+    conflicts = nginx_service.find_domain_conflicts(project.domain, f"project-{project.name}")
+    problems = []
+    if not status["exists"]:
+        problems.append(f"The project's nginx config ({status['path']}) doesn't exist.")
+    elif "/onedrivefiles/" not in status["text"]:
+        problems.append("The project's nginx config is outdated: it has no /onedrivefiles/ rule.")
+    if status["exists"] and not status["enabled"]:
+        problems.append("The project's nginx config isn't enabled in /etc/nginx/sites-enabled.")
+    if status["exists"] and f"server_name {project.domain};" not in status["text"]:
+        problems.append(f"The project's nginx config is for a different domain, not {project.domain}.")
+    for path in conflicts:
+        problems.append(f"Another nginx config also serves {project.domain}: {path} — "
+                        f"nginx uses only one of them, so the portal can be ignored.")
+    return {"ok": not problems, "problems": problems, "conflicts": conflicts,
+            "config_path": status["path"]}
+
+
+@router.post("/{project_id}/reapply-nginx", response_model=DetailResponse)
+def reapply_nginx(project_id: int, db: Session = Depends(get_db)):
+    """Rewrite + reload the project's nginx config (dashboard + upload portal)."""
+    project = get_project_or_404(project_id, db)
+    if not project.domain:
+        raise HTTPException(status_code=400, detail="Assign a domain first")
+    config_path = _write_project_site(project, project.domain)
+    _upsert_nginx_config(db, "project", project.id, config_path, project.domain)
+    return DetailResponse(detail="nginx config re-applied and reloaded"
+                                 + _conflict_warning(project, project.domain))
 
 
 @router.post("/{project_id}/ssl", response_model=DetailResponse)

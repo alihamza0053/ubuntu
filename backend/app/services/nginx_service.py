@@ -8,6 +8,7 @@ through the restricted sudoers rules.
 
 All subprocess calls use argument lists.
 """
+import re
 import subprocess
 from pathlib import Path
 
@@ -278,6 +279,51 @@ def write_site(slug: str, content: str) -> Path:
     _sudo("ln", "-sf", str(config_path), str(link))
     test_and_reload()
     return config_path
+
+
+def find_domain_conflicts(domain: str, own_slug: str) -> list[str]:
+    """
+    Other enabled nginx configs that also claim `domain` in a server_name.
+
+    nginx answers a domain from only ONE server block; when two configs claim
+    it, it warns "conflicting server name … ignored" and silently uses the one
+    it loaded first — so the panel's block (and everything in it, like the
+    /onedrivefiles/ upload portal) can be ignored without any error. Returns the
+    paths of the competing configs (resolved through sites-enabled symlinks).
+    """
+    pattern = re.compile(
+        r"^\s*server_name\s[^;]*(?<![\w.-])" + re.escape(domain) + r"(?![\w.-])", re.M)
+    own = {f"{own_slug}.conf"}
+    found: list[str] = []
+    candidates = []
+    for folder in (SITES_ENABLED, Path("/etc/nginx/conf.d")):
+        try:
+            candidates += sorted(p for p in folder.iterdir() if p.name not in own)
+        except OSError:
+            continue
+    for path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if pattern.search(text):
+            try:
+                found.append(str(path.resolve()))
+            except OSError:
+                found.append(str(path))
+    return found
+
+
+def site_status(slug: str) -> dict:
+    """Whether the panel's config for `slug` exists, is enabled, and its text."""
+    config_path = settings.NGINX_CONFIGS_ROOT / f"{slug}.conf"
+    try:
+        text = config_path.read_text(encoding="utf-8") if config_path.is_file() else ""
+    except OSError:
+        text = ""
+    link = SITES_ENABLED / f"{slug}.conf"
+    return {"path": str(config_path), "exists": bool(text),
+            "enabled": link.is_symlink() or link.exists(), "text": text}
 
 
 def remove_site(slug: str) -> None:
