@@ -218,16 +218,29 @@ _PAGE_TEMPLATE = """<!doctype html>
  const dt=new DataTransfer();
  function human(n){ if(n<1024)return n+' B'; if(n<1048576)return (n/1024).toFixed(1)+' KB'; return (n/1048576).toFixed(1)+' MB'; }
  function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
- function sync(){ try{ input.files=dt.files; }catch(e){} render(); }
+ // The upload is sent from `dt` (see submit), never from the <input>. Don't
+ // assign input.files=dt.files: the input would then share dt's FileList, and
+ // resetting the picker (input.value='') would empty the chosen files too.
+ function sync(){ render(); }
  function render(){
    const fs=Array.from(dt.files);
    chips.innerHTML=fs.map((f,i)=>`<div class="chip"><span class="nm">${esc(f.name)}</span><span class="sz">${human(f.size)}</span><button type="button" class="x" data-i="${i}" title="Remove">✕</button></div>`).join('');
    go.disabled=fs.length===0;
    statusEl.textContent=fs.length?`${fs.length} file${fs.length>1?'s':''} ready`:'__COUNT__';
  }
- function add(list){ for(const f of list) dt.items.add(f); sync(); }
+ function add(list){
+   for(const f of list){
+     // Same name chosen again: keep only the newest (the server would replace it anyway).
+     const i=Array.from(dt.files).findIndex(x=>x.name===f.name);
+     if(i>=0) dt.items.remove(i);
+     dt.items.add(f);
+   }
+   sync();
+ }
  dz.addEventListener('click',()=>input.click());
- input.addEventListener('change',e=>{ add(e.target.files); input.value=''; sync(); });
+ // Copy the picked files first, then reset the picker so choosing the same
+ // file again still fires 'change'.
+ input.addEventListener('change',()=>{ const picked=Array.from(input.files); input.value=''; add(picked); });
  chips.addEventListener('click',e=>{ const b=e.target.closest('.x'); if(b){ dt.items.remove(+b.dataset.i); sync(); } });
  ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');}));
  ['dragleave','dragend'].forEach(ev=>dz.addEventListener(ev,e=>{dz.classList.remove('drag');}));
