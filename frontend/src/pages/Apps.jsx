@@ -124,7 +124,7 @@ function AppCard({ app, isAdmin, onInstall, onAction }) {
           <div className="min-w-0">
             <h3 className="truncate font-semibold text-slate-100">{app.label}</h3>
             <span className="text-xs text-slate-500">
-              {app.kind === 'desktop' ? 'browser · noVNC' : 'web service'}
+              {{ desktop: 'browser · noVNC', api: 'API · key-protected' }[app.kind] || 'web service'}
             </span>
           </div>
         </div>
@@ -176,10 +176,17 @@ function AppCard({ app, isAdmin, onInstall, onAction }) {
         )}
         {installed && running && (
           <>
-            <a className="btn-primary btn-sm" href={openUrl} target="_blank" rel="noreferrer">
-              <Icon name="external" size={14} />
-              Open
-            </a>
+            {app.kind === 'api' ? (
+              <Link to={`/apps/${app.key}?tab=models`} className="btn-primary btn-sm">
+                <Icon name="layers" size={14} />
+                Models
+              </Link>
+            ) : (
+              <a className="btn-primary btn-sm" href={openUrl} target="_blank" rel="noreferrer">
+                <Icon name="external" size={14} />
+                Open
+              </a>
+            )}
             <button className="btn-secondary btn-sm" onClick={() => onAction('stop')}>
               <Icon name="stop" size={14} />
               Stop

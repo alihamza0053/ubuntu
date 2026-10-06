@@ -135,6 +135,9 @@ class ManagedApp(Base):
     vnc_password: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Page a browser app opens on start.
     start_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Key a client must send (Authorization: Bearer …) to use an API app such
+    # as Ollama through its domain — nginx checks it; the app has no login.
+    api_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # Admin-hidden: invisible and unreachable for non-admin users.
     hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

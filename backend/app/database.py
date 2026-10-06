@@ -81,6 +81,13 @@ def run_migrations() -> None:
                 conn.execute(text("ALTER TABLE projects ADD COLUMN "
                                   "dashboard_target VARCHAR(255)"))
 
+    # managed_apps: API key for API-only apps (added with Ollama).
+    if "managed_apps" in insp.get_table_names():
+        acols = [c["name"] for c in insp.get_columns("managed_apps")]
+        with engine.begin() as conn:
+            if "api_key" not in acols:
+                conn.execute(text("ALTER TABLE managed_apps ADD COLUMN api_key VARCHAR(128)"))
+
     # websites: run-it-yourself Python web services (added with the "python" type).
     if "websites" in insp.get_table_names():
         wcols = [c["name"] for c in insp.get_columns("websites")]

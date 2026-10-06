@@ -11,6 +11,10 @@ Two kinds of app, one lifecycle:
   web (n8n)
       Plain HTTP service; the run script just sets its environment and execs it.
 
+  api (ollama)
+      Like web, but with no login of its own: it listens on 127.0.0.1 only and
+      its domain's nginx block lets through only requests carrying its API key.
+
 Both end up as one supervisor program (`app_<key>`) running one generated
 `run.sh`, which keeps start/stop/restart/logs/domain identical for every app —
 exactly the plumbing Projects and Websites already use.
@@ -82,8 +86,24 @@ CATALOG: dict[str, dict] = {
         "install_hint": "Installs Brave plus the headless-desktop stack "
                         "(Xvfb, x11vnc, noVNC, openbox).",
     },
+    "ollama": {
+        "label": "Ollama",
+        "icon": "🦙",
+        "kind": "api",
+        "port": 11434,
+        "summary": "Run open AI models (Llama, Qwen, Mistral, Gemma…) on this "
+                   "server and use them from anywhere through an API.",
+        "notes": "API only — no web page. Ollama listens on 127.0.0.1, so it is "
+                 "reachable from outside only through its domain, and only with "
+                 "the API key (Authorization: Bearer <key>). Works with "
+                 "OpenAI-compatible tools at <domain>/v1.",
+        "install_hint": "Installs Ollama with its official installer (a few hundred "
+                        "MB). Models are pulled separately on the Models tab.",
+    },
 }
 DESKTOP_KINDS = {"desktop"}
+# API-only apps: no page to open, reachable only through their key-protected domain.
+API_KINDS = {"api"}
 
 # Chromium/Brave flags. --no-sandbox is needed because the app runs as an
 # unprivileged system user with no setuid sandbox helper available; the browser
@@ -215,7 +235,8 @@ def is_installed(key: str) -> bool:
     # Nothing recorded: fall back to looking for the usual executables.
     names = {"chromium": ("chromium", "chromium-browser"),
              "brave": ("brave-browser",),
-             "n8n": ("n8n",)}.get(key, ())
+             "n8n": ("n8n",),
+             "ollama": ("ollama",)}.get(key, ())
     return any(shutil.which(n) for n in names)
 
 
@@ -322,6 +343,12 @@ def vnc_port(app: ManagedApp) -> int:
     return 5900 + (app.display or 0)
 
 
+def new_api_key() -> str:
+    """A fresh API key: "sk-" (what AI tools expect a key to look like) + 40
+    URL-safe characters."""
+    return "sk-" + secrets.token_urlsafe(30)
+
+
 def get_or_create(db: Session, key: str) -> ManagedApp:
     """The row for `key`, created with fresh port/display/password if new."""
     entry = spec(key)
@@ -335,6 +362,8 @@ def get_or_create(db: Session, key: str) -> ManagedApp:
         # so a longer one would only look stronger than it is.
         app.vnc_password = secrets.token_urlsafe(6)
         app.start_url = "https://duckduckgo.com"
+    if entry["kind"] in API_KINDS:
+        app.api_key = new_api_key()
     db.add(app)
     db.commit()
     db.refresh(app)
@@ -444,6 +473,31 @@ def _n8n_env(app: ManagedApp) -> list[str]:
     return lines
 
 
+def models_dir(key: str = "ollama") -> Path:
+    """Where Ollama keeps downloaded models (they are large — GBs each)."""
+    return app_dir(key) / "models"
+
+
+def _ollama_env(app: ManagedApp) -> list[str]:
+    """
+    Environment for `ollama serve`.
+
+    127.0.0.1 only: Ollama has no authentication, so it must never listen on
+    a public address — the key-checking nginx block is the only way in.
+    """
+    return [
+        f'export OLLAMA_HOST="127.0.0.1:{app.port}"',
+        f'export OLLAMA_MODELS="{models_dir(app.key)}"',
+        f'mkdir -p "{models_dir(app.key)}"',
+        # Browser clients on other sites send an Origin header; allow them (the
+        # API key at nginx is what actually guards access).
+        'export OLLAMA_ORIGINS="*"',
+        # Keep a model in memory for 10 minutes after the last request, so a
+        # conversation doesn't reload it from disk every message.
+        'export OLLAMA_KEEP_ALIVE="10m"',
+    ]
+
+
 def write_run_script(app: ManagedApp) -> Path:
     """Generate the app's run.sh from its current settings."""
     entry = spec(app.key)
@@ -478,11 +532,12 @@ def write_run_script(app: ManagedApp) -> Path:
             label=entry["label"],
         )
     else:
+        env_lines = {"n8n": _n8n_env, "ollama": _ollama_env}.get(app.key)
         content = _WEB_RUN.format(
             home=home,
-            env_lines="\n".join(_n8n_env(app)) if app.key == "n8n" else "",
+            env_lines="\n".join(env_lines(app)) if env_lines else "",
             bin=binary,
-            args="start" if app.key == "n8n" else "",
+            args={"n8n": "start", "ollama": "serve"}.get(app.key, ""),
             port=app.port,
             label=entry["label"],
         )
@@ -621,6 +676,11 @@ def nginx_block(app: ManagedApp, domain: str) -> str:
 
     Both kinds need the websocket upgrade passed through — noVNC *is* a
     websocket, and n8n pushes execution updates over one — so the ASGI-style
-    block is right for everything in the catalogue.
+    block is right for the browser apps and n8n. An API app (Ollama) has no
+    login of its own, so its block only lets requests carrying its key through.
     """
+    if spec(app.key)["kind"] in API_KINDS:
+        if not app.api_key:
+            raise HTTPException(status_code=400, detail="This app has no API key yet")
+        return nginx_service.api_key_block(domain, app.port, app.api_key, app.key)
     return nginx_service.asgi_block(domain, app.port)

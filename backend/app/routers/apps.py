@@ -1,6 +1,7 @@
 """
-Apps routes: install/remove Chromium, Brave and n8n, run them under supervisor,
-point a domain at them and watch their logs.
+Apps routes: install/remove Chromium, Brave, n8n and Ollama, run them under
+supervisor, point a domain at them and watch their logs — plus Ollama's API key
+and model management (Models tab).
 
 The app list is a fixed catalogue (services/appstore_service.CATALOG), so every
 route addresses an app by its catalogue key rather than a database id — there
@@ -15,7 +16,7 @@ from ..database import SessionLocal, get_db
 from ..deps import authenticate_websocket, get_current_user, require_admin
 from ..models import ManagedApp, NginxConfig, User
 from ..schemas import DetailResponse
-from ..services import appstore_service, nginx_service
+from ..services import appstore_service, nginx_service, ollama_service
 from ..services.streaming import tail_file
 
 router = APIRouter(
@@ -84,6 +85,7 @@ def _to_out(key: str, app: ManagedApp | None) -> dict:
         # Not registered yet — everything below only exists once installed.
         "port": None, "display": None, "domain": None, "status": "STOPPED",
         "vnc_password": None, "start_url": None, "hidden": False, "ssl": False,
+        "api_key": None,
     }
     if app is not None:
         out.update({
@@ -92,6 +94,7 @@ def _to_out(key: str, app: ManagedApp | None) -> dict:
             "domain": app.domain,
             "vnc_password": app.vnc_password,
             "start_url": app.start_url,
+            "api_key": app.api_key,
             "hidden": app.hidden,
             "status": appstore_service.status(key) if state == "INSTALLED" else "STOPPED",
             # Whether the domain already has a certificate — the UI has to know
@@ -246,12 +249,92 @@ def app_ssl(key: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Assign a domain first")
     nginx_service.request_ssl(app.domain)
     extra = ""
+    if appstore_service.spec(key)["kind"] in appstore_service.API_KINDS:
+        # Re-render our own block now that the certificate exists, rather than
+        # leave certbot's edits to the key-checking config.
+        nginx_service.write_site(appstore_service.nginx_slug(key),
+                                 appstore_service.nginx_block(app, app.domain))
     if key == "n8n":
         # Now https — N8N_PROTOCOL, WEBHOOK_URL and the secure-cookie setting
         # all change, and only a restart picks them up.
         appstore_service.control(app, "restart")
         extra = " n8n was restarted to switch its public URL to https."
     return DetailResponse(detail=f"SSL issued for {app.domain}.{extra}")
+
+
+# ---------------------------------------------------------------------------
+# API apps (Ollama): API key + models
+# ---------------------------------------------------------------------------
+
+class PullRequest(BaseModel):
+    model: str
+
+
+class TestRequest(BaseModel):
+    model: str
+    prompt: str = "Say hello in one short sentence."
+
+
+def _ollama_or_404(db: Session) -> ManagedApp:
+    app = _get_app_or_404("ollama", db)
+    if not appstore_service.is_installed("ollama"):
+        raise HTTPException(status_code=400, detail="Install Ollama first")
+    return app
+
+
+@router.post("/{key}/api-key/regenerate", response_model=DetailResponse,
+             dependencies=[Depends(require_admin)])
+def regenerate_api_key(key: str, db: Session = Depends(get_db)):
+    """New API key; the old one stops working as soon as nginx reloads."""
+    app = _get_app_or_404(key, db)
+    if appstore_service.spec(key)["kind"] not in appstore_service.API_KINDS:
+        raise HTTPException(status_code=400, detail="This app has no API key")
+    app.api_key = appstore_service.new_api_key()
+    db.commit()
+    if app.domain:
+        nginx_service.write_site(appstore_service.nginx_slug(key),
+                                 appstore_service.nginx_block(app, app.domain))
+        return DetailResponse(detail="New API key active — the old key no longer works. "
+                                     "Update it in your apps and scripts.")
+    return DetailResponse(detail="New API key saved — it takes effect once a domain is assigned.")
+
+
+@router.get("/ollama/models")
+def ollama_models(db: Session = Depends(get_db)):
+    app = _ollama_or_404(db)
+    return {"version": ollama_service.version(app.port),
+            "models": ollama_service.list_models(app.port),
+            "pull": ollama_service.pull_status()}
+
+
+@router.get("/ollama/models/pull")
+def ollama_pull_status():
+    return ollama_service.pull_status()
+
+
+@router.post("/ollama/models/pull", response_model=DetailResponse,
+             dependencies=[Depends(require_admin)])
+def ollama_pull(body: PullRequest, db: Session = Depends(get_db)):
+    """Download a model in the background (admin only — models are GBs)."""
+    app = _ollama_or_404(db)
+    ollama_service.start_pull(app.port, body.model)
+    return DetailResponse(detail=f"Pulling {body.model.strip()}…")
+
+
+@router.delete("/ollama/models/{name:path}", response_model=DetailResponse,
+               dependencies=[Depends(require_admin)])
+def ollama_delete(name: str, db: Session = Depends(get_db)):
+    app = _ollama_or_404(db)
+    ollama_service.delete_model(app.port, name)
+    return DetailResponse(detail=f"Deleted {name}")
+
+
+@router.post("/ollama/models/test")
+def ollama_test(body: TestRequest, db: Session = Depends(get_db)):
+    """One quick prompt, to check a model works and see how fast it is."""
+    app = _ollama_or_404(db)
+    prompt = body.prompt.strip()[:4000] or "Say hello in one short sentence."
+    return ollama_service.generate(app.port, body.model, prompt)
 
 
 @ws_router.websocket("/ws/apps/{key}/logs")

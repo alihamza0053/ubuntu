@@ -142,6 +142,54 @@ def wsgi_block(domain: str, port: int) -> str:
     return _wrap_server(domain, locations)
 
 
+def api_key_block(domain: str, port: int, api_key: str, name: str) -> str:
+    """
+    A public API that has no login of its own (Ollama), locked behind a key.
+
+    Every request must carry `Authorization: Bearer <api_key>` — the header the
+    OpenAI SDKs and most AI tools send — or it gets a JSON 401. CORS preflights
+    (OPTIONS, which browsers send without credentials) pass through so browser
+    clients work too. The key is stripped before the request reaches the app.
+
+    The app listens on 127.0.0.1 only, so this block is the only way in. It is
+    sent `Host: localhost:<port>` because Ollama rejects other host names when
+    bound to loopback, and responses are not buffered so generated tokens
+    stream to the client as they are produced.
+    """
+    var = re.sub(r"\W", "_", f"api_key_ok_{name}")
+    # A map must live at http level; sites-enabled files are included there.
+    gate = f"""map "$request_method:$http_authorization" ${var} {{
+    default 0;
+    "~^OPTIONS:" 1;
+    "~^[A-Z]+:Bearer {re.escape(api_key)}$" 1;
+}}
+
+"""
+    locations = f"""    client_max_body_size 100M;
+
+    location / {{
+        # Only affects the 401 below: proxied responses carry their own type.
+        # (default_type isn't allowed inside `if`, so it lives here.)
+        default_type application/json;
+        if (${var} = 0) {{
+            add_header WWW-Authenticate 'Bearer realm="api"' always;
+            return 401 '{{"error":"missing or invalid API key - send Authorization: Bearer <key>"}}';
+        }}
+        proxy_pass http://127.0.0.1:{port};
+        proxy_http_version 1.1;
+        proxy_set_header Host localhost:{port};
+        proxy_set_header Authorization "";
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 900s;
+        proxy_send_timeout 900s;
+    }}"""
+    return gate + _wrap_server(domain, locations)
+
+
 def webapp_block(domain: str, port: int, framework: str | None) -> str:
     """Pick the right proxy block for a "python" website's framework."""
     if (framework or "").lower() == "flask":

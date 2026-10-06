@@ -2,9 +2,9 @@
 # ServerHub — Apps installer helper (runs as root via a single sudoers rule).
 # Installed to $PANEL_ROOT/bin/serverhub-apps by deploy/install.sh|update.sh.
 #
-# Usage: serverhub-apps <install|remove|probe> <chromium|brave|n8n>
+# Usage: serverhub-apps <install|remove|probe> <chromium|brave|n8n|ollama>
 #
-# Only those three app names are accepted and every package list is hard-coded
+# Only those four app names are accepted and every package list is hard-coded
 # below, so nothing the panel passes in can turn into an arbitrary apt/npm
 # command — the sudoers rule stays as narrow as the cleanup helper's.
 #
@@ -187,6 +187,40 @@ install_n8n() {
 }
 
 # ---------------------------------------------------------------------------
+# Ollama — the official installer (picks the right build for this CPU and sets
+# up NVIDIA/AMD GPU support when a GPU is present). It also creates and starts
+# a systemd "ollama" service; the panel runs Ollama itself under supervisor
+# (127.0.0.1 only, models in $APPS_ROOT/ollama/models), so that service is
+# stopped and disabled again to keep the port free and avoid two copies.
+# ---------------------------------------------------------------------------
+install_ollama() {
+  apt_update_once
+  apt-get install -y curl ca-certificates zstd >/dev/null 2>&1 \
+    || apt-get install -y curl ca-certificates || die "could not install curl"
+
+  if ! command -v ollama >/dev/null 2>&1; then
+    echo "── running the official Ollama installer (downloads a few hundred MB) ──"
+    curl -fsSL https://ollama.com/install.sh | sh || die "the Ollama installer failed"
+  else
+    echo "ollama is already installed: $(ollama --version 2>/dev/null || echo 'version unknown')"
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl disable --now ollama >/dev/null 2>&1 || true
+    echo "systemd ollama service disabled — the panel runs Ollama under supervisor"
+  fi
+
+  local bin home
+  bin="$(command -v ollama)" || die "ollama installed but is not on PATH"
+  home="$(app_dir ollama)/home"
+  prepare_dirs ollama "$home"
+  mkdir -p "$(app_dir ollama)/models"
+  chown -R "$PANEL_USER:$PANEL_USER" "$(app_dir ollama)/models"
+  write_env ollama "bin=$bin" "snap=false" "home=$home" "novnc="
+  echo "✓ Ollama installed: $bin ($(ollama --version 2>/dev/null | tail -1 || echo 'version unknown'))"
+}
+
+# ---------------------------------------------------------------------------
 # Removal — drops the software, never the app's data directory (the panel
 # deletes that itself, and only when the user asks for it).
 # ---------------------------------------------------------------------------
@@ -203,6 +237,17 @@ remove_app() {
     n8n)
       npm uninstall -g n8n >/dev/null 2>&1 || true
       ;;
+    ollama)
+      if command -v systemctl >/dev/null 2>&1; then
+        systemctl disable --now ollama >/dev/null 2>&1 || true
+        rm -f /etc/systemd/system/ollama.service
+        systemctl daemon-reload >/dev/null 2>&1 || true
+      fi
+      rm -f /usr/local/bin/ollama /usr/bin/ollama
+      rm -rf /usr/local/lib/ollama /usr/lib/ollama
+      # Models live in $APPS_ROOT/ollama/models (the data directory) — kept
+      # unless the panel was asked to delete the data too.
+      ;;
   esac
   rm -f "$(app_dir "$1")/install.env"
   echo "✓ $1 removed (its data directory was left in place)"
@@ -217,19 +262,20 @@ probe_app() {
     chromium) { command -v chromium || command -v chromium-browser; } >/dev/null 2>&1 \
                 && echo "installed=true" || echo "installed=false" ;;
     n8n)      command -v n8n >/dev/null 2>&1 && echo "installed=true" || echo "installed=false" ;;
+    ollama)   command -v ollama >/dev/null 2>&1 && echo "installed=true" || echo "installed=false" ;;
   esac
 }
 
 # ---------------------------------------------------------------------------
 
-[ "$#" -ge 2 ] || { echo "usage: serverhub-apps <install|remove|probe> <chromium|brave|n8n>" >&2; exit 1; }
+[ "$#" -ge 2 ] || { echo "usage: serverhub-apps <install|remove|probe> <chromium|brave|n8n|ollama>" >&2; exit 1; }
 
 ACTION="$1"
 APP="$2"
 
 case "$APP" in
-  chromium|brave|n8n) ;;
-  *) die "unknown app: $APP (expected chromium, brave or n8n)" ;;
+  chromium|brave|n8n|ollama) ;;
+  *) die "unknown app: $APP (expected chromium, brave, n8n or ollama)" ;;
 esac
 
 mkdir -p "$APPS_ROOT"
@@ -242,6 +288,7 @@ case "$ACTION" in
       brave)    install_brave ;;
       chromium) install_chromium ;;
       n8n)      install_n8n ;;
+      ollama)   install_ollama ;;
     esac
     echo "═══ $APP install finished ═══"
     ;;
