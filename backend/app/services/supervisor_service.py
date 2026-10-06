@@ -68,6 +68,105 @@ def venv_bin_dir(project_name: str) -> Path:
     return settings.PROJECTS_ROOT / project_name / "venv" / "bin"
 
 
+# ---------------------------------------------------------------------------
+# Optional project API: dashboard/api.py runs next to the dashboard
+# ---------------------------------------------------------------------------
+# A Streamlit dashboard can't answer JSON requests, so a project may ship an
+# api.py (FastAPI, `app = FastAPI(...)`) beside app.py. The panel runs it as a
+# second program on 127.0.0.1:<dashboard port + API_PORT_OFFSET> and the
+# project's nginx block sends <domain>/api/… to it — same domain, no new port
+# for anyone to manage. Start/Stop/Restart of the dashboard cover it too.
+API_FILE = "api.py"
+API_PORT_OFFSET = 1000
+
+API_TEMPLATE = """[program:{name}_api]
+command={uvicorn} api:app --host 127.0.0.1 --port {port}
+directory={dashboard_dir}
+environment=PATH="{venv_bin}:/usr/local/bin:/usr/bin:/bin",PYTHONUNBUFFERED="1"
+autostart={autostart}
+autorestart=true
+startsecs=3
+stderr_logfile={log_dir}/{name}.api.err.log
+stdout_logfile={log_dir}/{name}.api.out.log
+"""
+
+
+def api_program_name(project_name: str) -> str:
+    return f"{project_name}_api"
+
+
+def api_config_path(project_name: str) -> Path:
+    return settings.SUPERVISOR_CONF_DIR / f"{api_program_name(project_name)}.conf"
+
+
+def api_port(dashboard_port: int) -> int:
+    return dashboard_port + API_PORT_OFFSET
+
+
+def has_api(project_name: str) -> bool:
+    return (dashboard_dir(project_name) / API_FILE).is_file()
+
+
+def sync_api_program(project_name: str, dashboard_port: int) -> bool:
+    """
+    Write (or remove) the API program to match whether dashboard/api.py exists.
+    No-op when nothing changed, same discipline as write_config. Returns True
+    when the project has an API.
+    """
+    path = api_config_path(project_name)
+    if not has_api(project_name):
+        if path.exists():
+            _supervisorctl("stop", api_program_name(project_name))
+            path.unlink()
+            _supervisorctl("reread")
+            _supervisorctl("update")
+        return False
+    existing = path.read_text(encoding="utf-8") if path.exists() else None
+    current = re.search(r"(?m)^autostart=(.*)$", existing or "")
+    content = API_TEMPLATE.format(
+        name=project_name, uvicorn=venv_bin_dir(project_name) / "uvicorn", port=api_port(dashboard_port),
+        dashboard_dir=dashboard_dir(project_name), venv_bin=venv_bin_dir(project_name),
+        autostart=current.group(1) if current else "false", log_dir=settings.SUPERVISOR_LOG_DIR)
+    if content != existing:
+        settings.SUPERVISOR_CONF_DIR.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        _supervisorctl("reread")
+        _supervisorctl("update")
+    return True
+
+
+def _api_action(action: str, project_name: str) -> str:
+    """start/stop/restart the API program if the project has one. Never raises:
+    a broken api.py must not stop the dashboard itself from starting."""
+    path = api_config_path(project_name)
+    if not path.exists():
+        return ""
+    text = path.read_text(encoding="utf-8")
+    new = re.sub(r"(?m)^autostart=.*$", f"autostart={'false' if action == 'stop' else 'true'}", text)
+    if new != text:
+        path.write_text(new, encoding="utf-8")
+    try:
+        result = _supervisorctl(action, api_program_name(project_name))
+    except HTTPException as exc:
+        return f"API: {exc.detail}"
+    out = (result.stdout + result.stderr).strip()
+    if "ERROR" in out and not is_benign_output(out):
+        return f"API: {out} (see logs/{project_name}.api.err.log)"
+    return f"API: {out}" if out else ""
+
+
+def api_status(project_name: str) -> str | None:
+    """RUNNING / STOPPED / ERROR for the API program, or None without an API."""
+    if not api_config_path(project_name).exists():
+        return None
+    raw = (lambda r: (r.stdout + r.stderr).upper())(_supervisorctl("status", api_program_name(project_name)))
+    if "RUNNING" in raw or "STARTING" in raw:
+        return "RUNNING"
+    if "FATAL" in raw or "BACKOFF" in raw:
+        return "ERROR"
+    return "STOPPED"
+
+
 def normalise_framework(framework: str | None) -> str:
     key = (framework or "").strip().lower()
     return key if key in FRAMEWORK_COMMANDS else DEFAULT_FRAMEWORK
@@ -173,21 +272,26 @@ def write_config(project_name: str, port: int, framework: str | None = None,
             content = re.sub(r"(?m)^autostart=.*$",
                              f"autostart={current.group(1)}", content)
         if content == existing:
+            sync_api_program(project_name, port)
             return path          # unchanged — leave a running program alone
 
     path.write_text(content, encoding="utf-8")
     # Tell supervisor about the new/changed program definition
     _supervisorctl("reread")
     _supervisorctl("update")
+    sync_api_program(project_name, port)
     return path
 
 
 def remove_config(project_name: str) -> None:
-    """Stop the program and delete its config (used on project delete)."""
+    """Stop the program(s) and delete their configs (used on project delete)."""
     _supervisorctl("stop", program_name(project_name))
     path = config_path(project_name)
     if path.exists():
         path.unlink()
+    if api_config_path(project_name).exists():
+        _supervisorctl("stop", api_program_name(project_name))
+        api_config_path(project_name).unlink()
     _supervisorctl("reread")
     _supervisorctl("update")
 
@@ -211,20 +315,26 @@ def set_autostart(project_name: str, enabled: bool) -> None:
         path.write_text(new, encoding="utf-8")
 
 
+def _join(*parts: str) -> str:
+    return "\n".join(p for p in parts if p)
+
+
 def start(project_name: str) -> str:
     set_autostart(project_name, True)
-    return _action("start", project_name)
+    out = _action("start", project_name)
+    return _join(out, _api_action("start", project_name))
 
 
 def stop(project_name: str) -> str:
     out = _action("stop", project_name)
     set_autostart(project_name, False)
-    return out
+    return _join(out, _api_action("stop", project_name))
 
 
 def restart(project_name: str) -> str:
     set_autostart(project_name, True)
-    return _action("restart", project_name)
+    out = _action("restart", project_name)
+    return _join(out, _api_action("restart", project_name))
 
 
 def is_benign_output(output: str) -> bool:

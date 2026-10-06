@@ -13,6 +13,7 @@ from fastapi import (APIRouter, Depends, HTTPException, WebSocket,
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..database import get_db
 from ..deps import authenticate_websocket, get_current_user
 from ..schemas import DashboardStatusOut, DetailResponse
@@ -20,7 +21,7 @@ from ..services import app_detect, supervisor_service, venv_service
 from ..services.activity import log_activity
 from ..services.streaming import tail_file
 from ..services.supervisor_service import dashboard_log_path
-from .projects import get_project_or_404, project_root
+from .projects import _write_project_site, get_project_or_404, project_root
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/dashboard",
@@ -117,6 +118,37 @@ def _ensure_runnable(project, framework: str) -> None:
         )
 
 
+def _prepare_api(project) -> str:
+    """
+    dashboard/api.py (optional) runs next to the dashboard as <name>_api and is
+    served on the project's own domain at /api/… . Make sure its server is in
+    the venv and the nginx block has (or drops) the /api/ location. Never
+    blocks the dashboard itself: problems come back as a note.
+    """
+    name = project.name
+    wants_api = supervisor_service.has_api(name)
+    notes = []
+    if wants_api and not (supervisor_service.venv_bin_dir(name) / "uvicorn").exists():
+        ok, out = venv_service.install_packages(name, ["fastapi", "uvicorn[standard]"])
+        if not ok:
+            notes.append(f"API: couldn't install fastapi/uvicorn — {out[-300:]}")
+
+    if project.domain:
+        conf = settings.NGINX_CONFIGS_ROOT / f"project-{name}.conf"
+        try:
+            has_location = "location /api/" in conf.read_text(encoding="utf-8")
+        except OSError:
+            has_location = False
+        if has_location != wants_api:
+            try:
+                _write_project_site(project, project.domain)
+                notes.append(f"API: nginx {'now serves' if wants_api else 'no longer serves'} "
+                             f"https://{project.domain}/api/")
+            except HTTPException as exc:
+                notes.append(f"API: nginx update failed — {exc.detail}")
+    return "\n".join(notes)
+
+
 @router.get("/detect")
 def detect_dashboard(project_id: int, db: Session = Depends(get_db)):
     """What's in dashboard/ and how the panel would run it right now."""
@@ -163,12 +195,13 @@ def start_dashboard(project_id: int, db: Session = Depends(get_db)):
         )
     framework, target, _ = _resolve_framework(project)
     _ensure_runnable(project, framework)
+    api_note = _prepare_api(project)
     # Regenerate the supervisor config so it picks up a per-project venv created
     # after the project was made (deploy/dashboard-venv.sh) and whatever code is
     # in dashboard/ right now. Self-healing: no manual config edit / reread needed.
     supervisor_service.write_config(project.name, project.dashboard_port,
                                     framework, target)
-    output = supervisor_service.start(project.name)
+    output = "\n".join(p for p in (supervisor_service.start(project.name), api_note) if p)
     _set_status(project, db)
     log_activity(f"▶ dashboard {project.name} start ({framework})")
     return DetailResponse(detail=output or f"started as {framework}")
@@ -190,9 +223,10 @@ def restart_dashboard(project_id: int, db: Session = Depends(get_db)):
     # changed from Streamlit to Flask (or vice versa).
     framework, target, _ = _resolve_framework(project)
     _ensure_runnable(project, framework)
+    api_note = _prepare_api(project)
     supervisor_service.write_config(project.name, project.dashboard_port,
                                     framework, target)
-    output = supervisor_service.restart(project.name)
+    output = "\n".join(p for p in (supervisor_service.restart(project.name), api_note) if p)
     log_activity(f"🔄 dashboard {project.name} restart")
     _set_status(project, db)
     return DetailResponse(detail=output)

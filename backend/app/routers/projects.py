@@ -436,6 +436,9 @@ def _write_project_site(project: Project, domain: str) -> str:
         domain=domain, port=project.dashboard_port,
         project=project.name, panel_port=settings.PANEL_PORT,
         framework=framework,
+        # dashboard/api.py → <domain>/api/… (run by the panel next to the dashboard)
+        api_port=(supervisor_service.api_port(project.dashboard_port)
+                  if supervisor_service.has_api(project.name) else None),
     )
     return str(nginx_service.write_site(slug, content))
 

@@ -198,7 +198,7 @@ def webapp_block(domain: str, port: int, framework: str | None) -> str:
 
 
 def project_block(domain: str, port: int, project: str, panel_port: int,
-                  framework: str | None = None) -> str:
+                  framework: str | None = None, api_port: int | None = None) -> str:
     """
     A project's nginx block: the dashboard at / , plus the per-project public
     upload portal at /onedrivefiles/ proxied to the panel backend (which
@@ -228,6 +228,22 @@ def project_block(domain: str, port: int, project: str, panel_port: int,
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 3600s;"""
 
+    # The project's own JSON API (dashboard/api.py), run by the panel next to
+    # the dashboard — see supervisor_service.sync_api_program.
+    api_location = ""
+    if api_port:
+        api_location = f"""    location /api/ {{
+        proxy_pass http://127.0.0.1:{api_port};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }}
+
+"""
+
     locations = f"""    client_max_body_size 1024M;
 
     # Public, password-protected upload portal (panel-hosted)
@@ -242,7 +258,7 @@ def project_block(domain: str, port: int, project: str, panel_port: int,
         client_max_body_size 1024M;
     }}
 
-    location / {{
+{api_location}    location / {{
         proxy_pass http://127.0.0.1:{port};
         proxy_http_version 1.1;
 {dashboard_headers}
