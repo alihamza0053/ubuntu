@@ -128,7 +128,9 @@ def _prepare_api(project) -> str:
     name = project.name
     wants_api = supervisor_service.has_api(name)
     notes = []
-    if wants_api and not (supervisor_service.venv_bin_dir(name) / "uvicorn").exists():
+    # uvicorn alone isn't enough (a venv can have it without fastapi): check both.
+    has_fastapi = any(venv_service.venv_dir(name).glob("lib/python*/site-packages/fastapi"))
+    if wants_api and not (has_fastapi and (supervisor_service.venv_bin_dir(name) / "uvicorn").exists()):
         ok, out = venv_service.install_packages(name, ["fastapi", "uvicorn[standard]"])
         if not ok:
             notes.append(f"API: couldn't install fastapi/uvicorn — {out[-300:]}")
