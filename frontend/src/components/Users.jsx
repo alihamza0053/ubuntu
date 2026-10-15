@@ -3,6 +3,50 @@ import api, { errorMessage } from '../api/client'
 import Icon from './ui/Icon'
 import { useAuth } from '../context/AuthContext'
 
+/** What users did, newest first (one user, or everyone when userId is null). */
+function ActivityList({ userId, showUser }) {
+  const [rows, setRows] = useState(null)
+  const [more, setMore] = useState(false)
+  const [error, setError] = useState(null)
+  const PAGE = 50
+
+  const fetchPage = useCallback((beforeId) => {
+    const params = { limit: PAGE }
+    if (userId != null) params.user_id = userId
+    if (beforeId) params.before_id = beforeId
+    return api.get('/auth/activity', { params })
+      .then((res) => {
+        setRows((old) => (beforeId ? [...(old || []), ...res.data] : res.data))
+        setMore(res.data.length === PAGE)
+      })
+      .catch((err) => setError(errorMessage(err)))
+  }, [userId])
+
+  useEffect(() => { setRows(null); fetchPage() }, [fetchPage])
+
+  if (error) return <p className="text-xs text-red-400">{error}</p>
+  if (rows === null) return <p className="text-xs text-slate-500">Loading activity…</p>
+  if (rows.length === 0) return <p className="text-xs text-slate-500">No activity yet.</p>
+  return (
+    <div className="space-y-1">
+      <div className="max-h-80 overflow-y-auto rounded-lg border border-panel-border divide-y divide-slate-800">
+        {rows.map((r) => (
+          <div key={r.id} className="flex items-start gap-3 px-3 py-1.5 text-xs">
+            <span className="font-mono text-slate-500 shrink-0">{r.at.replace('T', ' ')}</span>
+            {showUser && <span className="text-sky-300 shrink-0">{r.username}</span>}
+            <span className={`flex-1 min-w-0 ${r.status >= 400 ? 'text-red-300' : 'text-slate-300'}`}>{r.action}</span>
+            {r.ip && <span className="font-mono text-slate-600 shrink-0">{r.ip}</span>}
+          </div>
+        ))}
+      </div>
+      {more && (
+        <button className="text-xs text-sky-400 hover:underline"
+          onClick={() => fetchPage(rows[rows.length - 1].id)}>Load more</button>
+      )}
+    </div>
+  )
+}
+
 /** Admin-only: create panel users and grant per-tab access with checkboxes. */
 export default function Users() {
   const { user: me } = useAuth()
@@ -11,6 +55,8 @@ export default function Users() {
   const [msg, setMsg] = useState(null)           // {text, error}
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState({ username: '', password: '', is_admin: false, permissions: [] })
+  const [openActivity, setOpenActivity] = useState(null)   // user id whose activity is open
+  const [showAll, setShowAll] = useState(false)
 
   const load = useCallback(() => {
     Promise.all([api.get('/auth/permissions'), api.get('/auth/users')])
@@ -122,12 +168,18 @@ export default function Users() {
                       onChange={(e) => patch(u, { is_admin: e.target.checked })} />
                     admin
                   </label>
+                  {!self && (
+                    <button className={`px-2 py-1 rounded ${openActivity === u.id ? 'bg-sky-700' : 'bg-slate-700 hover:bg-slate-600'}`}
+                      onClick={() => setOpenActivity(openActivity === u.id ? null : u.id)}>Activity</button>
+                  )}
                   <button className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600"
                     onClick={() => resetPw(u)}>Reset password</button>
                   <button className="px-2 py-1 rounded bg-red-800 hover:bg-red-700 disabled:opacity-40"
                     onClick={() => remove(u)} disabled={self}>Delete</button>
                 </div>
               </div>
+
+              {openActivity === u.id && <ActivityList userId={u.id} />}
 
               {!u.is_admin && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
@@ -143,6 +195,20 @@ export default function Users() {
             </div>
           )
         })}
+      </div>
+
+      {/* Everyone's activity */}
+      <div className="border-t border-panel-border pt-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium text-slate-300">User activity</p>
+          <button className="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600"
+            onClick={() => setShowAll(!showAll)}>{showAll ? 'Hide' : 'Show all users'}</button>
+        </div>
+        <p className="text-xs text-slate-500">
+          Logins and every change users make (dashboards, uploads, deletes, scripts, settings).
+          Kept for 90 days.
+        </p>
+        {showAll && <ActivityList userId={null} showUser />}
       </div>
     </div>
   )

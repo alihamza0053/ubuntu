@@ -3,6 +3,9 @@ Shared FastAPI dependencies: current-user resolution for both HTTP
 routes (Authorization: Bearer header) and WebSocket connections
 (?token= query parameter).
 """
+import asyncio
+import re
+
 from fastapi import Depends, HTTPException, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
@@ -11,6 +14,7 @@ from .database import SessionLocal, get_db
 from .models import User
 from .permissions import user_can_tab
 from .security import decode_access_token
+from .services import user_audit
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -69,4 +73,8 @@ async def authenticate_websocket(websocket: WebSocket,
     if require and not user_can_tab(user, require):
         await websocket.close(code=1008, reason="Permission denied")
         return None
+    path = websocket.url.path
+    if any(re.search(rx, path) for rx in user_audit.LOGGED_WS):
+        ip = websocket.headers.get("x-real-ip") or (websocket.client.host if websocket.client else "")
+        await asyncio.to_thread(user_audit.record_request, user, "WS", path, 101, ip)
     return user

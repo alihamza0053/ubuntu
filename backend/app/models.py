@@ -26,6 +26,21 @@ class User(Base):
     permissions: Mapped[str] = mapped_column(Text, default="")
 
 
+class UserActivity(Base):
+    """One thing a panel user did (Settings → Users → Activity)."""
+    __tablename__ = "user_activity"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    username: Mapped[str] = mapped_column(String(64), index=True)
+    action: Mapped[str] = mapped_column(String(255))          # readable: "Started dashboard of mga-ops"
+    method: Mapped[str] = mapped_column(String(8), default="")
+    path: Mapped[str] = mapped_column(String(512), default="")
+    status: Mapped[int] = mapped_column(Integer, default=0)   # HTTP status of the request
+    ip: Mapped[str] = mapped_column(String(64), default="")
+
+
 class Project(Base):
     """A Python workspace under /srv/projects/{name}/."""
     __tablename__ = "projects"

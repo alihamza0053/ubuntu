@@ -6,7 +6,9 @@ Run in development:
 In production this runs under Supervisor (see deploy/serverhub.conf) and
 serves the built React frontend from backend/static/.
 """
+import asyncio
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +25,7 @@ from .security import decode_access_token
 from .routers import (apps, auth, dashboard, databases, files, onedrive,
                       packages, pipeline, portal, projects, schedules, scripts,
                       server, settings_router, trash, websites)
-from .services import pipeline_service, scheduler_service
+from .services import pipeline_service, scheduler_service, user_audit
 
 # Create any missing tables on startup (idempotent), then run column migrations
 Base.metadata.create_all(bind=engine)
@@ -69,9 +71,8 @@ class PermissionMiddleware(BaseHTTPMiddleware):
     """
     async def dispatch(self, request, call_next):
         path = request.url.path
-        if (path.startswith("/api/")
-                and not path.startswith("/api/auth")
-                and path != "/api/health"):
+        audit_user = None
+        if path.startswith("/api/") and path not in ("/api/health", "/api/auth/login"):
             auth = request.headers.get("authorization", "")
             token = auth[7:] if auth[:7].lower() == "bearer " else None
             username = decode_access_token(token) if token else None
@@ -79,19 +80,28 @@ class PermissionMiddleware(BaseHTTPMiddleware):
                 db = SessionLocal()
                 try:
                     user = db.query(User).filter(User.username == username).first()
-                    if user and not user_can(user, path, request.method):
-                        return JSONResponse(
-                            {"detail": "You don't have access to this section."},
-                            status_code=403)
-                    # Admin-hidden projects/websites look like they don't
-                    # exist to non-admins, even when addressed by id.
-                    if (user and not user.is_admin
-                            and targets_hidden_entity(db, path)):
-                        return JSONResponse({"detail": "Not found"},
-                                            status_code=404)
+                    if user and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+                        # remembered for the per-user activity log (after the response)
+                        audit_user = SimpleNamespace(id=user.id, username=user.username)
+                    if not path.startswith("/api/auth"):
+                        if user and not user_can(user, path, request.method):
+                            return JSONResponse(
+                                {"detail": "You don't have access to this section."},
+                                status_code=403)
+                        # Admin-hidden projects/websites look like they don't
+                        # exist to non-admins, even when addressed by id.
+                        if (user and not user.is_admin
+                                and targets_hidden_entity(db, path)):
+                            return JSONResponse({"detail": "Not found"},
+                                                status_code=404)
                 finally:
                     db.close()
-        return await call_next(request)
+        response = await call_next(request)
+        if audit_user is not None:
+            ip = request.headers.get("x-real-ip") or (request.client.host if request.client else "")
+            await asyncio.to_thread(user_audit.record_request, audit_user, request.method,
+                                    path, response.status_code, ip)
+        return response
 
 
 app.add_middleware(PermissionMiddleware)
