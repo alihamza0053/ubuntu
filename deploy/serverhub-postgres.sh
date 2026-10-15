@@ -21,6 +21,30 @@ set -eu
 PANEL_USER="${PANEL_USER:-serverhub}"
 
 pg_version() { ls /etc/postgresql 2>/dev/null | sort -V | tail -1; }
+# On Debian/Ubuntu `postgresql.service` is only an umbrella that returns at
+# once; the real server is postgresql@<ver>-main.
+cluster_unit() { echo "postgresql@$(pg_version)-main"; }
+
+wait_ready() {   # up to 40 s for the server to accept connections
+  for _ in $(seq 1 40); do
+    pg_isready -q -h /var/run/postgresql 2>/dev/null && return 0
+    sleep 1
+  done
+  return 1
+}
+
+show_logs() {
+  local ver; ver=$(pg_version)
+  echo "--- last PostgreSQL log lines ---"
+  tail -n 25 "/var/log/postgresql/postgresql-${ver}-main.log" 2>/dev/null || true
+  journalctl -u "$(cluster_unit)" -n 15 --no-pager 2>/dev/null || true
+}
+
+start_server() {
+  systemctl enable postgresql "$(cluster_unit)" >/dev/null 2>&1 || true
+  systemctl restart "$(cluster_unit)" 2>&1 || true
+  wait_ready
+}
 
 configure() {
   local ver dir ram_mb shared cache maint
@@ -28,6 +52,9 @@ configure() {
   [ -n "$ver" ] || { echo "PostgreSQL is not installed"; exit 1; }
   dir="/etc/postgresql/$ver/main"
   mkdir -p "$dir/conf.d"
+  # keep Ubuntu's originals once, to roll back to if our config won't start
+  [ -f "$dir/pg_hba.conf.orig" ] || cp -p "$dir/pg_hba.conf" "$dir/pg_hba.conf.orig"
+  [ -f "$dir/pg_ident.conf.orig" ] || cp -p "$dir/pg_ident.conf" "$dir/pg_ident.conf.orig"
 
   ram_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
   shared=$(( ram_mb / 10 ));  [ "$shared" -lt 128 ] && shared=128;  [ "$shared" -gt 2048 ] && shared=2048
@@ -75,8 +102,15 @@ EOF
   chown postgres:postgres "$dir/pg_hba.conf" "$dir/pg_ident.conf" "$dir/conf.d/serverhub.conf"
   chmod 640 "$dir/pg_hba.conf" "$dir/pg_ident.conf"
 
-  systemctl enable postgresql >/dev/null 2>&1 || true
-  systemctl restart postgresql
+  if ! start_server; then
+    echo "PostgreSQL did not start with the new config — restoring the original one."
+    show_logs
+    cp -p "$dir/pg_hba.conf.orig" "$dir/pg_hba.conf"
+    cp -p "$dir/pg_ident.conf.orig" "$dir/pg_ident.conf"
+    mv -f "$dir/conf.d/serverhub.conf" "$dir/conf.d/serverhub.conf.failed" 2>/dev/null || true
+    start_server || true
+    exit 1
+  fi
   # Nobody may connect to the maintenance databases except the admin
   runuser -u postgres -- psql -X -q -c "REVOKE ALL ON DATABASE postgres FROM PUBLIC;" >/dev/null
   runuser -u postgres -- psql -X -q -d template1 -c "REVOKE ALL ON DATABASE template1 FROM PUBLIC;" >/dev/null
@@ -85,19 +119,22 @@ EOF
 
 case "${1:-}" in
   install)
-    export DEBIAN_FRONTEND=noninteractive
+    export DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1   # no service-restart chatter
     apt-get update -qq
     apt-get install -y -qq postgresql postgresql-contrib >/dev/null
     configure
     ;;
   configure) configure ;;
-  restart)   systemctl restart postgresql && echo "restarted" ;;
+  restart)
+    if start_server; then echo "restarted"; else echo "PostgreSQL did not start"; show_logs; exit 1; fi
+    ;;
   status)
     ver=$(pg_version)
     if [ -z "$ver" ]; then echo "installed=no"; exit 0; fi
     echo "installed=yes"
     echo "version=$ver"
-    if systemctl is-active --quiet postgresql; then echo "running=yes"; else echo "running=no"; fi
+    # really accepting connections — not just the umbrella unit being "active"
+    if pg_isready -q -h /var/run/postgresql 2>/dev/null; then echo "running=yes"; else echo "running=no"; fi
     ;;
   *) echo "usage: serverhub-postgres <install|configure|status|restart>" >&2; exit 2 ;;
 esac
