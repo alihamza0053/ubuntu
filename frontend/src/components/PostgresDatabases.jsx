@@ -271,7 +271,7 @@ export default function PostgresDatabases({ tabs }) {
       {status?.running && (
         <>
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
-            <span>PostgreSQL {status.server_version}</span>
+            <span>PostgreSQL {status.server_version} · port {status.port}</span>
             <span>Connections {status.connections} / {status.max_connections}</span>
             <span>Memory (shared_buffers) {status.shared_buffers}</span>
             <span className="text-emerald-400">● localhost only · one user per database · password required</span>

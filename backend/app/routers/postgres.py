@@ -54,8 +54,9 @@ def _row(db: Session, name: str) -> PgDatabase:
 
 
 def _connection(name: str, password: str) -> dict:
-    return {"database": name, "user": name, "password": password, "host": "127.0.0.1", "port": 5432,
-            "url": f"postgresql://{name}:{password}@127.0.0.1:5432/{name}"}
+    port = pg.server_port()
+    return {"database": name, "user": name, "password": password, "host": "127.0.0.1", "port": port,
+            "url": f"postgresql://{name}:{password}@127.0.0.1:{port}/{name}"}
 
 
 def _link(db: Session, row: PgDatabase, kind: str | None, target: str | None) -> dict | None:
@@ -75,7 +76,7 @@ def _link(db: Session, row: PgDatabase, kind: str | None, target: str | None) ->
     for other in db.query(PgDatabase).filter(PgDatabase.linked_kind == kind, PgDatabase.linked_name == target):
         other.linked_kind = other.linked_name = None
     password = pg.set_password(row.name)            # only the linked code knows it
-    db_env.write(kind, target, row.name, row.name, password)
+    db_env.write(kind, target, row.name, row.name, password, pg.server_port())
     row.linked_kind, row.linked_name = kind, target
     db.commit()
     return _connection(row.name, password)

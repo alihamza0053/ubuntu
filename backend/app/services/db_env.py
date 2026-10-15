@@ -2,7 +2,7 @@
 Connection details of a linked PostgreSQL database, handed to a project's or
 website's code as environment variables.
 
-    DATABASE_URL=postgresql://<user>:<password>@127.0.0.1:5432/<db>
+    DATABASE_URL=postgresql://<user>:<password>@127.0.0.1:<port>/<db>   (port 5432 unless taken)
     PGHOST / PGPORT / PGDATABASE / PGUSER / PGPASSWORD   (libpq's standard
     names: psql, psycopg, SQLAlchemy and pandas pick them up with no config)
 
@@ -27,10 +27,10 @@ def env_path(kind: str, name: str) -> Path:
     return ENV_DIR / f"{kind}-{name}.env"
 
 
-def write(kind: str, name: str, database: str, user: str, password: str) -> None:
+def write(kind: str, name: str, database: str, user: str, password: str, port: int = 5432) -> None:
     values = {
-        "DATABASE_URL": f"postgresql://{user}:{password}@127.0.0.1:5432/{database}",
-        "PGHOST": "127.0.0.1", "PGPORT": "5432",
+        "DATABASE_URL": f"postgresql://{user}:{password}@127.0.0.1:{port}/{database}",
+        "PGHOST": "127.0.0.1", "PGPORT": str(port),
         "PGDATABASE": database, "PGUSER": user, "PGPASSWORD": password,
     }
     ENV_DIR.mkdir(parents=True, exist_ok=True)

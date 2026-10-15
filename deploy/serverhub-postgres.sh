@@ -9,7 +9,8 @@
 #   restart    restart the service (after a config change)
 #
 # The config this writes:
-#   * listens on 127.0.0.1 / ::1 only — never reachable from the internet
+#   * listens on 127.0.0.1 only — never reachable from the internet; uses 5432,
+#     or the next free port when something else (e.g. a Docker container) has it
 #   * every database user may connect ONLY to the database with its own name
 #     (pg_hba `sameuser`), with a scram-sha-256 password; anything else is refused
 #   * the panel user (serverhub) may act as the postgres admin over the local
@@ -25,9 +26,30 @@ pg_version() { ls /etc/postgresql 2>/dev/null | sort -V | tail -1; }
 # once; the real server is postgresql@<ver>-main.
 cluster_unit() { echo "postgresql@$(pg_version)-main"; }
 
+configured_port() {   # the port our config uses (5432 until we've written one)
+  local f="/etc/postgresql/$(pg_version)/main/conf.d/serverhub.conf"
+  awk -F'= *' '/^port *=/ {print $2; exit}' "$f" 2>/dev/null | tr -d " '" | grep -E '^[0-9]+$' || echo 5432
+}
+
+port_taken() { [ -n "$(ss -Hltn "sport = :$1" 2>/dev/null)" ]; }
+
+pick_port() {
+  # Keep the current port while our server is up on it; otherwise the first free
+  # one from 5432 — another PostgreSQL (e.g. inside a Docker container) may
+  # already hold 5432, and we never touch it.
+  local cur p
+  cur=$(configured_port)
+  if pg_isready -q -h /var/run/postgresql -p "$cur" 2>/dev/null; then echo "$cur"; return; fi
+  for p in $(seq 5432 5450); do
+    port_taken "$p" || { echo "$p"; return; }
+  done
+  echo "no free port between 5432 and 5450" >&2; return 1
+}
+
 wait_ready() {   # up to 40 s for the server to accept connections
+  local port; port=$(configured_port)
   for _ in $(seq 1 40); do
-    pg_isready -q -h /var/run/postgresql 2>/dev/null && return 0
+    pg_isready -q -h /var/run/postgresql -p "$port" 2>/dev/null && return 0
     sleep 1
   done
   return 1
@@ -61,10 +83,18 @@ configure() {
   cache=$(( ram_mb / 4 ));    [ "$cache" -lt 256 ] && cache=256
   maint=$(( ram_mb / 32 ));   [ "$maint" -lt 64 ] && maint=64;      [ "$maint" -gt 512 ] && maint=512
 
+  local port
+  if pg_isready -q -h /var/run/postgresql -p "$(configured_port)" 2>/dev/null; then
+    port=$(configured_port)                                  # running fine: keep its port
+  else
+    systemctl stop "$(cluster_unit)" 2>/dev/null || true
+    port=$(pick_port)
+  fi
+
   cat > "$dir/conf.d/serverhub.conf" <<EOF
 # Written by ServerHub (serverhub-postgres configure) — re-run to regenerate.
-listen_addresses = 'localhost'
-port = 5432
+listen_addresses = '127.0.0.1'
+port = ${port}
 password_encryption = scram-sha-256
 max_connections = 100
 superuser_reserved_connections = 3
@@ -112,9 +142,12 @@ EOF
     exit 1
   fi
   # Nobody may connect to the maintenance databases except the admin
-  runuser -u postgres -- psql -X -q -c "REVOKE ALL ON DATABASE postgres FROM PUBLIC;" >/dev/null
-  runuser -u postgres -- psql -X -q -d template1 -c "REVOKE ALL ON DATABASE template1 FROM PUBLIC;" >/dev/null
-  echo "configured PostgreSQL $ver (shared_buffers ${shared}MB, localhost only)"
+  runuser -u postgres -- psql -X -q -p "$port" -c "REVOKE ALL ON DATABASE postgres FROM PUBLIC;" >/dev/null
+  runuser -u postgres -- psql -X -q -p "$port" -d template1 -c "REVOKE ALL ON DATABASE template1 FROM PUBLIC;" >/dev/null
+  if [ "$port" != 5432 ]; then
+    echo "note: port 5432 is used by something else on this server (left alone) — PostgreSQL uses $port"
+  fi
+  echo "configured PostgreSQL $ver on 127.0.0.1:$port (shared_buffers ${shared}MB)"
 }
 
 case "${1:-}" in
@@ -134,7 +167,8 @@ case "${1:-}" in
     echo "installed=yes"
     echo "version=$ver"
     # really accepting connections — not just the umbrella unit being "active"
-    if pg_isready -q -h /var/run/postgresql 2>/dev/null; then echo "running=yes"; else echo "running=no"; fi
+    echo "port=$(configured_port)"
+    if pg_isready -q -h /var/run/postgresql -p "$(configured_port)" 2>/dev/null; then echo "running=yes"; else echo "running=no"; fi
     ;;
   *) echo "usage: serverhub-postgres <install|configure|status|restart>" >&2; exit 2 ;;
 esac

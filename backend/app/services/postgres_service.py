@@ -64,10 +64,26 @@ def new_password() -> str:
     return "".join(secrets.choice(alphabet) for _ in range(32))
 
 
+def server_port() -> int:
+    """
+    The port PostgreSQL listens on. 5432 normally — but when something else on
+    the server (e.g. a Docker container) already holds 5432, the helper picks
+    the next free one and writes it to conf.d/serverhub.conf.
+    """
+    for conf in sorted(Path("/etc/postgresql").glob("*/main/conf.d/serverhub.conf"), reverse=True):
+        try:
+            m = re.search(r"(?m)^\s*port\s*=\s*'?(\d+)", conf.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        if m:
+            return int(m.group(1))
+    return 5432
+
+
 def connect(database: str = "postgres"):
     psycopg, _ = _psycopg()
     try:
-        return psycopg.connect(host=SOCKET_DIR, user="postgres", dbname=database,
+        return psycopg.connect(host=SOCKET_DIR, port=server_port(), user="postgres", dbname=database,
                                autocommit=True, connect_timeout=5)
     except psycopg.OperationalError as exc:
         raise HTTPException(503, f"Can't reach PostgreSQL: {str(exc).strip()[:300]}")
@@ -90,7 +106,7 @@ def status() -> dict:
     code, out = _helper("status")
     info = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
     st = {"installed": info.get("installed") == "yes", "running": info.get("running") == "yes",
-          "version": info.get("version"), "helper": code == 0}
+          "version": info.get("version"), "port": int(info.get("port") or 5432), "helper": code == 0}
     if code != 0:
         st["error"] = out[-300:] or "The PostgreSQL helper isn't installed yet — run deploy/update.sh."
     if st["running"]:
@@ -272,7 +288,8 @@ def run_query(name: str, query: str) -> dict:
 def export_database(name: str, dest: Path) -> Path:
     name = check_name(name)
     try:
-        r = subprocess.run(["pg_dump", "-h", SOCKET_DIR, "-U", "postgres", "--no-owner", "--no-privileges",
+        r = subprocess.run(["pg_dump", "-h", SOCKET_DIR, "-p", str(server_port()), "-U", "postgres",
+                            "--no-owner", "--no-privileges",
                             "-f", str(dest), name], capture_output=True, text=True, timeout=1800)
     except FileNotFoundError:
         raise HTTPException(500, "pg_dump isn't installed (install PostgreSQL from this page first).")
@@ -285,7 +302,8 @@ def import_sql(name: str, path: Path) -> str:
     """Load a plain .sql dump as the database's own role (so it owns what it creates)."""
     name = check_name(name)
     try:
-        r = subprocess.run(["psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-h", SOCKET_DIR, "-U", "postgres",
+        r = subprocess.run(["psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-h", SOCKET_DIR,
+                            "-p", str(server_port()), "-U", "postgres",
                             "-d", name, "-c", f'SET ROLE "{name}"', "-f", str(path)],
                            capture_output=True, text=True, timeout=1800)
     except FileNotFoundError:
