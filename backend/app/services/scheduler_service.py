@@ -158,7 +158,8 @@ def _cleanup_bin() -> str:
 
 async def _auto_clean_temp() -> None:
     """
-    Daily job: delete /tmp and /var/tmp files untouched for over 24 hours.
+    Every 6 hours: delete /tmp and /var/tmp files untouched for 6 hours and
+    leftover browser profile folders.
 
     Same vetted root helper the manual "Clean now" button uses, so it can only
     remove the exact things that button removes. Failures are logged, never
@@ -197,7 +198,8 @@ def set_auto_clean_temp(enabled: bool) -> None:
     if enabled:
         scheduler.add_job(
             _auto_clean_temp,
-            trigger=CronTrigger(hour=AUTO_CLEAN_TEMP_HOUR,
+            # every 6 hours from AUTO_CLEAN_TEMP_HOUR (03:30, 09:30, 15:30, 21:30)
+            trigger=CronTrigger(hour=f"{AUTO_CLEAN_TEMP_HOUR % 6}-23/6",
                                 minute=AUTO_CLEAN_TEMP_MINUTE),
             id=AUTO_CLEAN_TEMP_JOB,
             replace_existing=True,

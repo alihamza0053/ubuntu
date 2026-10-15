@@ -422,6 +422,20 @@ function SystemCleanup() {
               </>
             )}
 
+            {disk.tmp_top?.length > 0 && (
+              <>
+                <p className="text-xs text-slate-500">Biggest items in /tmp and /var/tmp:</p>
+                <div className="space-y-1">
+                  {disk.tmp_top.map((d) => (
+                    <div key={d.path} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-slate-400 font-mono truncate">{d.path}</span>
+                      <span className="font-mono text-slate-300 shrink-0">{fmtSize(d.size)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
             <p className="text-xs text-slate-500 border-t border-slate-800 pt-2">
               Safe to clean (nothing here touches your projects, websites, apps
               or databases):
@@ -450,7 +464,7 @@ function SystemCleanup() {
               {runningKind === 'disk' ? 'Cleaning…' : '🧹 Clean disk now'}
             </button>
 
-            {/* Daily automatic temp cleanup */}
+            {/* Automatic temp cleanup (every 6 hours) */}
             {info?.auto_clean_temp && (
               <div className="rounded-lg border border-panel-border bg-slate-900/60 p-3 mt-1">
                 <label className="flex items-start gap-2.5 cursor-pointer">
@@ -460,12 +474,12 @@ function SystemCleanup() {
                     onChange={(e) => toggleAutoTemp(e.target.checked)} />
                   <span className="flex-1 min-w-0">
                     <span className="text-sm text-slate-200">
-                      Clean temp files automatically, every day
+                      Clean temp files automatically, every 6 hours
                     </span>
                     <span className="block text-xs text-slate-500">
-                      Runs at {info.auto_clean_temp.at} server time and deletes
-                      /tmp and /var/tmp files untouched for over 24 hours.
-                      Nothing else is touched.
+                      Runs at {info.auto_clean_temp.at} server time (and every 6 hours
+                      after) and deletes /tmp and /var/tmp files untouched for 6 hours,
+                      plus leftover browser profile folders. Nothing else is touched.
                     </span>
                     {info.auto_clean_temp.enabled && info.auto_clean_temp.next_run && (
                       <span className="block text-xs text-slate-600 mt-0.5">

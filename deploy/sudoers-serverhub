@@ -7,6 +7,9 @@
 
 # --- Supervisor: control Streamlit dashboards + panel programs ---
 serverhub ALL=(root) NOPASSWD: /usr/bin/supervisorctl *
+# Free a dashboard port held by a leftover (unmanaged) streamlit/gunicorn/uvicorn
+# process — the helper refuses anything else (see deploy/serverhub-free-port.sh).
+serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-free-port *
 
 # --- Nginx + Certbot: domain assignment and SSL (Phase 3) ---
 serverhub ALL=(root) NOPASSWD: /usr/sbin/nginx -t

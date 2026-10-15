@@ -6,6 +6,7 @@ A project is a folder under PROJECTS_ROOT with the fixed layout:
 plus a supervisor program for its Streamlit dashboard.
 """
 import shutil
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -76,31 +77,49 @@ def list_folder(project: Project, folder: str) -> list[FileInfo]:
     return files
 
 
-def project_to_out(project: Project, db: Session, with_status: bool = False) -> ProjectOut:
-    """Build the API shape including computed dashboard-card fields."""
+def _count_files(project: Project, folder: str) -> int:
+    """Number of regular files in a project sub-folder (no listing/stat/sort)."""
+    try:
+        with os.scandir(project_root(project) / folder) as it:
+            return sum(1 for e in it if e.is_file())
+    except OSError:
+        return 0
+
+
+def project_to_out(project: Project, db: Session, with_status: bool = False,
+                   statuses: dict[str, str] | None = None, last_run=None) -> ProjectOut:
+    """
+    Build the API shape including computed dashboard-card fields.
+
+    The list endpoint passes `statuses` (one `supervisorctl status` for every
+    program) and `last_run` (one grouped query) so 45 projects don't mean 45
+    sudo calls and 45 queries; a single project still looks them up itself.
+    """
     out = ProjectOut.model_validate(project)
-    out.file_counts = {
-        folder: len(list_folder(project, folder))
-        for folder in ("code", "allscripts", "data", "dashboard")
-    }
-    # Most recent script run across the project
-    last = (
-        db.query(Script)
-        .filter(Script.project_id == project.id, Script.last_run.isnot(None))
-        .order_by(Script.last_run.desc())
-        .first()
-    )
-    if last:
-        out.last_script_run = last.last_run
-        out.last_script_status = last.last_status
+    out.file_counts = {folder: _count_files(project, folder)
+                       for folder in ("code", "allscripts", "data", "dashboard")}
+    if last_run is None and statuses is None:
+        last_run = (
+            db.query(Script)
+            .filter(Script.project_id == project.id, Script.last_run.isnot(None))
+            .order_by(Script.last_run.desc())
+            .first()
+        )
+    if last_run:
+        out.last_script_run = last_run.last_run
+        out.last_script_status = last_run.last_status
     out.venv_status = venv_service.status(project.name)
     if with_status:
-        # Live supervisor status (one subprocess call per project)
-        state, _ = supervisor_service.status(project.name)
+        if statuses is not None:
+            state = supervisor_service.state_from_raw(
+                statuses.get(supervisor_service.program_name(project.name), ""))
+        else:
+            state, _ = supervisor_service.status(project.name)
         out.dashboard_status = state
         if state != project.dashboard_status:
             project.dashboard_status = state
-            db.commit()
+            if statuses is None:       # single project: save now (the list commits once)
+                db.commit()
     return out
 
 
@@ -135,7 +154,18 @@ def list_projects(
     query = db.query(Project)
     if not user.is_admin:   # admin-hidden projects are invisible to others
         query = query.filter(Project.hidden.is_(False))
-    return [project_to_out(p, db, with_status) for p in query.all()]
+    projects = query.all()
+    statuses = supervisor_service.all_statuses() if with_status else {}
+    # Latest script run per project in one pass (newest first → first seen wins)
+    last_runs: dict[int, Script] = {}
+    for script in (db.query(Script).filter(Script.last_run.isnot(None))
+                   .order_by(Script.last_run.desc())):
+        last_runs.setdefault(script.project_id, script)
+    out = [project_to_out(p, db, with_status, statuses=statuses, last_run=last_runs.get(p.id, False))
+           for p in projects]
+    if with_status:
+        db.commit()            # cached dashboard_status column, written once
+    return out
 
 
 class HiddenRequest(BaseModel):

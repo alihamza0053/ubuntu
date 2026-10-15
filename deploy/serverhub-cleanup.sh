@@ -5,7 +5,9 @@
 # Usage: serverhub-cleanup <task> [task…]
 #   apt      apt autoremove + clean the package download cache
 #   journal  shrink systemd journal logs (keep the last 3 days)
-#   tmp      delete /tmp and /var/tmp files untouched for over a day
+#   tmp      delete /tmp and /var/tmp files untouched for 6 hours + leftover
+#            browser profile folders untouched for 2 hours
+#   sizes    (read-only) disk usage per location, biggest /tmp items, held deleted files
 #   logs     delete rotated/compressed logs under /var/log (*.gz, *.1, …)
 #   pip      delete pip download caches (all users)
 #   ram      flush filesystem caches from RAM (sync + drop_caches)
@@ -41,24 +43,62 @@ run_journal() {
 }
 
 run_tmp() {
-  echo "── tmp: delete /tmp and /var/tmp files older than 1 day ──"
-  local count=0
+  echo "── tmp: delete stale files in /tmp and /var/tmp ──"
+  local count=0 dirs=0
   for base in /tmp /var/tmp; do
     [ -d "$base" ] || continue
-    # Only plain files/symlinks untouched >1 day; leave sockets, X11 dirs and
-    # systemd-private mounts alone. Errors (files vanishing mid-walk) ignored.
+    # Leftover browser / automation profiles (download scripts, report
+    # screenshots, Selenium/Playwright): whole folders, often 100 MB+ each.
+    # Removed once nothing inside has been touched for 2 hours — a browser
+    # that is still running keeps writing to its profile.
+    while IFS= read -r -d '' d; do
+      if [ -z "$(find "$d" -mmin -120 -print -quit 2>/dev/null)" ]; then
+        rm -rf -- "$d" 2>/dev/null && dirs=$((dirs + 1))
+      fi
+    done < <(find "$base" -mindepth 1 -maxdepth 1 -type d \
+               \( -name ".org.chromium.Chromium.*" -o -name ".com.google.Chrome.*" \
+                  -o -name "scoped_dir*" -o -name "playwright*" -o -name "puppeteer*" \
+                  -o -name "rust_mozprofile*" -o -name "tmp*profile*" -o -name ".com.brave.Browser.*" \
+                  -o -name "chrome_*" -o -name "selenium*" \) -print0 2>/dev/null)
+    # Everything else: plain files/symlinks untouched for 6 hours; leave
+    # sockets, X11 dirs and systemd-private mounts alone.
     while IFS= read -r -d '' f; do
       rm -f -- "$f" 2>/dev/null && count=$((count + 1))
     done < <(find "$base" -mindepth 1 \
                \( -name ".X11-unix" -o -name "systemd-private-*" \
                   -o -name ".font-unix" -o -name ".ICE-unix" \) -prune \
-               -o \( -type f -o -type l \) -mtime +1 -print0 2>/dev/null)
+               -o \( -type f -o -type l \) -mmin +360 -print0 2>/dev/null)
     # Sweep now-empty directories (best-effort)
     find "$base" -mindepth 1 -type d -empty \
       ! -name ".X11-unix" ! -name ".font-unix" ! -name ".ICE-unix" \
       -delete 2>/dev/null || true
   done
-  echo "removed $count old temp file(s)"
+  echo "removed $count old temp file(s) and $dirs leftover browser profile folder(s)"
+}
+
+# Read-only: sizes as root (the panel itself can't read root-owned folders).
+#   SIZE<TAB>bytes<TAB>path      a location in the disk breakdown
+#   TMPTOP<TAB>bytes<TAB>path    the biggest items inside /tmp and /var/tmp
+#   DELETED<TAB>bytes            deleted files still held open by running programs
+run_sizes() {
+  for p in /srv/projects /srv/websites /srv/serverhub/backups /srv/serverhub/trash /srv/onedrive \
+           /srv/apps /var/lib/mysql /var/lib/docker /var/lib/containerd /var/lib/snapd /snap \
+           /var/log /var/cache/apt/archives /tmp /var/tmp /home /root /usr /opt /swap.img /swapfile; do
+    [ -e "$p" ] || continue
+    printf 'SIZE\t%s\t%s\n' "$(du -sxb "$p" 2>/dev/null | tail -1 | cut -f1)" "$p"
+  done
+  for base in /tmp /var/tmp; do
+    [ -d "$base" ] || continue
+    find "$base" -mindepth 1 -maxdepth 1 -print0 2>/dev/null \
+      | xargs -0 -r du -sxb 2>/dev/null
+  done | sort -rn | head -12 | while IFS=$'\t' read -r b p; do printf 'TMPTOP\t%s\t%s\n' "$b" "$p"; done
+  local held=0 s
+  for fd in /proc/[0-9]*/fd/*; do
+    case "$(readlink "$fd" 2>/dev/null)" in
+      *" (deleted)") s=$(stat -L -c %s "$fd" 2>/dev/null) && held=$((held + ${s:-0})) ;;
+    esac
+  done
+  printf 'DELETED\t%s\n' "$held"
 }
 
 run_logs() {
@@ -95,6 +135,11 @@ run_ram() {
   echo "note: Linux reuses free RAM for disk cache automatically — high usage"
   echo "      by cache is normal and not a problem."
 }
+
+if [ "${1:-}" = "sizes" ]; then   # read-only report, no cleanup summary
+  run_sizes
+  exit 0
+fi
 
 if [ "$#" -eq 0 ]; then
   echo "usage: serverhub-cleanup <apt|journal|tmp|logs|pip|ram> …" >&2

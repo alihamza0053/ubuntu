@@ -166,7 +166,7 @@ CLEANUP_BIN = str(app_settings.PANEL_ROOT / "bin" / "serverhub-cleanup")
 # Tasks the root helper script understands, in display order. `trash` is
 # handled inside the panel (no root needed) — it empties the recycle bin.
 CLEANUP_TASKS: list[tuple[str, str, str]] = [
-    ("tmp", "Temp files", "Files in /tmp and /var/tmp untouched for over a day"),
+    ("tmp", "Temp files", "Files in /tmp and /var/tmp untouched for 6 hours + leftover browser profiles"),
     ("apt", "APT cache", "Downloaded .deb packages + packages nothing needs anymore"),
     ("journal", "System journal", "systemd journal logs older than 3 days"),
     ("logs", "Rotated logs", "Old compressed/rotated log files under /var/log"),
@@ -237,7 +237,45 @@ DISK_BREAKDOWN: list[tuple[str, str]] = [
     ("/tmp", "Temp (/tmp)"),
     ("/var/tmp", "Temp (/var/tmp)"),
     ("/home", "Home directories"),
+    ("/srv/apps", "Apps (Ollama models, n8n, browsers)"),
+    ("/root", "Root user's home (scripts, caches)"),
+    ("/usr", "System programs (/usr)"),
+    ("/opt", "Optional software (/opt)"),
+    ("/snap", "Snap packages"),
+    ("/var/lib/snapd", "Snap data"),
+    ("/var/lib/docker", "Docker images & containers"),
+    ("/var/lib/containerd", "containerd"),
+    ("/swap.img", "Swap file"),
+    ("/swapfile", "Swap file"),
 ]
+DISK_LABELS = dict(DISK_BREAKDOWN)
+
+
+async def _root_sizes() -> dict | None:
+    """
+    Sizes measured as root by the cleanup helper (`serverhub-cleanup sizes`):
+    the panel user can't read /root, /var/lib/docker, other users' temp files…
+    None when the helper is missing/old — the caller falls back to its own du.
+    """
+    try:
+        code, out = await run_command(["sudo", "-n", CLEANUP_BIN, "sizes"], timeout=120)
+    except OSError:
+        return None
+    if code != 0 or "SIZE\t" not in out:
+        return None
+    sizes, tmp_top, held = {}, [], 0
+    for line in out.splitlines():
+        parts = line.split("\t")
+        try:
+            if parts[0] == "SIZE" and len(parts) == 3:
+                sizes[parts[2]] = int(parts[1])
+            elif parts[0] == "TMPTOP" and len(parts) == 3:
+                tmp_top.append({"path": parts[2], "size": int(parts[1])})
+            elif parts[0] == "DELETED" and len(parts) == 2:
+                held = int(parts[1])
+        except ValueError:
+            continue
+    return {"sizes": sizes, "tmp_top": tmp_top, "held_deleted": held}
 
 
 async def _du(path: str) -> int | None:
@@ -312,13 +350,23 @@ async def cleanup_preview():
     except (AttributeError, OSError):
         load_avg = None
 
-    # Disk breakdown: every `du` runs concurrently
-    du_sizes = await asyncio.gather(*(_du(path) for path, _ in DISK_BREAKDOWN))
-    breakdown = [
-        {"path": path, "label": label, "size": size}
-        for (path, label), size in zip(DISK_BREAKDOWN, du_sizes)
-        if size is not None
-    ]
+    # Disk breakdown: measured as root when the helper allows it, else our own du
+    root = await _root_sizes()
+    if root:
+        measured = root["sizes"]
+    else:
+        du_sizes = await asyncio.gather(*(_du(path) for path, _ in DISK_BREAKDOWN))
+        measured = {path: size for (path, _), size in zip(DISK_BREAKDOWN, du_sizes) if size is not None}
+    breakdown = [{"path": path, "label": DISK_LABELS.get(path, path), "size": size}
+                 for path, size in measured.items() if size]
+    if root and root["held_deleted"]:
+        breakdown.append({"path": "(deleted, still open)", "size": root["held_deleted"],
+                          "label": "Deleted files still held by running programs (freed when they restart)"})
+    # Whatever none of the rows above covers (OS files, other folders, filesystem overhead)
+    other = disk.used - sum(d["size"] for d in breakdown)
+    if other > 512 * 1024**2:
+        breakdown.append({"path": "(everything else)", "size": other,
+                          "label": "Everything else" + ("" if root else " (incl. folders the panel can't read)")})
     breakdown.sort(key=lambda x: x["size"], reverse=True)
 
     trash_count = 0
@@ -330,8 +378,9 @@ async def cleanup_preview():
                 trash_size += _dir_size(item) or 0
 
     sizes: dict[str, int | None] = {
-        "tmp": (_dir_size(Path("/tmp")) or 0) + (_dir_size(Path("/var/tmp")) or 0)
-               if Path("/tmp").exists() else None,
+        "tmp": ((measured.get("/tmp") or 0) + (measured.get("/var/tmp") or 0)) if root else
+               ((_dir_size(Path("/tmp")) or 0) + (_dir_size(Path("/var/tmp")) or 0)
+                if Path("/tmp").exists() else None),
         "apt": _dir_size(Path("/var/cache/apt/archives")),
         "journal": _dir_size(Path("/var/log/journal")),
         "logs": _rotated_logs_size(),
@@ -361,6 +410,7 @@ async def cleanup_preview():
             "free_gb": round(disk.free / 1024**3, 2),
             "total_gb": round(disk.total / 1024**3, 2),
             "breakdown": breakdown,
+            "tmp_top": (root or {}).get("tmp_top", []),
         },
         "tasks": [
             {"key": key, "label": label, "description": desc,

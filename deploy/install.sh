@@ -104,6 +104,7 @@ mkdir -p "$PANEL_ROOT/bin" "$PANEL_ROOT/backups"
 install -m 0755 "$REPO_DIR/deploy/serverhub-self-update.sh" "$PANEL_ROOT/bin/serverhub-self-update"
 install -m 0755 "$REPO_DIR/deploy/serverhub-cleanup.sh" "$PANEL_ROOT/bin/serverhub-cleanup"
 install -m 0755 "$REPO_DIR/deploy/serverhub-apps.sh" "$PANEL_ROOT/bin/serverhub-apps"
+install -m 0755 "$REPO_DIR/deploy/serverhub-free-port.sh" "$PANEL_ROOT/bin/serverhub-free-port"
 
 echo "==> Sudoers rule"
 install -m 0440 "$REPO_DIR/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub

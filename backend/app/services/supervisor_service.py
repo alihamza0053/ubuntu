@@ -145,14 +145,19 @@ def _api_action(action: str, project_name: str) -> str:
     new = re.sub(r"(?m)^autostart=.*$", f"autostart={'false' if action == 'stop' else 'true'}", text)
     if new != text:
         path.write_text(new, encoding="utf-8")
+    heal = ""
+    if action in ("start", "restart"):
+        m = re.search(r"--port (\d+)", text)
+        heal = _heal_port(api_program_name(project_name), int(m.group(1)) if m else None)
     try:
         result = _supervisorctl(action, api_program_name(project_name))
     except HTTPException as exc:
-        return f"API: {exc.detail}"
+        return _join(heal and f"API: {heal}", f"API: {exc.detail}")
     out = (result.stdout + result.stderr).strip()
+    heal = f"API: {heal}" if heal else ""
     if "ERROR" in out and not is_benign_output(out):
-        return f"API: {out} (see logs/{project_name}.api.err.log)"
-    return f"API: {out}" if out else ""
+        return _join(heal, f"API: {out} (see logs/{project_name}.api.err.log)")
+    return _join(heal, f"API: {out}" if out else "")
 
 
 def api_status(project_name: str) -> str | None:
@@ -319,9 +324,82 @@ def _join(*parts: str) -> str:
     return "\n".join(p for p in parts if p)
 
 
+# ---------------------------------------------------------------------------
+# Leftover processes holding a dashboard's port
+# ---------------------------------------------------------------------------
+# A supervisord restart/reload can leave a dashboard it started running as an
+# orphan: the site keeps working, the panel says STOPPED/FATAL, and every Start
+# dies with "spawn error" because the new copy can't bind the port. Before a
+# start we free the port (root helper, deploy/serverhub-free-port.sh — it only
+# ever stops an unmanaged streamlit/gunicorn/uvicorn), and retry once if a
+# start still fails that way.
+FREE_PORT_HELPER = "/srv/serverhub/bin/serverhub-free-port"
+SPAWN_FAILURES = ("spawn error", "exited too quickly", "abnormal termination", "fatal")
+
+
+def config_port(project_name: str) -> int | None:
+    """The port in the dashboard's supervisor command (--server.port N / --bind :N / --port N)."""
+    try:
+        text = config_path(project_name).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    m = re.search(r"(?m)^command=.*?(?:--server\.port |--port |--bind \S*:)(\d+)", text)
+    return int(m.group(1)) if m else None
+
+
+def port_in_use(port: int | None) -> bool:
+    if not port:
+        return False
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(1)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def free_port(port: int) -> str:
+    """Stop an unmanaged dashboard process holding `port`. Never raises."""
+    if port == settings.PANEL_PORT or port < 1024:
+        return ""
+    cmd = [FREE_PORT_HELPER, str(port)]
+    if settings.SUPERVISORCTL_USE_SUDO:
+        cmd = ["sudo", "-n", *cmd]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"Couldn't free port {port}: {exc}"
+    return (result.stdout + result.stderr).strip()
+
+
+def _heal_port(program: str, port: int | None) -> str:
+    """Free `port` when supervisor isn't running `program` but something answers on it."""
+    if not port_in_use(port):
+        return ""
+    raw = (lambda r: (r.stdout + r.stderr).upper())(_supervisorctl("status", program))
+    if "RUNNING" in raw or "STARTING" in raw:
+        return ""
+    out = free_port(port)
+    return f"Port {port} was held by a leftover copy of the app — {out}" if out else ""
+
+
+def _start_healing(action: str, project_name: str) -> str:
+    """start/restart the dashboard, clearing a stale port first and retrying once."""
+    port = config_port(project_name)
+    note = _heal_port(program_name(project_name), port)
+    try:
+        return _join(note, _action(action, project_name))
+    except HTTPException as exc:
+        if not any(word in str(exc.detail).lower() for word in SPAWN_FAILURES) or not port_in_use(port):
+            raise
+        retry_note = free_port(port)
+        import time
+        time.sleep(1)
+        return _join(note, f"Port {port} was held by a leftover copy of the app — {retry_note}",
+                     _action("start", project_name))
+
+
 def start(project_name: str) -> str:
     set_autostart(project_name, True)
-    out = _action("start", project_name)
+    out = _start_healing("start", project_name)
     return _join(out, _api_action("start", project_name))
 
 
@@ -333,7 +411,7 @@ def stop(project_name: str) -> str:
 
 def restart(project_name: str) -> str:
     set_autostart(project_name, True)
-    out = _action("restart", project_name)
+    out = _start_healing("restart", project_name)
     return _join(out, _api_action("restart", project_name))
 
 
@@ -369,14 +447,40 @@ def status(project_name: str) -> tuple[str, str]:
     """
     result = _supervisorctl("status", program_name(project_name))
     raw = (result.stdout + result.stderr).strip()
+    state = state_from_raw(raw)
+    if state == "RUNNING":
+        return state, raw
+    port = config_port(project_name)
+    if port_in_use(port):
+        raw += (f"\nThe site is still being served on port {port} by a leftover copy that Supervisor "
+                "doesn't manage. Press Start or Restart — the panel stops the leftover and takes over.")
+    return state, raw
+
+
+def state_from_raw(raw: str) -> str:
+    """RUNNING / STOPPED / ERROR / UNKNOWN from a supervisorctl status line."""
     upper = raw.upper()
     if "RUNNING" in upper or "STARTING" in upper:
-        return "RUNNING", raw
-    if "STOPPED" in upper or "EXITED" in upper or "NOT STARTED" in upper:
-        return "STOPPED", raw
+        return "RUNNING"
+    # failures first: "FATAL  Exited too quickly" also contains "EXITED"
     if "FATAL" in upper or "BACKOFF" in upper or "ERROR" in upper:
-        return "ERROR", raw
-    return "UNKNOWN", raw
+        return "ERROR"
+    if "STOPPED" in upper or "EXITED" in upper or "NOT STARTED" in upper:
+        return "STOPPED"
+    return "UNKNOWN"
+
+
+def all_statuses() -> dict[str, str]:
+    """{program name: status line} for every supervisor program — ONE call, for lists."""
+    try:
+        result = _supervisorctl("status")
+    except HTTPException:
+        return {}
+    out = {}
+    for line in result.stdout.splitlines():
+        if line.strip():
+            out[line.split(None, 1)[0]] = line.strip()
+    return out
 
 
 def dashboard_log_path(project_name: str, stream: str = "out") -> Path:
