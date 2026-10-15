@@ -99,6 +99,7 @@ mkdir -p "$PANEL_ROOT/bin"
 [ -f "$SRC/deploy/serverhub-cleanup.sh" ] && install -m 0755 "$SRC/deploy/serverhub-cleanup.sh" "$PANEL_ROOT/bin/serverhub-cleanup"
 [ -f "$SRC/deploy/serverhub-apps.sh" ] && install -m 0755 "$SRC/deploy/serverhub-apps.sh" "$PANEL_ROOT/bin/serverhub-apps"
 [ -f "$SRC/deploy/serverhub-free-port.sh" ] && install -m 0755 "$SRC/deploy/serverhub-free-port.sh" "$PANEL_ROOT/bin/serverhub-free-port"
+[ -f "$SRC/deploy/serverhub-postgres.sh" ] && install -m 0755 "$SRC/deploy/serverhub-postgres.sh" "$PANEL_ROOT/bin/serverhub-postgres"
 # Apps section data root — the helper needs it to exist and be panel-owned.
 mkdir -p /srv/apps && chown "$PANEL_USER:$PANEL_USER" /srv/apps
 # Retire helpers belonging to sections that no longer exist in the panel.

@@ -4,9 +4,23 @@ import DataTable, { NameCell, RowActions } from '../components/ui/DataTable'
 import Icon from '../components/ui/Icon'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
+import Tabs from '../components/ui/Tabs'
+import PostgresDatabases from '../components/PostgresDatabases'
+
+const ENGINES = [{ key: 'mysql', label: 'MySQL' }, { key: 'postgres', label: 'PostgreSQL' }]
+
+/** Databases section: a MySQL tab and a PostgreSQL tab. */
+export default function Databases() {
+  const [engine, setEngine] = useState(() => {
+    try { return localStorage.getItem('db-engine') || 'mysql' } catch { return 'mysql' }
+  })
+  const pick = (key) => { setEngine(key); try { localStorage.setItem('db-engine', key) } catch { /* private mode */ } }
+  const tabs = <Tabs tabs={ENGINES} active={engine} onChange={pick} />
+  return engine === 'postgres' ? <PostgresDatabases tabs={tabs} /> : <MysqlDatabases tabs={tabs} />
+}
 
 /** MySQL manager: list/create/drop databases, import/export, query runner. */
-export default function Databases() {
+function MysqlDatabases({ tabs }) {
   const [databases, setDatabases] = useState([])
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({ name: '', user: '', password: '' })
@@ -151,6 +165,7 @@ export default function Databases() {
           </>
         }
       />
+      {tabs}
 
       {error && (
         <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">

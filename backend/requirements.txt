@@ -10,3 +10,4 @@ aiofiles==24.1.0
 psutil==6.1.1
 APScheduler==3.11.0
 websockets==14.1
+psycopg[binary]>=3.2,<4       # PostgreSQL section (Databases → PostgreSQL)

@@ -36,6 +36,7 @@ _PREFIX_TAB: list[tuple[str, str]] = [
     ("/ws/websites", "websites"),
     ("/api/files", "files"),
     ("/api/databases", "databases"),
+    ("/api/postgres", "databases"),
     ("/api/apps", "apps"),
     ("/ws/apps", "apps"),
     ("/api/settings", "settings"),

@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import Website
-from . import app_detect, supervisor_service
+from . import app_detect, db_env, supervisor_service
 
 WEBAPP_PORT_START = 8600
 
@@ -252,7 +252,7 @@ def build_env_async(name: str, framework: str | None = None) -> bool:
 _TEMPLATE = """[program:{program}]
 command={command}
 directory={directory}
-environment=PATH="{venv_bin}:/usr/local/bin:/usr/bin:/bin",PYTHONUNBUFFERED="1"
+environment=PATH="{venv_bin}:/usr/local/bin:/usr/bin:/bin",PYTHONUNBUFFERED="1"{db_env}
 autostart=false
 autorestart=true
 stopasgroup=true
@@ -284,6 +284,7 @@ def write_program(site: Website) -> None:
         directory=site_dir(site.name),
         venv_bin=venv_dir(site.name) / "bin",
         log_dir=settings.SUPERVISOR_LOG_DIR,
+        db_env=db_env.supervisor_env("website", site.name),   # linked PostgreSQL, if any
     )
     path = config_path(site.name)
     existing = path.read_text(encoding="utf-8") if path.exists() else None

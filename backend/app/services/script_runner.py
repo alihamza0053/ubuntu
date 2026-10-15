@@ -17,6 +17,7 @@ from pathlib import Path
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Script
+from . import db_env
 from .activity import log_activity
 
 # Currently-running script processes, keyed by script id, so they can be
@@ -81,6 +82,8 @@ async def run_script(
         process = await asyncio.create_subprocess_exec(
             settings.PYTHON_BIN, "-u", str(script_path),
             cwd=str(script_dir),
+            # a linked PostgreSQL database's DATABASE_URL / PG* (services/db_env.py)
+            env={**os.environ, **db_env.read("project", project_name)},
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,  # merge stderr into stdout
             start_new_session=True,            # own process group (kill children on stop)

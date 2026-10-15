@@ -27,6 +27,11 @@ serverhub ALL=(root) NOPASSWD: /usr/bin/mysql *
 serverhub ALL=(root) NOPASSWD: /usr/bin/mysqldump
 serverhub ALL=(root) NOPASSWD: /usr/bin/mysqldump *
 
+# --- PostgreSQL (Databases → PostgreSQL): install + locked-down config only.
+# SQL itself runs over the local socket as the postgres role (peer + ident map),
+# so no general sudo to the postgres user is needed.
+serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-postgres *
+
 # --- Panel self-update (Settings → Updates → Update now) ---
 serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-self-update *
 

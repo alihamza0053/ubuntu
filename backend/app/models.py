@@ -41,6 +41,23 @@ class UserActivity(Base):
     ip: Mapped[str] = mapped_column(String(64), default="")
 
 
+class PgDatabase(Base):
+    """A PostgreSQL database made by the panel (Databases → PostgreSQL).
+
+    Each one has a login role of the same name that can reach only this
+    database. `linked_kind`/`linked_name` say which project or website gets
+    its connection details as environment variables (DATABASE_URL, PG*).
+    """
+    __tablename__ = "pg_databases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(63), unique=True, index=True)
+    linked_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)   # project / website
+    linked_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    conn_limit: Mapped[int] = mapped_column(Integer, default=20)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
 class Project(Base):
     """A Python workspace under /srv/projects/{name}/."""
     __tablename__ = "projects"
