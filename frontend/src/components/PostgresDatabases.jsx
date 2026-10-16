@@ -23,30 +23,73 @@ function Copy({ text }) {
   )
 }
 
-const SNIPPETS = {
-  'Python (psycopg)': `import os, psycopg
+/** Ready-to-paste code with this database's real values written in as constants. */
+function snippets(c) {
+  const settings = `# ============ DATABASE (PostgreSQL) ============
+DB_HOST = "${c.host}"
+DB_PORT = ${c.port}
+DB_NAME = "${c.database}"
+DB_USER = "${c.user}"
+DB_PASSWORD = "${c.password}"
+# ==============================================`
+  return {
+    'Python (psycopg)': `import psycopg
 
-# DATABASE_URL is set by the panel for the linked project/website
-with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
-    rows = conn.execute("SELECT now()").fetchall()`,
-  'pandas / SQLAlchemy': `import os, pandas as pd
+${settings}
+
+def db():
+    return psycopg.connect(host=DB_HOST, port=DB_PORT, dbname=DB_NAME,
+                           user=DB_USER, password=DB_PASSWORD)
+
+with db() as conn:
+    conn.execute("CREATE TABLE IF NOT EXISTS orders (id serial PRIMARY KEY, customer text, qty int)")
+    conn.execute("INSERT INTO orders (customer, qty) VALUES (%s, %s)", ("TAIGA", 120))
+    rows = conn.execute("SELECT customer, qty FROM orders").fetchall()`,
+    'pandas (read / write tables)': `import pandas as pd
 from sqlalchemy import create_engine
 
-engine = create_engine(os.environ["DATABASE_URL"].replace("postgresql://", "postgresql+psycopg://"))
-df = pd.read_sql("SELECT * FROM my_table", engine)
-df.to_sql("my_table", engine, if_exists="append", index=False)`,
-  'Realtime (LISTEN/NOTIFY)': `import os, psycopg
+${settings}
 
-# writer:  NOTIFY changes, 'order 42 updated'   (or pg_notify() from a trigger)
-with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+engine = create_engine(
+    f"postgresql+psycopg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
+
+df = pd.read_sql("SELECT * FROM orders", engine)             # table -> DataFrame
+df.to_sql("orders_copy", engine, if_exists="replace", index=False)   # DataFrame -> table`,
+    'Streamlit dashboard': `import pandas as pd
+import streamlit as st
+from sqlalchemy import create_engine
+
+${settings}
+
+@st.cache_resource
+def engine():
+    return create_engine(
+        f"postgresql+psycopg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}",
+        pool_size=3, max_overflow=2, pool_pre_ping=True)   # few connections, reused
+
+@st.cache_data(ttl=60)
+def load(query):
+    return pd.read_sql(query, engine())
+
+df = load("SELECT * FROM orders")
+st.dataframe(df)`,
+    'Realtime (LISTEN/NOTIFY)': `import psycopg
+
+${settings}
+
+# writer (any script):   conn.execute("NOTIFY changes, 'order 42 updated'")
+with psycopg.connect(host=DB_HOST, port=DB_PORT, dbname=DB_NAME, user=DB_USER,
+                     password=DB_PASSWORD, autocommit=True) as conn:
     conn.execute("LISTEN changes")
-    for note in conn.notifies():          # blocks, yields each message instantly
+    for note in conn.notifies():          # waits, gets each message instantly
         print(note.channel, note.payload)`,
+  }
 }
 
 /** Connection details + ready-to-paste code. */
 function ConnectionModal({ conn, note, onClose }) {
-  const [tab, setTab] = useState(Object.keys(SNIPPETS)[0])
+  const code = snippets(conn)
+  const [tab, setTab] = useState(Object.keys(code)[0])
   const rows = [['Host', conn.host], ['Port', String(conn.port)], ['Database', conn.database],
     ['User', conn.user], ['Password', conn.password], ['DATABASE_URL', conn.url]]
   return (
@@ -63,18 +106,19 @@ function ConnectionModal({ conn, note, onClose }) {
         ))}
       </div>
       <p className="text-xs text-slate-500">
-        Linked projects/websites get these as environment variables (DATABASE_URL, PGHOST, PGPORT, PGDATABASE,
-        PGUSER, PGPASSWORD) — your code needs no password in it. Copy the password now if you need it elsewhere.
+        Copy the code below into your app.py / script — the settings block has this database's real values,
+        nothing else to set up. (Linked projects also get them as DATABASE_URL / PG* environment variables, for
+        code that prefers that.) Keep the password private: anyone with it can open this database.
       </p>
       <div className="flex flex-wrap gap-1">
-        {Object.keys(SNIPPETS).map((k) => (
+        {Object.keys(code).map((k) => (
           <button key={k} type="button" onClick={() => setTab(k)}
             className={`rounded px-2 py-1 text-xs ${tab === k ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-300'}`}>{k}</button>
         ))}
       </div>
       <div className="relative">
-        <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">{SNIPPETS[tab]}</pre>
-        <div className="absolute right-1 top-1"><Copy text={SNIPPETS[tab]} /></div>
+        <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-300">{code[tab]}</pre>
+        <div className="absolute right-1 top-1"><Copy text={code[tab]} /></div>
       </div>
     </Modal>
   )
@@ -170,7 +214,7 @@ export default function PostgresDatabases({ tabs }) {
   })
 
   const resetPassword = (d) => {
-    if (!window.confirm(`Set a new password for “${d.name}”? Anything using the old one stops connecting` +
+    if (!window.confirm(`Set a new password for “${d.name}”? Code with the old password pasted in stops connecting until you paste the new one` +
       (d.linked_name ? ` (the linked ${d.linked_kind} gets the new one — restart it).` : '.'))) return
     act('pw', async () => {
       const r = await api.post(`/postgres/${d.name}/password`)
@@ -192,6 +236,13 @@ export default function PostgresDatabases({ tabs }) {
     URL.revokeObjectURL(url)
   })
 
+  const exportExcel = (name) => act(`xlsx-${name}`, async () => {
+    const res = await api.get(`/postgres/${name}/xlsx`, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a'); a.href = url; a.download = `${name}.xlsx`; a.click()
+    URL.revokeObjectURL(url)
+  })
+
   const importDb = (file) => {
     if (!file || !importTarget) return
     const form = new FormData(); form.append('file', file)
@@ -207,7 +258,7 @@ export default function PostgresDatabases({ tabs }) {
     { key: 'linked', label: 'Used by', render: (d) => d.linked_name
       ? <span className="badge-muted">{d.linked_kind} · {d.linked_name}</span>
       : <span className="text-slate-600">—</span> },
-    { key: 'actions', label: 'Actions', align: 'right', width: '19rem', render: (d) => (
+    { key: 'actions', label: 'Actions', align: 'right', width: '21rem', render: (d) => (
       <RowActions>
         <button className="btn-icon" title="Connection details" onClick={() => showConnection(d)}><Icon name="plug" size={15} /></button>
         <button className="btn-icon" title="Link to a project / website"
@@ -216,7 +267,10 @@ export default function PostgresDatabases({ tabs }) {
         <button className="btn-icon" title="Browse tables" onClick={() => setBrowse(d.name)}><Icon name="layers" size={15} /></button>
         <button className="btn-icon" title="Query" onClick={() => setQueryDb(d.name)}><Icon name="terminal" size={15} /></button>
         <button className="btn-icon" title="New password" onClick={() => resetPassword(d)}><Icon name="shield" size={15} /></button>
-        <button className="btn-icon" title="Export .sql" onClick={() => exportDb(d.name)}><Icon name="download" size={15} /></button>
+        <button className="btn-icon" title="Export whole database to Excel (one sheet per table)"
+          onClick={() => exportExcel(d.name)} disabled={busy === `xlsx-${d.name}`}>
+          {busy === `xlsx-${d.name}` ? <span className="text-[10px]">…</span> : <Icon name="chart" size={15} />}</button>
+        <button className="btn-icon" title="Export .sql (backup)" onClick={() => exportDb(d.name)}><Icon name="download" size={15} /></button>
         <button className="btn-icon" title="Import .sql" onClick={() => { setImportTarget(d.name); importRef.current?.click() }}>
           <Icon name="upload" size={15} /></button>
         <button className="btn-icon-danger" title="Delete" onClick={() => drop(d)}><Icon name="trash" size={15} /></button>
@@ -308,7 +362,7 @@ export default function PostgresDatabases({ tabs }) {
 
       {linking && (
         <Modal title={`Link “${linking.db}”`} onClose={() => setLinking(null)} as="form" onSubmit={submitLink}
-          subtitle="The project/website gets DATABASE_URL and PG* variables. A new password is set, so only it can connect."
+          subtitle="Sets a NEW password (shown next, with ready code). Update any code where you pasted the old one."
           footer={<button className="btn-primary" disabled={busy === 'link'}>{busy === 'link' ? 'Saving…' : 'Save'}</button>}>
           <LinkPicker targets={targets} value={linking.value} onChange={(v) => setLinking({ ...linking, value: v })} />
           <p className="text-xs text-slate-500">One database per project/website — linking here unlinks whatever that
@@ -329,8 +383,6 @@ function PgBrowser({ db, onClose }) {
     setTables(null); setTable(null)
     api.get(`/postgres/${db}/tables`).then((r) => setTables(r.data)).catch((err) => setError(errorMessage(err)))
   }, [db])
-  const open = (name) => api.get(`/postgres/${db}/tables/${encodeURIComponent(name)}`)
-    .then((r) => setTable(r.data)).catch((err) => setError(errorMessage(err)))
   return (
     <div className="card space-y-3">
       <div className="flex items-center justify-between">
@@ -342,17 +394,181 @@ function PgBrowser({ db, onClose }) {
         ? <p className="text-sm text-slate-500">No tables yet.</p> : (
           <div className="flex flex-wrap gap-2">
             {tables.map((t) => (
-              <button key={t.name} onClick={() => open(t.name)}
-                className={`rounded-lg border px-2 py-1 text-xs ${table?.table === t.name ? 'border-sky-500 text-sky-300' : 'border-panel-border text-slate-300'}`}>
+              <button key={t.name} onClick={() => setTable(t.name)}
+                className={`rounded-lg border px-2 py-1 text-xs ${table === t.name ? 'border-sky-500 text-sky-300' : 'border-panel-border text-slate-300'}`}>
                 {t.name} <span className="text-slate-500">~{t.rows.toLocaleString()} rows · {fmtBytes(t.size)}</span>
               </button>
             ))}
           </div>
         )}
-      {table && (
-        <div className="space-y-2">
-          <p className="text-xs text-slate-500">{table.columns.map((c) => `${c.name} (${c.type})`).join(' · ')}</p>
-          <ResultGrid result={table.preview} />
+      {table && <TableViewer key={table} db={db} table={table} />}
+    </div>
+  )
+}
+
+/** Every row of a table: pages, search across all columns, sort by any column, CSV download. */
+function TableViewer({ db, table }) {
+  const [data, setData] = useState(null)
+  const [page, setPage] = useState(0)
+  const [size, setSize] = useState(100)
+  const [search, setSearch] = useState('')
+  const [applied, setApplied] = useState('')
+  const [sort, setSort] = useState(null)       // {col, desc}
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [picked, setPicked] = useState(null)   // columns chosen for export (null = all)
+  const [showCols, setShowCols] = useState(false)
+  const [exporting, setExporting] = useState('')
+
+  useEffect(() => {
+    setLoading(true); setError('')
+    const params = { limit: size, offset: page * size }
+    if (applied) params.search = applied
+    if (sort) { params.sort = sort.col; params.desc = sort.desc }
+    api.get(`/postgres/${db}/tables/${encodeURIComponent(table)}`, { params })
+      .then((r) => setData(r.data)).catch((err) => setError(errorMessage(err)))
+      .finally(() => setLoading(false))
+  }, [db, table, page, size, applied, sort])
+
+  const total = data?.total ?? 0
+  const pages = Math.max(1, Math.ceil(total / size))
+  const from = total ? page * size + 1 : 0
+  const to = Math.min(total, (page + 1) * size)
+
+  function toggleSort(col) {
+    setPage(0)
+    setSort((s) => (!s || s.col !== col ? { col, desc: false } : s.desc ? null : { col, desc: true }))
+  }
+
+  const allCols = data ? data.columns.map((c) => c.name) : []
+  const chosen = picked ?? allCols
+
+  function download(kind) {
+    const params = {}
+    if (applied) params.search = applied
+    if (sort) { params.sort = sort.col; params.desc = sort.desc }
+    if (picked && picked.length && picked.length < allCols.length) params.columns = picked.join(',')
+    setExporting(kind); setError('')
+    api.get(`/postgres/${db}/tables/${encodeURIComponent(table)}/${kind}`, { params, responseType: 'blob' })
+      .then((res) => {
+        const url = URL.createObjectURL(res.data)
+        const a = document.createElement('a'); a.href = url; a.download = `${table}.${kind}`; a.click()
+        URL.revokeObjectURL(url)
+      })
+      .catch((err) => setError(errorMessage(err)))
+      .finally(() => setExporting(''))
+  }
+
+  function toggleCol(c) {
+    const next = chosen.includes(c) ? chosen.filter((x) => x !== c) : allCols.filter((x) => x === c || chosen.includes(x))
+    setPicked(next)
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); setPage(0); setApplied(search.trim()) }}>
+          <input className="input w-64" placeholder="Search in all columns…" value={search}
+            onChange={(e) => setSearch(e.target.value)} />
+          <button className="btn-secondary"><Icon name="search" size={14} />Search</button>
+          {applied && (
+            <button type="button" className="btn-secondary"
+              onClick={() => { setSearch(''); setApplied(''); setPage(0) }}>Clear</button>
+          )}
+        </form>
+        <select className="input w-auto" value={size} onChange={(e) => { setSize(Number(e.target.value)); setPage(0) }}>
+          {[100, 500, 1000].map((n) => <option key={n} value={n}>{n} rows / page</option>)}
+        </select>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <button className="btn-secondary" onClick={() => setShowCols(!showCols)} title="Choose which columns to export">
+            Columns {chosen.length < allCols.length ? `(${chosen.length}/${allCols.length})` : '(all)'}</button>
+          <button className="btn-primary" onClick={() => download('xlsx')} disabled={!!exporting || chosen.length === 0}
+            title="Excel file — chosen columns, current search and sort">
+            <Icon name="download" size={14} />{exporting === 'xlsx' ? 'Preparing…' : 'Excel'}</button>
+          <button className="btn-secondary" onClick={() => download('csv')} disabled={!!exporting || chosen.length === 0}
+            title="CSV — chosen columns, current search and sort">
+            <Icon name="download" size={14} />{exporting === 'csv' ? 'Preparing…' : 'CSV'}</button>
+        </div>
+      </div>
+
+      {showCols && data && (
+        <div className="rounded-lg border border-panel-border p-2 space-y-2">
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-slate-400">Export these columns:</span>
+            <button className="text-sky-400 hover:underline" onClick={() => setPicked(null)}>All</button>
+            <button className="text-sky-400 hover:underline" onClick={() => setPicked([])}>None</button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-1">
+            {allCols.map((c) => (
+              <label key={c} className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                <input type="checkbox" checked={chosen.includes(c)} onChange={() => toggleCol(c)} />{c}
+              </label>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-500">The export uses these columns plus the current search and sort.
+            Excel keeps numbers and dates as real numbers/dates; more than ~1 million rows continue on a second sheet.</p>
+        </div>
+      )}
+
+      {data && (
+        <p className="text-xs text-slate-500">
+          {data.columns.length} columns: {data.columns.map((c) => `${c.name} (${c.type})`).join(' · ')}
+        </p>
+      )}
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      {data && (
+        <div className={`max-h-[65vh] overflow-auto rounded-lg border border-panel-border ${loading ? 'opacity-60' : ''}`}>
+          <table className="min-w-full text-xs">
+            <thead className="sticky top-0 z-10 bg-slate-900">
+              <tr>
+                <th className="px-2 py-1.5 text-right text-slate-600">#</th>
+                {data.preview.columns.map((c) => (
+                  <th key={c} onClick={() => toggleSort(c)} title="Sort"
+                    className="cursor-pointer select-none whitespace-nowrap px-2 py-1.5 text-left text-slate-400 hover:text-slate-200">
+                    {c}{sort?.col === c ? (sort.desc ? ' ▼' : ' ▲') : ''}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.preview.rows.map((r, i) => (
+                <tr key={i} className="border-t border-slate-800 hover:bg-slate-800/40">
+                  <td className="px-2 py-1 text-right font-mono text-slate-600">{from + i}</td>
+                  {r.map((v, j) => (
+                    <td key={j} className="whitespace-nowrap px-2 py-1 text-slate-300">
+                      {v === null ? <span className="text-slate-600">NULL</span> : String(v)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {data.preview.rows.length === 0 && (
+                <tr>
+                  <td colSpan={data.preview.columns.length + 1} className="px-2 py-4 text-center text-slate-500">
+                    {applied ? 'Nothing matches that search.' : 'This table is empty.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {data && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+          <span>
+            Rows {from.toLocaleString()}–{to.toLocaleString()} of {data.total_exact ? '' : '~'}{total.toLocaleString()}
+            {applied ? ` matching "${applied}"` : ''}
+          </span>
+          <div className="ml-auto flex items-center gap-1">
+            <button className="btn-icon" disabled={page === 0} onClick={() => setPage(0)} title="First">«</button>
+            <button className="btn-icon" disabled={page === 0} onClick={() => setPage(page - 1)} title="Previous">
+              <Icon name="chevron-left" size={14} /></button>
+            <span className="px-2">Page {page + 1} / {pages.toLocaleString()}</span>
+            <button className="btn-icon" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)} title="Next">
+              <Icon name="chevron-right" size={14} /></button>
+            <button className="btn-icon" disabled={page + 1 >= pages} onClick={() => setPage(pages - 1)} title="Last">»</button>
+          </div>
         </div>
       )}
     </div>

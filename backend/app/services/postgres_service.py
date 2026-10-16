@@ -230,26 +230,201 @@ def list_tables(name: str) -> list[dict]:
             for s, t, r, size in rows]
 
 
-def describe_table(name: str, table: str, limit: int = 50) -> dict:
-    _, sql = _psycopg()
-    name = check_name(name)
+def _table_parts(table: str) -> tuple[str, str]:
     schema, _, tbl = table.rpartition(".")
-    schema = schema or "public"
-    limit = max(1, min(int(limit), 500))
+    return schema or "public", tbl
+
+
+def _table_columns(conn, schema: str, tbl: str, table: str) -> list:
+    cols = conn.execute("""
+        SELECT column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns WHERE table_schema = %s AND table_name = %s
+        ORDER BY ordinal_position""", (schema, tbl)).fetchall()
+    if not cols:
+        raise HTTPException(404, f"No table “{table}”.")
+    return cols
+
+
+def _table_select(sql, schema: str, tbl: str, search: str, sort: str | None, desc: bool, col_names: list[str],
+                  columns: list[str] | None = None):
+    """SELECT cols FROM table [WHERE row ILIKE search] [ORDER BY col] — identifiers validated against the table."""
+    if columns:
+        unknown = [c for c in columns if c not in col_names]
+        if unknown:
+            raise HTTPException(400, f"Unknown column(s): {', '.join(unknown)}")
+        select = sql.SQL(", ").join(sql.Identifier(c) for c in columns)
+    else:
+        select = sql.SQL("*")
+    query = sql.SQL("SELECT {} FROM {}.{} AS t").format(select, sql.Identifier(schema), sql.Identifier(tbl))
+    params: list = []
+    if search:
+        query += sql.SQL(" WHERE t::text ILIKE %s")          # matches text in ANY column
+        params.append(f"%{search}%")
+    if sort:
+        if sort not in col_names:
+            raise HTTPException(400, f"Unknown column “{sort}”.")
+        query += sql.SQL(" ORDER BY {} {} NULLS LAST").format(sql.Identifier(sort), sql.SQL("DESC" if desc else "ASC"))
+    return query, params
+
+
+def describe_table(name: str, table: str, limit: int = 100, offset: int = 0, search: str = "",
+                   sort: str | None = None, desc: bool = False) -> dict:
+    """One page of a table's rows (any page, any column order, optional search) + the total count."""
+    _, sql = _psycopg()
+    psycopg, _ = _psycopg()
+    name = check_name(name)
+    schema, tbl = _table_parts(table)
+    limit = max(1, min(int(limit), 1000))
+    offset = max(0, int(offset))
+    search = (search or "").strip()[:200]
     with connect(name) as conn:
-        cols = conn.execute("""
-            SELECT column_name, data_type, is_nullable, column_default
-            FROM information_schema.columns WHERE table_schema = %s AND table_name = %s
-            ORDER BY ordinal_position""", (schema, tbl)).fetchall()
-        if not cols:
-            raise HTTPException(404, f"No table “{table}”.")
+        cols = _table_columns(conn, schema, tbl, table)
+        col_names = [c[0] for c in cols]
         conn.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(name)))
-        cur = conn.execute(sql.SQL("SELECT * FROM {}.{} LIMIT {}")
-                           .format(sql.Identifier(schema), sql.Identifier(tbl), sql.Literal(limit)))
+        conn.execute("SET statement_timeout = '30s'")
+        base, params = _table_select(sql, schema, tbl, search, sort, desc, col_names)
+        cur = conn.execute(base + sql.SQL(" LIMIT {} OFFSET {}").format(sql.Literal(limit), sql.Literal(offset)), params)
         rows = [[_cell(v) for v in r] for r in cur.fetchall()]
         names = [d.name for d in cur.description]
-    return {"table": table, "columns": [{"name": c[0], "type": c[1], "null": c[2], "default": c[3]} for c in cols],
-            "preview": {"columns": names, "rows": rows}}
+        # Exact total, but never let a huge table stall the page: 5 s, then the planner's estimate.
+        exact = True
+        try:
+            conn.execute("SET statement_timeout = '5s'")
+            count_q = sql.SQL("SELECT count(*) FROM ({}) AS c").format(base)
+            total = conn.execute(count_q, params).fetchone()[0]
+        except psycopg.errors.QueryCanceled:
+            exact = False
+            total = conn.execute("SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE oid = %s::regclass",
+                                 (f'"{schema}"."{tbl}"',)).fetchone()[0]
+    return {"table": table,
+            "columns": [{"name": c[0], "type": c[1], "null": c[2], "default": c[3]} for c in cols],
+            "preview": {"columns": names, "rows": rows},
+            "total": total, "total_exact": exact, "offset": offset, "limit": limit}
+
+
+def table_csv(name: str, table: str, search: str = "", sort: str | None = None, desc: bool = False,
+              columns: list[str] | None = None):
+    """Yield the whole table (or the searched part) as CSV, streamed — no file kept on disk."""
+    _, sql = _psycopg()
+    name = check_name(name)
+    schema, tbl = _table_parts(table)
+    conn = connect(name)
+    try:
+        col_names = [c[0] for c in _table_columns(conn, schema, tbl, table)]
+        conn.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(name)))
+        conn.execute("SET statement_timeout = '10min'")
+        base, params = _table_select(sql, schema, tbl, (search or "").strip()[:200], sort, desc, col_names, columns)
+        with conn.cursor().copy(sql.SQL("COPY ({}) TO STDOUT WITH (FORMAT csv, HEADER true)").format(base), params) as cp:
+            yield "\ufeff".encode("utf-8")                     # BOM so Excel reads Urdu/UTF-8 text correctly
+            for chunk in cp:
+                yield bytes(chunk)
+    finally:
+        conn.close()
+
+
+EXCEL_MAX_ROWS = 1_048_575          # per sheet (Excel's limit minus the header row)
+
+
+def _excel_value(v):
+    """What openpyxl/Excel can store: numbers/dates stay real, the rest becomes text."""
+    import datetime as dt
+    import decimal
+    if v is None or isinstance(v, (bool, int, float, str, decimal.Decimal, dt.date)):
+        if isinstance(v, dt.datetime) and v.tzinfo is not None:
+            return v.replace(tzinfo=None)                    # Excel has no time zones
+        if isinstance(v, dt.time) and v.tzinfo is not None:
+            return v.replace(tzinfo=None)
+        if isinstance(v, str) and v[:1] in "=+-@" and len(v) > 1:
+            return "'" + v                                   # never let text become a formula
+        return v
+    if isinstance(v, dt.time):
+        return v
+    if isinstance(v, (bytes, memoryview)):
+        return f"<{len(bytes(v))} bytes>"
+    return str(v)
+
+
+def _sheet_title(name: str, used: set) -> str:
+    title = re.sub(r"[\\/*?:\[\]]", "_", name)[:31] or "sheet"
+    base, n = title, 2
+    while title.lower() in used:
+        suffix = f" ({n})"
+        title = base[:31 - len(suffix)] + suffix
+        n += 1
+    used.add(title.lower())
+    return title
+
+
+def _write_query_to_sheets(wb, conn, query, params, title: str, used: set) -> int:
+    """Stream a query into one or more sheets (server-side cursor, 2000 rows at a time)."""
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.styles import Font
+    bold = Font(bold=True)
+    rows_written = 0
+    with conn.transaction():
+        cur = conn.cursor(name="xlsx_export")
+        cur.itersize = 2000
+        cur.execute(query, params)
+        ws, in_sheet, part = None, 0, 1
+        for row in cur:
+            if ws is None or in_sheet >= EXCEL_MAX_ROWS:
+                ws = wb.create_sheet(_sheet_title(title if part == 1 else f"{title} {part}", used))
+                part += 1
+                header = []
+                for d in cur.description:
+                    cell = WriteOnlyCell(ws, value=d.name)
+                    cell.font = bold
+                    header.append(cell)
+                ws.append(header)
+                in_sheet = 0
+            ws.append([_excel_value(v) for v in row])
+            in_sheet += 1
+            rows_written += 1
+        if ws is None:                                       # empty table: still a sheet with headers
+            ws = wb.create_sheet(_sheet_title(title, used))
+            ws.append([d.name for d in cur.description or []])
+        cur.close()
+    return rows_written
+
+
+def export_excel(name: str, dest: Path, table: str | None = None, search: str = "",
+                 sort: str | None = None, desc: bool = False, columns: list[str] | None = None) -> Path:
+    """
+    One table (optionally only some columns / the searched rows) or the whole
+    database (one sheet per table) as .xlsx. Written row by row in openpyxl's
+    write-only mode, so memory stays small even for big tables.
+    """
+    try:
+        from openpyxl import Workbook
+    except ImportError:
+        raise HTTPException(500, "The openpyxl package is missing — run deploy/update.sh to install it.")
+    _, sql = _psycopg()
+    name = check_name(name)
+    wb = Workbook(write_only=True)
+    used: set = set()
+    with connect(name) as conn:
+        if table:
+            schema, tbl = _table_parts(table)
+            col_names = [c[0] for c in _table_columns(conn, schema, tbl, table)]
+            targets = [(table, schema, tbl, col_names)]
+        else:
+            targets = []
+            for t in list_tables(name):
+                schema, tbl = _table_parts(t["name"])
+                targets.append((t["name"], schema, tbl, None))
+        conn.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(name)))
+        conn.execute("SET statement_timeout = '30min'")
+        for label, schema, tbl, col_names in targets:
+            if table:
+                query, params = _table_select(sql, schema, tbl, (search or "").strip()[:200], sort, desc,
+                                              col_names, columns)
+            else:
+                query, params = sql.SQL("SELECT * FROM {}.{}").format(sql.Identifier(schema), sql.Identifier(tbl)), []
+            _write_query_to_sheets(wb, conn, query, params, label, used)
+    if not used:
+        wb.create_sheet("empty").append(["This database has no tables yet."])
+    wb.save(dest)
+    return dest
 
 
 def _cell(v):

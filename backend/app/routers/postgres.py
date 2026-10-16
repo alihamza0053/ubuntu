@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from starlette.background import BackgroundTask
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -196,8 +196,49 @@ def tables(name: str):
 
 
 @router.get("/{name}/tables/{table}")
-def table(name: str, table: str, limit: int = 50):
-    return pg.describe_table(name, table, limit)
+def table(name: str, table: str, limit: int = 100, offset: int = 0, search: str = "",
+          sort: str | None = None, desc: bool = False):
+    """A page of rows (+ total count), optionally searched across all columns and sorted."""
+    return pg.describe_table(name, table, limit, offset, search, sort, desc)
+
+
+def _columns(raw: str) -> list[str] | None:
+    cols = [c.strip() for c in (raw or "").split(",") if c.strip()]
+    return cols or None
+
+
+@router.get("/{name}/tables/{table}/csv")
+def table_csv(name: str, table: str, search: str = "", sort: str | None = None, desc: bool = False,
+              columns: str = ""):
+    """The whole table (or the searched part / chosen columns) as a CSV download, streamed."""
+    fname = f"{pg.check_name(name)}-{table}.csv".replace("/", "_")
+    return StreamingResponse(pg.table_csv(name, table, search, sort, desc, _columns(columns)), media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+def _xlsx_response(dest: Path, filename: str) -> FileResponse:
+    return FileResponse(dest, filename=filename,
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        background=BackgroundTask(dest.unlink, missing_ok=True))   # don't fill /tmp
+
+
+@router.get("/{name}/tables/{table}/xlsx")
+async def table_xlsx(name: str, table: str, search: str = "", sort: str | None = None, desc: bool = False,
+                     columns: str = ""):
+    """One table as Excel — optionally only the chosen columns / the searched rows."""
+    name = pg.check_name(name)
+    dest = Path(tempfile.gettempdir()) / f"pgx-{name}-{datetime.now():%Y%m%d-%H%M%S%f}.xlsx"
+    await asyncio.to_thread(pg.export_excel, name, dest, table, search, sort, desc, _columns(columns))
+    return _xlsx_response(dest, f"{name}-{table}.xlsx".replace("/", "_"))
+
+
+@router.get("/{name}/xlsx")
+async def database_xlsx(name: str):
+    """The whole database as Excel: one sheet per table."""
+    name = pg.check_name(name)
+    dest = Path(tempfile.gettempdir()) / f"pgx-{name}-{datetime.now():%Y%m%d-%H%M%S%f}.xlsx"
+    await asyncio.to_thread(pg.export_excel, name, dest)
+    return _xlsx_response(dest, f"{name}.xlsx")
 
 
 @router.post("/query")
