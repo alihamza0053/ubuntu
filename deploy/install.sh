@@ -38,11 +38,28 @@ if ! command -v google-chrome >/dev/null; then
 fi
 google-chrome --version || true
 
-# Node 18+ for building the frontend (skipped if node >= 18 already present)
-if ! command -v node >/dev/null || [ "$(node -e 'console.log(process.versions.node.split(".")[0])')" -lt 18 ]; then
-  echo "==> Installing Node.js 20"
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt-get install -y nodejs
+# Node.js: the panel builds its frontend with it and n8n runs on it.
+# Node 20 and older get no security fixes any more (Oct 2026 advisory); these
+# are the first patched releases of the supported lines.
+NODE_MAJOR=24
+node_ok() {   # true when the installed node is a supported, patched release
+  command -v node >/dev/null 2>&1 || return 1
+  local v maj min
+  v="$(node -v 2>/dev/null | sed 's/^v//')"; maj="${v%%.*}"
+  case "$maj" in
+    22) min=22.23.4 ;;
+    24) min=24.22.1 ;;
+    26) min=26.12.1 ;;
+    *) [ "${maj:-0}" -gt 26 ] 2>/dev/null && return 0; return 1 ;;
+  esac
+  [ "$(printf '%s\n%s\n' "$min" "$v" | sort -V | head -1)" = "$min" ]
+}
+install_node() {
+  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - && apt-get install -y nodejs
+}
+if ! node_ok; then
+  echo "==> Installing Node.js ${NODE_MAJOR} LTS (found: $(node -v 2>/dev/null || echo none))"
+  install_node
 fi
 
 echo "==> Creating panel user and directories"

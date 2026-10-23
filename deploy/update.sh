@@ -85,6 +85,46 @@ if [ "$DO_BACKEND" = true ]; then
   "$PANEL_ROOT/venv/bin/pip" install -q -r "$PANEL_ROOT/backend/requirements.txt"
 fi
 
+# Node.js: the panel builds its frontend with it and n8n runs on it.
+# Node 20 and older get no security fixes any more (Oct 2026 advisory); these
+# are the first patched releases of the supported lines.
+NODE_MAJOR=24
+node_ok() {   # true when the installed node is a supported, patched release
+  command -v node >/dev/null 2>&1 || return 1
+  local v maj min
+  v="$(node -v 2>/dev/null | sed 's/^v//')"; maj="${v%%.*}"
+  case "$maj" in
+    22) min=22.23.4 ;;
+    24) min=24.22.1 ;;
+    26) min=26.12.1 ;;
+    *) [ "${maj:-0}" -gt 26 ] 2>/dev/null && return 0; return 1 ;;
+  esac
+  [ "$(printf '%s\n%s\n' "$min" "$v" | sort -V | head -1)" = "$min" ]
+}
+install_node() {
+  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - && apt-get install -y nodejs
+}
+# 3b. Keep Node.js on a patched release (frontend build + n8n)
+if ! node_ok; then
+  OLD_NODE="$(node -v 2>/dev/null || echo none)"
+  echo "==> Node.js $OLD_NODE is unsupported or unpatched — upgrading to Node.js ${NODE_MAJOR} LTS"
+  if install_node && node_ok; then
+    echo "    now $(node -v)"
+    # n8n has native modules built for the old Node: reinstall, then restart it
+    if command -v n8n >/dev/null 2>&1; then
+      echo "==> Reinstalling n8n for the new Node.js (a few minutes)"
+      npm install -g n8n --unsafe-perm >/dev/null 2>&1 \
+        && echo "    n8n $(n8n --version 2>/dev/null)" \
+        || echo "    WARNING: n8n reinstall failed — reinstall it from Apps"
+      if supervisorctl status app_n8n 2>/dev/null | grep -q RUNNING; then
+        supervisorctl restart app_n8n || true
+      fi
+    fi
+  else
+    echo "    WARNING: Node.js upgrade failed — still $(node -v 2>/dev/null || echo none). Check NodeSource."
+  fi
+fi
+
 # 4. Frontend
 if [ "$DO_FRONTEND" = true ]; then
   echo "==> Rebuilding frontend"

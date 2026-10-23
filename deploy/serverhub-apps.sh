@@ -152,23 +152,36 @@ install_chromium() {
 }
 
 # ---------------------------------------------------------------------------
-# n8n — Node LTS (NodeSource when the distro's node is too old) + npm global.
+# n8n — patched Node LTS (NodeSource when missing/old/unpatched) + npm global.
 # ---------------------------------------------------------------------------
-install_n8n() {
-  local major=0
-  if command -v node >/dev/null 2>&1; then
-    major="$(node -v 2>/dev/null | sed 's/^v//; s/\..*//')"
-    major="${major:-0}"
-  fi
+# Node.js: the panel builds its frontend with it and n8n runs on it.
+# Node 20 and older get no security fixes any more (Oct 2026 advisory); these
+# are the first patched releases of the supported lines.
+NODE_MAJOR=24
+node_ok() {   # true when the installed node is a supported, patched release
+  command -v node >/dev/null 2>&1 || return 1
+  local v maj min
+  v="$(node -v 2>/dev/null | sed 's/^v//')"; maj="${v%%.*}"
+  case "$maj" in
+    22) min=22.23.4 ;;
+    24) min=24.22.1 ;;
+    26) min=26.12.1 ;;
+    *) [ "${maj:-0}" -gt 26 ] 2>/dev/null && return 0; return 1 ;;
+  esac
+  [ "$(printf '%s\n%s\n' "$min" "$v" | sort -V | head -1)" = "$min" ]
+}
+install_node() {
+  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - && apt-get install -y nodejs
+}
 
-  if [ "$major" -lt 18 ]; then
-    echo "── installing Node.js 20 LTS (found: ${major:-none}) ──"
+install_n8n() {
+  if ! node_ok; then
+    echo "── installing Node.js ${NODE_MAJOR} LTS (found: $(node -v 2>/dev/null || echo none)) ──"
     apt_update_once
     apt-get install -y curl ca-certificates || die "could not install curl"
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - || die "NodeSource setup failed"
-    apt-get install -y nodejs || die "could not install nodejs"
+    install_node || die "could not install Node.js ${NODE_MAJOR}"
   else
-    echo "Node.js $(node -v) is recent enough"
+    echo "Node.js $(node -v) is supported and patched"
   fi
 
   # n8n builds native modules (sqlite3), which needs a toolchain.
