@@ -9,15 +9,16 @@ the file manager, and SSL.
 Nothing is assumed to be pre-installed. Every package, version check, and
 config detail is spelled out.
 
-It offers two routes:
+> **You only need ONE command.** On a fresh Ubuntu 22.04 / 24.04 server run
+> the line in [Quick install](#-quick-install--one-command-download--install-everything)
+> below. It installs **everything** — git, Python (+ venv, pip, build tools),
+> Node.js, nginx, Supervisor, MySQL, PHP, certbot, Chrome, PostgreSQL, every
+> pip requirement, the panel itself, your admin user, the domain and HTTPS.
+> Don't run any other install step from this guide before or after it.
 
-- **Path A — Automated**: one script (`deploy/install.sh`) installs and wires
-  everything. Best for most people.
-- **Path B — Manual**: every command the script runs, explained one by one, so
-  you understand each piece and can fix a partial install.
-
-Read **Sections 0–2 first regardless of path** — they install the operating
-system dependencies that both paths need.
+Everything after the Quick install section is **reference only** — what the
+installer does, step by step, for learning or for repairing a broken install
+by hand. You don't need to read or run it for a normal install.
 
 ---
 
@@ -29,6 +30,9 @@ run this one line. It downloads the panel from GitHub and installs **everything*
 ```bash
 curl -fsSL https://raw.githubusercontent.com/alihamza0053/ubuntu/main/deploy/get.sh | sudo bash
 ```
+
+(No `curl` on the machine, e.g. Ubuntu Desktop? Same thing with wget:
+`wget -qO- https://raw.githubusercontent.com/alihamza0053/ubuntu/main/deploy/get.sh | sudo bash`)
 
 It asks four questions (press Enter to skip any — all can be set later):
 
@@ -54,9 +58,12 @@ Optional switches (add before `bash`): `INSTALL_POSTGRES=no`, `AUTO_UPDATES=no`,
 
 | Part | Details |
 |---|---|
-| System packages | nginx, Supervisor, MySQL, PHP-FPM, certbot, Google Chrome (Selenium), git, rsync |
+| System packages | git, build tools, nginx, Supervisor, MySQL, PHP-FPM, certbot, Google Chrome (Selenium), curl, rsync, zip |
+| Python | 3.11+ — uses the system one (24.04 = 3.12); on 22.04 installs 3.11 automatically |
+| Small servers | adds a 2 GB swap file if RAM < 3 GB and there is no swap (so the build can't run out of memory) |
+| Firewall | if UFW is already on, opens 22 / 80 / 443 (never turns UFW on by itself) |
 | Node.js | **24 LTS, patched** (22.23.4+ / 24.22.1+ / 26.12.1+ accepted) — builds the frontend, runs n8n |
-| Python | panel virtualenv + streamlit, pandas, selenium, openpyxl, psycopg |
+| Python packages | panel virtualenv + every requirement (FastAPI, psycopg, openpyxl…) + selenium, pandas for scripts; each project gets its own venv with streamlit |
 | Panel | source in `/opt/serverhub-src`, app in `/srv/serverhub`, fresh secret key, root helpers + sudo rules, starts on boot |
 | Admin user | created from your answers |
 | nginx + HTTPS | site for your domain; Let's Encrypt certificate + HTTP→HTTPS redirect (only if the domain already points at this server — otherwise it tells you the command to run later). No domain → panel on `http://<server-ip>/` |
@@ -66,16 +73,17 @@ Optional switches (add before `bash`): `INSTALL_POSTGRES=no`, `AUTO_UPDATES=no`,
 At the end it prints the panel address, your login name, and a short **"Still to
 do"** list for anything it had to skip (e.g. DNS not pointing here yet).
 
-**Before you run it**
-
-1. **DNS** (only if you want HTTPS right away): an `A` record for your panel
-   domain → this server's IP. Check with `dig +short panel.example.com`.
-2. **1 GB RAM servers:** add swap first (see [1.5](#15--add-swap-required-on-1-gb-ram-recommended-on-2-gb)) — the frontend build needs it.
-3. **Firewall:** if UFW is on, allow `22`, `80`, `443` (see [1.6](#16--firewall-ufw)).
+**Before you run it** — only one thing, and only if you want HTTPS right away:
+add a DNS `A` record for your panel domain → this server's IP (check with
+`dig +short panel.example.com`). You can also skip the domain and add it later.
+Swap, firewall ports, Python version — the installer handles them itself.
 
 **Afterwards**
 
 - Log in at the printed address.
+- **Set or change the panel domain later** (after adding the DNS `A` record):
+  `sudo bash /opt/serverhub-src/deploy/set-domain.sh panel.example.com you@example.com`
+  — sets it in nginx, then gets the HTTPS certificate (leave out the email to skip SSL).
 - Update later with: `sudo bash /opt/serverhub-src/deploy/update.sh`
 - The hidden panel owner is the username `hamza`. Using a different admin name?
   Set `OWNER_USERNAME=<name>` in `/srv/serverhub/backend/.env`, then
@@ -535,9 +543,15 @@ sudo python3.11 -m venv /srv/serverhub/venv
 sudo /srv/serverhub/venv/bin/pip install --upgrade pip
 sudo /srv/serverhub/venv/bin/pip install -r /srv/serverhub/backend/requirements.txt
 
-# Runtimes for project dashboards + common script needs:
-sudo /srv/serverhub/venv/bin/pip install streamlit selenium webdriver-manager pandas openpyxl
+# Common needs of project scripts (they run with the panel's Python):
+sudo /srv/serverhub/venv/bin/pip install selenium webdriver-manager pandas openpyxl
 ```
+
+> **Don't install `streamlit` into the panel venv.** It needs a newer
+> `starlette` than the panel's FastAPI allows, and pip will break one of the
+> two ("streamlit … requires starlette>=0.46, but you have starlette 0.41.3").
+> Dashboards don't need it there: each project gets its **own** venv with
+> streamlit, plotly and pandas, built automatically when the project is created.
 
 `requirements.txt` installs: fastapi, uvicorn, sqlalchemy, python-jose,
 bcrypt, python-multipart, python-dotenv, aiofiles, psutil, APScheduler,

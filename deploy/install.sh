@@ -24,19 +24,58 @@ AUTO_UPDATES="${AUTO_UPDATES:-yes}"
 # No interactive apt/needrestart screens in the middle of an install
 export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# Interpreter used to build the venv. On Ubuntu 22.04 run the installer with
-# PYTHON3=python3.11 so the panel gets Python 3.11 (the deadsnakes package).
-PYTHON3="${PYTHON3:-python3}"
+# Interpreter used to build the venv (auto: python3, or python3.11 where the
+# system Python is older than 3.11 — e.g. Ubuntu 22.04). Override with PYTHON3=…
+PYTHON3="${PYTHON3:-}"
+
+if [ "$(id -u)" -ne 0 ]; then echo "Run as root (sudo)." >&2; exit 1; fi
+
+# Swap first on small servers: the frontend build (npm) can be killed for lack
+# of memory on 1–2 GB machines. Only created when there is no swap at all.
+RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+if [ "$RAM_MB" -lt 3000 ] && [ "$(swapon --noheadings | wc -l)" -eq 0 ] && [ ! -e /swapfile ]; then
+  echo "==> ${RAM_MB} MB RAM and no swap — adding a 2 GB swap file"
+  fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
+  chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
 
 echo "==> Installing system packages"
 apt-get update
 # Core panel + all feature dependencies:
+#   python3 + venv + dev/build tools   panel + project venvs (C extensions)
+#   git                   source checkout + updates
 #   nginx/supervisor      reverse proxy + process manager
 #   mysql-server          databases manager
 #   php-fpm               PHP website hosting
 #   certbot               Let's Encrypt SSL
-apt-get install -y python3 python3-venv python3-pip nginx supervisor curl rsync wget \
-  mysql-server php-fpm certbot python3-certbot-nginx unzip
+apt-get install -y python3 python3-venv python3-pip python3-dev build-essential \
+  git nginx supervisor curl rsync wget ca-certificates gnupg software-properties-common \
+  mysql-server php-fpm certbot python3-certbot-nginx unzip zip
+
+# The panel needs Python 3.11+. Ubuntu 24.04 ships 3.12 (fine); on 22.04 (3.10)
+# install 3.11 from the deadsnakes PPA and build the venv with it.
+if [ -z "$PYTHON3" ]; then
+  if python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
+    PYTHON3=python3
+  else
+    echo "==> System Python is $(python3 -V 2>&1 | cut -d' ' -f2) — installing Python 3.11"
+    add-apt-repository -y ppa:deadsnakes/ppa
+    apt-get update
+    apt-get install -y python3.11 python3.11-venv python3.11-dev
+    PYTHON3=python3.11
+  fi
+fi
+echo "    using $($PYTHON3 -V)"
+
+# Firewall: if UFW is already on, make sure SSH and the web ports stay open
+# (never switches UFW on by itself — that could lock you out of a custom SSH port).
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+  echo "==> UFW is active — allowing SSH, HTTP and HTTPS"
+  ufw allow OpenSSH >/dev/null 2>&1 || ufw allow 22/tcp >/dev/null
+  ufw allow 80/tcp >/dev/null
+  ufw allow 443/tcp >/dev/null
+fi
 
 # Headless browser for project Selenium scripts: install REAL Google Chrome
 # (.deb), NOT snap chromium — the snap chromedriver crashes under the serverhub
@@ -87,12 +126,14 @@ cp -r "$REPO_DIR/backend" "$PANEL_ROOT/"
 cp -r "$REPO_DIR/frontend" "$PANEL_ROOT/"
 
 echo "==> Python virtualenv + dependencies (using $PYTHON3)"
-"$PYTHON3" -m venv "$PANEL_ROOT/venv"
+[ -x "$PANEL_ROOT/venv/bin/python" ] || "$PYTHON3" -m venv "$PANEL_ROOT/venv"
 "$PANEL_ROOT/venv/bin/pip" install --upgrade pip
 "$PANEL_ROOT/venv/bin/pip" install -r "$PANEL_ROOT/backend/requirements.txt"
-# Streamlit runs project dashboards; selenium + webdriver-manager + openpyxl
-# are commonly needed by project scripts (headless Chromium, Excel data).
-"$PANEL_ROOT/venv/bin/pip" install streamlit selenium webdriver-manager openpyxl pandas
+# Project scripts run with the panel's Python, so give it what they commonly
+# need (headless Chrome, Excel data). NOT streamlit: it needs a newer starlette
+# than the panel's FastAPI allows — dashboards get it in their own per-project
+# venv instead (venv_service.BASE_PKGS), built automatically for each project.
+"$PANEL_ROOT/venv/bin/pip" install selenium webdriver-manager openpyxl pandas
 
 echo "==> Building frontend"
 cd "$PANEL_ROOT/frontend"
@@ -160,7 +201,7 @@ echo "==> Nginx site for the panel"
 SITE=/etc/nginx/sites-available/serverhub
 # Only (re)write it when it's new or still the placeholder — on a configured
 # server it holds the real domain and certbot's SSL lines, which must survive.
-if [ ! -f "$SITE" ] || grep -q "panel.yourdomain.com" "$SITE"; then
+if [ ! -f "$SITE" ] || grep -q "panel.yourdomain.com" "$SITE"    || { [ -n "$PANEL_DOMAIN" ] && grep -qE "server_name[[:space:]]+_;" "$SITE"; }; then
   # no domain yet: answer on the server's IP (catch-all) until one is set
   sed "s|server_name panel.yourdomain.com;|server_name ${PANEL_DOMAIN:-_};|" \
     "$REPO_DIR/deploy/nginx-panel.conf" > "$SITE"
