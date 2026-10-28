@@ -33,14 +33,24 @@ echo "   repo:   $REPO_URL ($BRANCH)"
 echo "   source: $SRC"
 echo "============================================================"
 
+# Run from a directory that can't disappear: if the command is started from
+# inside $SRC, replacing that folder would leave the shell in a deleted directory.
+cd /
+
 # 0. Ask for what isn't given (from the terminal — stdin is this script under curl | bash)
 ask() {   # ask VAR "Question" [secret]
   local var="$1" q="$2" secret="${3:-}" val=""
   [ -n "${!var:-}" ] && return 0
-  [ -r /dev/tty ] || return 0
-  # no usable terminal (e.g. cloud-init): just skip the question
-  if [ -n "$secret" ]; then { read -r -s -p "$q" val </dev/tty && echo >/dev/tty; } 2>/dev/null || true
-  else { read -r -p "$q" val </dev/tty; } 2>/dev/null || true; fi
+  # No usable terminal (e.g. cloud-init): skip quietly. Opening it in a subshell
+  # first means a failure can't abort the script.
+  ( : </dev/tty ) 2>/dev/null || return 0
+  printf '%s' "$q" >/dev/tty                    # the question itself goes to the screen
+  if [ -n "$secret" ]; then
+    read -r -s val </dev/tty || true
+    printf '\n' >/dev/tty
+  else
+    read -r val </dev/tty || true
+  fi
   printf -v "$var" '%s' "$val"
 }
 if [ -z "${UNATTENDED:-}" ]; then
@@ -50,7 +60,8 @@ if [ -z "${UNATTENDED:-}" ]; then
     for _ in 1 2 3; do
       ask ADMIN_PASS "  Admin password (min 8): " secret
       [ "${#ADMIN_PASS}" -ge 8 ] && break
-      { echo "  Too short (or no terminal)." >/dev/tty; } 2>/dev/null || true
+      [ -z "${ADMIN_PASS:-}" ] && break          # Enter = skip (create the admin later)
+      { echo "  Too short — at least 8 characters." >/dev/tty; } 2>/dev/null || true
       ADMIN_PASS=""
     done
   fi
@@ -72,8 +83,13 @@ if [ -d "$SRC/.git" ]; then
   git -C "$SRC" fetch --depth 1 origin "$BRANCH"
   git -C "$SRC" reset --hard "origin/$BRANCH"
 else
+  if [ -e "$SRC" ]; then
+    # Something is there but it isn't a git checkout — keep it, never delete it.
+    KEEP="$SRC.bak-$(date +%Y%m%d-%H%M%S)"
+    echo "==> $SRC exists but isn't a git checkout — moving it to $KEEP"
+    mv "$SRC" "$KEEP"
+  fi
   echo "==> Cloning into $SRC"
-  rm -rf "$SRC"
   git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$SRC"
 fi
 
