@@ -9,8 +9,12 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/alihamza0053/ubuntu/main/deploy/get.sh | sudo bash
 #
-# Override defaults with env vars, e.g.:
-#   curl -fsSL .../get.sh | sudo REPO_URL=https://github.com/alihamza0053/ubuntu.git BRANCH=main bash
+# It asks for the admin login, the panel domain and an email for SSL, then does
+# everything: packages, panel, admin user, nginx, HTTPS, PostgreSQL, automatic
+# security updates. Fully unattended instead:
+#   curl -fsSL .../get.sh | sudo ADMIN_USER=hamza ADMIN_PASS='…' PANEL_DOMAIN=panel.example.com \
+#        SSL_EMAIL=you@example.com bash
+# Other options: INSTALL_POSTGRES=no, AUTO_UPDATES=no, REPO_URL=…, BRANCH=…
 # ============================================================
 set -euo pipefail
 
@@ -28,6 +32,32 @@ echo " ServerHub one-click install"
 echo "   repo:   $REPO_URL ($BRANCH)"
 echo "   source: $SRC"
 echo "============================================================"
+
+# 0. Ask for what isn't given (from the terminal — stdin is this script under curl | bash)
+ask() {   # ask VAR "Question" [secret]
+  local var="$1" q="$2" secret="${3:-}" val=""
+  [ -n "${!var:-}" ] && return 0
+  [ -r /dev/tty ] || return 0
+  # no usable terminal (e.g. cloud-init): just skip the question
+  if [ -n "$secret" ]; then { read -r -s -p "$q" val </dev/tty && echo >/dev/tty; } 2>/dev/null || true
+  else { read -r -p "$q" val </dev/tty; } 2>/dev/null || true; fi
+  printf -v "$var" '%s' "$val"
+}
+if [ -z "${UNATTENDED:-}" ]; then
+  echo "Answer or press Enter to skip (everything can be set later):"
+  ask ADMIN_USER   "  Admin username: "
+  if [ -n "${ADMIN_USER:-}" ]; then
+    for _ in 1 2 3; do
+      ask ADMIN_PASS "  Admin password (min 8): " secret
+      [ "${#ADMIN_PASS}" -ge 8 ] && break
+      { echo "  Too short (or no terminal)." >/dev/tty; } 2>/dev/null || true
+      ADMIN_PASS=""
+    done
+  fi
+  ask PANEL_DOMAIN "  Panel domain, e.g. panel.example.com (DNS pointing here): "
+  [ -n "${PANEL_DOMAIN:-}" ] && ask SSL_EMAIL "  Email for the SSL certificate: "
+fi
+export ADMIN_USER ADMIN_PASS PANEL_DOMAIN SSL_EMAIL INSTALL_POSTGRES AUTO_UPDATES 2>/dev/null || true
 
 # 1. git (the only prerequisite the bootstrap itself needs)
 if ! command -v git >/dev/null 2>&1; then
@@ -52,14 +82,4 @@ echo "==> Running deploy/install.sh"
 cd "$SRC"
 bash deploy/install.sh
 
-echo
-echo "============================================================"
-echo " Done. Next:"
-echo "   1. Create your admin user:"
-echo "        cd /srv/serverhub/backend && sudo -u serverhub /srv/serverhub/venv/bin/python setup_admin.py"
-echo "   2. Point your panel domain in /etc/nginx/sites-available/serverhub,"
-echo "      then: sudo nginx -t && sudo systemctl reload nginx"
-echo "   3. (SSL) sudo certbot --nginx -d panel.yourdomain.com"
-echo
-echo " Re-running this same command later updates the panel in place."
-echo "============================================================"
+echo " (Re-running this command is safe; for routine updates use deploy/update.sh.)"

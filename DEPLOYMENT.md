@@ -21,8 +21,76 @@ system dependencies that both paths need.
 
 ---
 
+## ⚡ Quick install — one command (download + install everything)
+
+On a **fresh Ubuntu 22.04 / 24.04 server**, logged in as root (or a sudo user),
+run this one line. It downloads the panel from GitHub and installs **everything**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/alihamza0053/ubuntu/main/deploy/get.sh | sudo bash
+```
+
+It asks four questions (press Enter to skip any — all can be set later):
+
+```
+Admin username: hamza
+Admin password (min 8): ********                 ← hidden while typing
+Panel domain, e.g. panel.example.com (DNS pointing here): panel.example.com
+Email for the SSL certificate: you@example.com
+```
+
+**Fully unattended** (no questions — e.g. for a script or a new VPS template):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/alihamza0053/ubuntu/main/deploy/get.sh | \
+  sudo ADMIN_USER=hamza ADMIN_PASS='YourStrongPassword' \
+       PANEL_DOMAIN=panel.example.com SSL_EMAIL=you@example.com bash
+```
+
+Optional switches (add before `bash`): `INSTALL_POSTGRES=no`, `AUTO_UPDATES=no`,
+`BRANCH=main`, `REPO_URL=https://github.com/<you>/<repo>.git`.
+
+**What it sets up**
+
+| Part | Details |
+|---|---|
+| System packages | nginx, Supervisor, MySQL, PHP-FPM, certbot, Google Chrome (Selenium), git, rsync |
+| Node.js | **24 LTS, patched** (22.23.4+ / 24.22.1+ / 26.12.1+ accepted) — builds the frontend, runs n8n |
+| Python | panel virtualenv + streamlit, pandas, selenium, openpyxl, psycopg |
+| Panel | source in `/opt/serverhub-src`, app in `/srv/serverhub`, fresh secret key, root helpers + sudo rules, starts on boot |
+| Admin user | created from your answers |
+| nginx + HTTPS | site for your domain; Let's Encrypt certificate + HTTP→HTTPS redirect (only if the domain already points at this server — otherwise it tells you the command to run later). No domain → panel on `http://<server-ip>/` |
+| PostgreSQL | installed locked-down: localhost only, one user per database, RAM-sized limits (next free port if 5432 is taken) |
+| Security updates | unattended-upgrades on (security fixes install daily) |
+
+At the end it prints the panel address, your login name, and a short **"Still to
+do"** list for anything it had to skip (e.g. DNS not pointing here yet).
+
+**Before you run it**
+
+1. **DNS** (only if you want HTTPS right away): an `A` record for your panel
+   domain → this server's IP. Check with `dig +short panel.example.com`.
+2. **1 GB RAM servers:** add swap first (see [1.5](#15--add-swap-required-on-1-gb-ram-recommended-on-2-gb)) — the frontend build needs it.
+3. **Firewall:** if UFW is on, allow `22`, `80`, `443` (see [1.6](#16--firewall-ufw)).
+
+**Afterwards**
+
+- Log in at the printed address.
+- Update later with: `sudo bash /opt/serverhub-src/deploy/update.sh`
+- The hidden panel owner is the username `hamza`. Using a different admin name?
+  Set `OWNER_USERNAME=<name>` in `/srv/serverhub/backend/.env`, then
+  `sudo supervisorctl restart serverhub`.
+- Re-running the one-line command is safe (it keeps your domain, SSL, data and
+  settings) — but `deploy/update.sh` is the normal way to update.
+
+The rest of this guide explains every step the installer performs, for
+learning or for fixing a partial install by hand.
+
+---
+
 ## Table of contents
 
+- [⚡ Quick install — one command](#-quick-install--one-command-download--install-everything)
 0. [What you need before starting](#0-what-you-need-before-starting)
 1. [Connect to the server & first-time setup](#1-connect-to-the-server--first-time-setup)
 2. [Install ALL system dependencies (from zero)](#2-install-all-system-dependencies-from-zero)
@@ -184,16 +252,20 @@ Why these packages:
 - `python3-pip` — installs Python packages
 - `python3-dev` + `build-essential` — compile C extensions (bcrypt, etc.)
 
-### 2.2 — Node.js 20 (to build the React frontend)
+### 2.2 — Node.js 24 LTS (to build the React frontend, and for n8n)
 
-Ubuntu's default Node is too old. Install Node 20 from NodeSource:
+Ubuntu's default Node is too old, and **Node 20 and older no longer get
+security fixes** (October 2026 advisory). Install Node 24 LTS from NodeSource:
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs
-node --version    # expect v20.x
-npm --version     # expect 10.x
+node --version    # must be v24.22.1 or newer (22.23.4+ / 26.12.1+ also fine)
+npm --version
 ```
+
+`deploy/update.sh` checks this on every update and upgrades an old or
+unpatched Node automatically (reinstalling n8n afterwards if it's installed).
 
 ### 2.3 — Nginx (reverse proxy + website hosting)
 

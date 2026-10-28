@@ -8,6 +8,21 @@ set -euo pipefail
 
 PANEL_USER="serverhub"
 PANEL_ROOT="/srv/serverhub"
+
+# Optional — set these (get.sh asks for them) and the install needs no manual steps:
+#   ADMIN_USER / ADMIN_PASS   create the first admin
+#   PANEL_DOMAIN              e.g. panel.example.com (DNS must point at this server)
+#   SSL_EMAIL                 Let's Encrypt account email (with PANEL_DOMAIN → HTTPS)
+#   INSTALL_POSTGRES=no       skip PostgreSQL (default: installed)
+#   AUTO_UPDATES=no           skip automatic security updates (default: on)
+ADMIN_USER="${ADMIN_USER:-}"
+ADMIN_PASS="${ADMIN_PASS:-}"
+PANEL_DOMAIN="${PANEL_DOMAIN:-}"
+SSL_EMAIL="${SSL_EMAIL:-}"
+INSTALL_POSTGRES="${INSTALL_POSTGRES:-yes}"
+AUTO_UPDATES="${AUTO_UPDATES:-yes}"
+# No interactive apt/needrestart screens in the middle of an install
+export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Interpreter used to build the venv. On Ubuntu 22.04 run the installer with
 # PYTHON3=python3.11 so the panel gets Python 3.11 (the deadsnakes package).
@@ -142,23 +157,99 @@ supervisorctl update
 supervisorctl restart serverhub || supervisorctl start serverhub
 
 echo "==> Nginx site for the panel"
-cp "$REPO_DIR/deploy/nginx-panel.conf" /etc/nginx/sites-available/serverhub
-ln -sf /etc/nginx/sites-available/serverhub /etc/nginx/sites-enabled/serverhub
+SITE=/etc/nginx/sites-available/serverhub
+# Only (re)write it when it's new or still the placeholder — on a configured
+# server it holds the real domain and certbot's SSL lines, which must survive.
+if [ ! -f "$SITE" ] || grep -q "panel.yourdomain.com" "$SITE"; then
+  # no domain yet: answer on the server's IP (catch-all) until one is set
+  sed "s|server_name panel.yourdomain.com;|server_name ${PANEL_DOMAIN:-_};|" \
+    "$REPO_DIR/deploy/nginx-panel.conf" > "$SITE"
+  echo "    panel site written for: ${PANEL_DOMAIN:-any address (no domain yet)}"
+else
+  echo "    keeping the existing panel site ($(grep -m1 -o 'server_name [^;]*' "$SITE"))"
+fi
+ln -sf "$SITE" /etc/nginx/sites-enabled/serverhub
 # Remove the stock "Welcome to nginx" default site — otherwise it acts as the
 # default_server and Certbot can attach certs to it instead of the panel,
 # leaving the domain showing the nginx welcome page.
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
+# ---------------------------------------------------------------------------
+# Finishing steps — each one warns instead of aborting, so the panel itself is
+# always installed even if e.g. DNS isn't pointing here yet.
+# ---------------------------------------------------------------------------
+WARNINGS=()
+
+echo "==> Admin user"
+if [ -n "$ADMIN_USER" ] && [ -n "$ADMIN_PASS" ]; then
+  ( cd "$PANEL_ROOT/backend" && sudo -u "$PANEL_USER" "$PANEL_ROOT/venv/bin/python" setup_admin.py \
+      -u "$ADMIN_USER" -p "$ADMIN_PASS" ) || WARNINGS+=("admin user not created — run setup_admin.py (below)")
+else
+  echo "    skipped (no ADMIN_USER/ADMIN_PASS given)"
+  WARNINGS+=("create your admin: cd $PANEL_ROOT/backend && sudo -u $PANEL_USER $PANEL_ROOT/venv/bin/python setup_admin.py")
+fi
+
+echo "==> HTTPS for the panel"
+if [ -n "$PANEL_DOMAIN" ] && [ -n "$SSL_EMAIL" ]; then
+  if grep -q "ssl_certificate" "$SITE"; then
+    echo "    already has a certificate"
+  else
+    SERVER_IP="$(curl -4 -fsS --max-time 8 https://api.ipify.org 2>/dev/null || true)"
+    DNS_IP="$(getent ahostsv4 "$PANEL_DOMAIN" 2>/dev/null | awk 'NR==1 {print $1}')"
+    if [ -n "$SERVER_IP" ] && [ "$DNS_IP" != "$SERVER_IP" ]; then
+      WARNINGS+=("SSL skipped: $PANEL_DOMAIN points to ${DNS_IP:-nothing}, this server is $SERVER_IP — fix DNS, then: sudo certbot --nginx -d $PANEL_DOMAIN")
+    elif certbot --nginx -d "$PANEL_DOMAIN" --non-interactive --agree-tos -m "$SSL_EMAIL" --redirect; then
+      echo "    https://$PANEL_DOMAIN is ready"
+    else
+      WARNINGS+=("certbot failed — retry: sudo certbot --nginx -d $PANEL_DOMAIN")
+    fi
+  fi
+elif [ -n "$PANEL_DOMAIN" ]; then
+  WARNINGS+=("no SSL_EMAIL given — for HTTPS run: sudo certbot --nginx -d $PANEL_DOMAIN")
+else
+  echo "    skipped (no domain) — the panel answers on http://<server-ip>/"
+fi
+
+echo "==> PostgreSQL"
+if [ "$INSTALL_POSTGRES" != "no" ]; then
+  if ls /etc/postgresql/*/main/conf.d/serverhub.conf >/dev/null 2>&1 \
+     && "$PANEL_ROOT/bin/serverhub-postgres" status | grep -q "running=yes"; then
+    echo "    already installed and running"
+  else
+    "$PANEL_ROOT/bin/serverhub-postgres" install \
+      || WARNINGS+=("PostgreSQL setup failed — open Databases → PostgreSQL in the panel to see why")
+  fi
+else
+  echo "    skipped (INSTALL_POSTGRES=no) — installable later from Databases → PostgreSQL"
+fi
+
+echo "==> Automatic security updates"
+if [ "$AUTO_UPDATES" != "no" ]; then
+  apt-get install -y unattended-upgrades >/dev/null \
+    && printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' \
+         > /etc/apt/apt.conf.d/20auto-upgrades \
+    && echo "    on (security fixes install daily)" \
+    || WARNINGS+=("could not enable unattended-upgrades")
+fi
+
+URL="http://$(curl -4 -fsS --max-time 8 https://api.ipify.org 2>/dev/null || echo '<server-ip>')/"
+if [ -n "$PANEL_DOMAIN" ]; then
+  URL="http://$PANEL_DOMAIN/"
+  grep -q "ssl_certificate" "$SITE" 2>/dev/null && URL="https://$PANEL_DOMAIN/"
+fi
+
 echo
 echo "============================================================"
 echo " ServerHub installed."
 echo
-echo " 1. Create your admin user:"
-echo "      cd $PANEL_ROOT/backend && sudo -u $PANEL_USER $PANEL_ROOT/venv/bin/python setup_admin.py"
-echo " 2. Edit /etc/nginx/sites-available/serverhub and set your"
-echo "    panel domain, then: sudo nginx -t && sudo systemctl reload nginx"
-echo " 3. (Optional) SSL: sudo certbot --nginx -d panel.yourdomain.com"
+echo "   Panel:  $URL"
+[ -n "$ADMIN_USER" ] && echo "   Login:  $ADMIN_USER"
 echo
-echo " Panel API:  http://127.0.0.1:8765"
+if [ "${#WARNINGS[@]}" -gt 0 ]; then
+  echo " Still to do:"
+  for w in "${WARNINGS[@]}"; do echo "   - $w"; done
+  echo
+fi
+echo " Update later with:  sudo bash $REPO_DIR/deploy/update.sh"
 echo "============================================================"
