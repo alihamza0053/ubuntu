@@ -22,7 +22,7 @@ from .database import Base, SessionLocal, engine, run_migrations
 from .models import User
 from .permissions import targets_hidden_entity, user_can
 from .security import decode_access_token
-from .routers import (apps, auth, code, dashboard, databases, files, onedrive,
+from .routers import (apps, auth, bulk, code, dashboard, databases, files, onedrive,
                       packages, pipeline, portal, postgres, projects, schedules, scripts,
                       server, settings_router, trash, websites)
 from .services import pipeline_service, scheduler_service, user_audit
@@ -122,6 +122,7 @@ app.include_router(websites.ws_router)        # python web-service logs WebSocke
 app.include_router(databases.router)
 app.include_router(postgres.router)              # Databases → PostgreSQL tab
 app.include_router(code.router)                  # sidebar → Code (code-server at /ide/)
+app.include_router(bulk.router)                  # Projects → Bulk controls (admins)
 app.include_router(apps.router)               # Apps section (Chromium/Brave/n8n)
 app.include_router(apps.ws_router)            # app + install log WebSocket
 app.include_router(files.router)

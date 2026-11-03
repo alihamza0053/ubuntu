@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import api, { errorMessage } from '../api/client'
+import BulkControls from '../components/BulkControls'
 import ProjectCard from '../components/ProjectCard'
 import Icon from '../components/ui/Icon'
 import Modal, { FormError } from '../components/ui/Modal'
@@ -98,6 +99,8 @@ export default function Projects() {
           </>
         }
       />
+
+      {isAdmin && <BulkControls onChanged={refresh} />}
 
       {loading ? (
         <div className="empty-state">Loading…</div>
