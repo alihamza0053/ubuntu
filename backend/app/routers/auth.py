@@ -28,8 +28,10 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def _user_out(u: User) -> UserOut:
+    from ..services import code_editor
     return UserOut(id=u.id, username=u.username, is_admin=bool(u.is_admin),
-                   permissions=parse_permissions(u.permissions))
+                   permissions=parse_permissions(u.permissions),
+                   code_access=code_editor.can_use(u))
 
 # In-memory login rate limiter: client_ip -> [attempt timestamps].
 # Fine for a single-process, single-admin panel.

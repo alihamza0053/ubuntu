@@ -32,6 +32,9 @@ serverhub ALL=(root) NOPASSWD: /usr/bin/mysqldump *
 # so no general sudo to the postgres user is needed.
 serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-postgres *
 
+# --- Code editor (sidebar → Code): install code-server + its nginx /ide/ path only.
+serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-code *
+
 # --- Panel self-update (Settings → Updates → Update now) ---
 serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-self-update *
 

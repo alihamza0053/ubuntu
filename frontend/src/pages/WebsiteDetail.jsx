@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api, { errorMessage } from '../api/client'
+import { useAuth } from '../context/AuthContext'
+import { openInEditor } from '../lib/openEditor'
 import EditorModal from '../components/EditorModal'
 import LiveLog from '../components/LiveLog'
 import StatusBadge from '../components/StatusBadge'
@@ -38,6 +40,7 @@ function formatSize(bytes) {
 }
 
 export default function WebsiteDetail() {
+  const { can } = useAuth()
   const { id } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = searchParams.get('tab') || 'overview'
@@ -87,6 +90,11 @@ export default function WebsiteDetail() {
         actions={
           <>
             <span className="badge-muted">{site.type.toUpperCase()}</span>
+            {can('code') && (
+              <button className="btn-primary" title="Open this website's files in the code editor"
+                onClick={() => openInEditor({ kind: 'website', name: site.name })}>
+                <Icon name="external" size={15} />Open in editor</button>
+            )}
             {liveUrl && (
               <a href={liveUrl} target="_blank" rel="noreferrer" className="btn-secondary">
                 <Icon name="external" size={15} />

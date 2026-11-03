@@ -17,7 +17,7 @@ from pathlib import Path
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Script
-from . import db_env
+from . import chrome_reaper, db_env
 from .activity import log_activity
 
 # Currently-running script processes, keyed by script id, so they can be
@@ -77,13 +77,14 @@ async def run_script(
     log_activity(f"▶ script {project_name}/{folder}/{filename} started")
 
     started = datetime.utcnow()
+    run_id = chrome_reaper.new_run_id()       # tags everything this run starts (see chrome_reaper)
 
     try:
         process = await asyncio.create_subprocess_exec(
             settings.PYTHON_BIN, "-u", str(script_path),
             cwd=str(script_dir),
             # a linked PostgreSQL database's DATABASE_URL / PG* (services/db_env.py)
-            env={**os.environ, **db_env.read("project", project_name)},
+            env={**os.environ, **db_env.read("project", project_name), chrome_reaper.MARKER: run_id},
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,  # merge stderr into stdout
             start_new_session=True,            # own process group (kill children on stop)
@@ -130,6 +131,14 @@ async def run_script(
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except (ProcessLookupError, PermissionError, OSError):
+            pass
+        # …and what escaped the group (Selenium starts chromedriver + Chrome in a
+        # session of their own): everything still carrying this run's id.
+        try:
+            leaked = await asyncio.to_thread(chrome_reaper.finish_run, run_id)
+            if leaked:
+                log_activity(f"🧹 {project_name}/{filename}: stopped {leaked} leftover browser process(es)")
+        except Exception:
             pass
         _running.pop(script_id, None)
         if script_id in _stopped:

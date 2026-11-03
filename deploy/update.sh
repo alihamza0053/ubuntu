@@ -125,6 +125,13 @@ if ! node_ok; then
   fi
 fi
 
+echo "==> Chrome policy (no software GPU)"
+# Headless Chrome on a server with no graphics card emulates a GPU in software,
+# which costs a lot of CPU (the "--type=gpu-process"). Chrome's managed policy
+# turns hardware acceleration off for every Chrome on this machine.
+mkdir -p /etc/opt/chrome/policies/managed
+printf '{\n  "HardwareAccelerationModeEnabled": false\n}\n' > /etc/opt/chrome/policies/managed/serverhub.json
+
 # 4. Frontend
 if [ "$DO_FRONTEND" = true ]; then
   echo "==> Rebuilding frontend"
@@ -140,6 +147,7 @@ mkdir -p "$PANEL_ROOT/bin"
 [ -f "$SRC/deploy/serverhub-apps.sh" ] && install -m 0755 "$SRC/deploy/serverhub-apps.sh" "$PANEL_ROOT/bin/serverhub-apps"
 [ -f "$SRC/deploy/serverhub-free-port.sh" ] && install -m 0755 "$SRC/deploy/serverhub-free-port.sh" "$PANEL_ROOT/bin/serverhub-free-port"
 [ -f "$SRC/deploy/serverhub-postgres.sh" ] && install -m 0755 "$SRC/deploy/serverhub-postgres.sh" "$PANEL_ROOT/bin/serverhub-postgres"
+[ -f "$SRC/deploy/serverhub-code.sh" ] && install -m 0755 "$SRC/deploy/serverhub-code.sh" "$PANEL_ROOT/bin/serverhub-code"
 # Apps section data root — the helper needs it to exist and be panel-owned.
 mkdir -p /srv/apps && chown "$PANEL_USER:$PANEL_USER" /srv/apps
 # Retire helpers belonging to sections that no longer exist in the panel.

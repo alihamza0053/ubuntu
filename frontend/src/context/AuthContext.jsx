@@ -36,6 +36,8 @@ export function AuthProvider({ children }) {
   const isAdmin = !!user?.is_admin
   // can(perm): admins can do everything; others only their granted tabs.
   function can(perm) {
+    // the code editor is decided by the server (Code permission + the owner's "Only me" switch)
+    if (perm === 'code') return !!user?.code_access
     if (isAdmin) return true
     return (user?.permissions || []).includes(perm)
   }

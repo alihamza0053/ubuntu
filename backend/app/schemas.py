@@ -23,6 +23,7 @@ class UserOut(BaseModel):
     username: str
     is_admin: bool = False
     permissions: list[str] = []
+    code_access: bool = False          # may open the code editor (Code tab + owner-only switch)
 
 
 class UserCreate(BaseModel):

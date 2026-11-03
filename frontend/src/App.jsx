@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext'
 import { firstAllowed } from './nav'
 import AppDetail from './pages/AppDetail'
 import Apps from './pages/Apps'
+import Code from './pages/Code'
 import Databases from './pages/Databases'
 import Files from './pages/Files'
 import Home from './pages/Home'
@@ -54,6 +55,7 @@ export default function App() {
         <Route path="databases" element={<Guard perm="databases"><Databases /></Guard>} />
         <Route path="apps" element={<Guard perm="apps"><Apps /></Guard>} />
         <Route path="apps/:key" element={<Guard perm="apps"><AppDetail /></Guard>} />
+        <Route path="code" element={<Guard perm="code"><Code /></Guard>} />
         <Route path="settings" element={<Guard perm="settings"><Settings /></Guard>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

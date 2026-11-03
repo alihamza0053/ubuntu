@@ -91,6 +91,11 @@ if ! command -v google-chrome >/dev/null; then
   rm -f "$TMP_DEB"
 fi
 google-chrome --version || true
+# Headless Chrome on a server with no graphics card emulates a GPU in software,
+# which costs a lot of CPU (the "--type=gpu-process"). Chrome's managed policy
+# turns hardware acceleration off for every Chrome on this machine.
+mkdir -p /etc/opt/chrome/policies/managed
+printf '{\n  "HardwareAccelerationModeEnabled": false\n}\n' > /etc/opt/chrome/policies/managed/serverhub.json
 
 # Node.js: the panel builds its frontend with it and n8n runs on it.
 # Node 20 and older get no security fixes any more (Oct 2026 advisory); these
@@ -179,6 +184,7 @@ install -m 0755 "$REPO_DIR/deploy/serverhub-cleanup.sh" "$PANEL_ROOT/bin/serverh
 install -m 0755 "$REPO_DIR/deploy/serverhub-apps.sh" "$PANEL_ROOT/bin/serverhub-apps"
 install -m 0755 "$REPO_DIR/deploy/serverhub-free-port.sh" "$PANEL_ROOT/bin/serverhub-free-port"
 install -m 0755 "$REPO_DIR/deploy/serverhub-postgres.sh" "$PANEL_ROOT/bin/serverhub-postgres"
+install -m 0755 "$REPO_DIR/deploy/serverhub-code.sh" "$PANEL_ROOT/bin/serverhub-code"
 
 echo "==> Sudoers rule"
 install -m 0440 "$REPO_DIR/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub
@@ -209,6 +215,7 @@ if [ ! -f "$SITE" ] || grep -q "panel.yourdomain.com" "$SITE"    || { [ -n "$PAN
 else
   echo "    keeping the existing panel site ($(grep -m1 -o 'server_name [^;]*' "$SITE"))"
 fi
+mkdir -p /etc/nginx/serverhub-panel.d        # extra panel paths (e.g. the code editor at /ide/)
 ln -sf "$SITE" /etc/nginx/sites-enabled/serverhub
 # Remove the stock "Welcome to nginx" default site — otherwise it acts as the
 # default_server and Certbot can attach certs to it instead of the panel,

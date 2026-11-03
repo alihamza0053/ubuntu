@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api from '../api/client'
+import { useAuth } from '../context/AuthContext'
+import { openInEditor } from '../lib/openEditor'
 import StatusBadge from '../components/StatusBadge'
 import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
@@ -32,6 +34,7 @@ const TABS = [
 ]
 
 export default function ProjectDetail() {
+  const { can } = useAuth()
   const { id } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = searchParams.get('tab') || 'overview'
@@ -66,6 +69,16 @@ export default function ProjectDetail() {
           <>
             <StatusBadge status={project.dashboard_status} />
             <span className="badge-muted">port {project.dashboard_port}</span>
+            {can('code') && (
+              <>
+                <button className="btn-secondary" title="Open this project's dashboard folder in the code editor"
+                  onClick={() => openInEditor({ kind: 'project', name: project.name, sub: 'dashboard' })}>
+                  <Icon name="terminal" size={15} />Dashboard code</button>
+                <button className="btn-primary" title="Open the whole project in the code editor"
+                  onClick={() => openInEditor({ kind: 'project', name: project.name })}>
+                  <Icon name="external" size={15} />Open in editor</button>
+              </>
+            )}
             <Link to="/projects" className="btn-secondary">
               <Icon name="arrow-left" size={15} />
               All projects

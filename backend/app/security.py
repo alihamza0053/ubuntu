@@ -42,6 +42,8 @@ def decode_access_token(token: str) -> str | None:
     """Return the username embedded in a valid token, else None."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("scope"):        # e.g. the code editor's cookie — not a panel login
+            return None
         return payload.get("sub")
     except JWTError:
         return None

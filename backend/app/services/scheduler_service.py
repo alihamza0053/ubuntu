@@ -13,7 +13,7 @@ from apscheduler.triggers.cron import CronTrigger
 from ..config import settings as app_settings
 from ..database import SessionLocal
 from ..models import PipelineSchedule, Project, Schedule, Script, Setting
-from . import trash_service
+from . import chrome_reaper, trash_service
 from .activity import log_activity
 from .pipeline_service import is_pipeline_running, run_pipeline
 from .script_runner import run_script
@@ -215,6 +215,16 @@ def auto_clean_temp_next_run():
     return job.next_run_time if job else None
 
 
+def _sweep_browsers() -> None:
+    try:
+        stopped = chrome_reaper.sweep()
+    except Exception as exc:  # noqa: BLE001 — a sweep must never take the scheduler down
+        log_activity(f"🧹 browser sweep failed: {exc}")
+        return
+    if stopped:
+        log_activity(f"🧹 stopped {stopped} leftover headless Chrome/chromedriver process(es)")
+
+
 def start() -> None:
     """Start the scheduler and load all active schedules (called on app startup)."""
     if not scheduler.running:
@@ -223,6 +233,10 @@ def start() -> None:
     scheduler.add_job(_purge_trash, "interval", hours=1, id="trash-purge",
                       replace_existing=True)
     _purge_trash()
+    # Leftover headless Chrome / chromedriver from scripts: every 10 minutes (and once now)
+    scheduler.add_job(_sweep_browsers, "interval", minutes=10, id="browser-sweep",
+                      replace_existing=True)
+    _sweep_browsers()
     db = SessionLocal()
     try:
         # Daily temp-file cleanup (on unless an admin turned it off)
