@@ -187,6 +187,7 @@ install -m 0755 "$REPO_DIR/deploy/serverhub-apps.sh" "$PANEL_ROOT/bin/serverhub-
 install -m 0755 "$REPO_DIR/deploy/serverhub-free-port.sh" "$PANEL_ROOT/bin/serverhub-free-port"
 install -m 0755 "$REPO_DIR/deploy/serverhub-postgres.sh" "$PANEL_ROOT/bin/serverhub-postgres"
 install -m 0755 "$REPO_DIR/deploy/serverhub-code.sh" "$PANEL_ROOT/bin/serverhub-code"
+install -m 0755 "$REPO_DIR/deploy/serverhub-fix-owner.sh" "$PANEL_ROOT/bin/serverhub-fix-owner"
 
 echo "==> Sudoers rule"
 install -m 0440 "$REPO_DIR/deploy/sudoers-serverhub" /etc/sudoers.d/serverhub

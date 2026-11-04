@@ -63,6 +63,48 @@ def run_as_env() -> str:
     return f',HOME="/home/{user}",USER="{user}"' if user else ""
 
 
+FIX_OWNER_HELPER = "/srv/serverhub/bin/serverhub-fix-owner"
+
+
+def fix_owner(kind: str, name: str) -> None:
+    """Hand one project's/website's root-owned files to the panel user. Never raises."""
+    try:
+        subprocess.run(["sudo", "-n", FIX_OWNER_HELPER, kind, name], capture_output=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def add_run_as(path: Path) -> bool:
+    """Add DASHBOARD_USER to an existing program config. True when the file changed."""
+    if not settings.DASHBOARD_USER or not path.exists():
+        return False
+    text = path.read_text(encoding="utf-8")
+    if re.search(r"(?m)^user=", text):
+        return False
+    text = re.sub(r"(?m)^environment=", run_as_line() + "environment=", text, count=1)
+    text = text.replace('PYTHONUNBUFFERED="1"', 'PYTHONUNBUFFERED="1"' + run_as_env(), 1)
+    path.write_text(text, encoding="utf-8")
+    return True
+
+
+def switch_program_user(path: Path, kind: str, name: str, *groups: str) -> bool:
+    """
+    Move a program off root at its next restart, one at a time, nothing else
+    touched: hand over its files, add `user=`, restart just that program (scoped
+    `update`: a plain one would also restart every other program whose config
+    changed on disk), then hand over whatever root wrote in the last moments.
+    """
+    if not settings.DASHBOARD_USER or not path.exists() or re.search(r"(?m)^user=", path.read_text(encoding="utf-8")):
+        return False
+    fix_owner(kind, name)
+    add_run_as(path)
+    _supervisorctl("reread")
+    for group in groups:
+        _supervisorctl("update", group)
+    fix_owner(kind, name)
+    return True
+
+
 def program_name(project_name: str) -> str:
     return f"{project_name}_dashboard"
 
@@ -296,10 +338,17 @@ def write_config(project_name: str, port: int, framework: str | None = None,
             sync_api_program(project_name, port)
             return path          # unchanged — leave a running program alone
 
+    switching = bool(settings.DASHBOARD_USER and existing and not re.search(r"(?m)^user=", existing))
+    if switching:
+        fix_owner("project", project_name)
     path.write_text(content, encoding="utf-8")
-    # Tell supervisor about the new/changed program definition
+    # Tell supervisor about the new/changed program definition — this program
+    # only: a plain `update` also restarts every other program whose config
+    # differs on disk (e.g. autostart flipped by set_autostart).
     _supervisorctl("reread")
-    _supervisorctl("update")
+    _supervisorctl("update", program_name(project_name))
+    if switching:
+        fix_owner("project", project_name)
     sync_api_program(project_name, port)
     return path
 
@@ -415,8 +464,19 @@ def _start_healing(action: str, project_name: str) -> str:
 
 def start(project_name: str) -> str:
     set_autostart(project_name, True)
+    _switch_dashboard_user(project_name)
     out = _start_healing("start", project_name)
     return _join(out, _api_action("start", project_name))
+
+
+def _switch_dashboard_user(project_name: str) -> bool:
+    """Dashboard and its api.py together (see switch_program_user)."""
+    switched = switch_program_user(config_path(project_name), "project", project_name, program_name(project_name))
+    api = api_config_path(project_name)
+    if add_run_as(api):
+        _supervisorctl("reread")
+        _supervisorctl("update", api_program_name(project_name))
+    return switched
 
 
 def stop(project_name: str) -> str:
@@ -427,6 +487,8 @@ def stop(project_name: str) -> str:
 
 def restart(project_name: str) -> str:
     set_autostart(project_name, True)
+    if _switch_dashboard_user(project_name):       # `update` already restarted it
+        return _join(_start_healing("start", project_name), _api_action("start", project_name))
     out = _start_healing("restart", project_name)
     return _join(out, _api_action("restart", project_name))
 

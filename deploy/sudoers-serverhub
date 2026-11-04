@@ -35,6 +35,9 @@ serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-postgres *
 # --- Code editor (sidebar → Code): install code-server + its nginx /ide/ path only.
 serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-code *
 
+# Hand one project's root-owned files to the panel user (see deploy/serverhub-fix-owner.sh).
+serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-fix-owner *
+
 # --- Panel self-update (Settings → Updates → Update now) ---
 serverhub ALL=(root) NOPASSWD: /srv/serverhub/bin/serverhub-self-update *
 

@@ -324,6 +324,9 @@ def control(site: Website, action: str) -> str:
         write_program(site)
     if action in ("start", "restart"):
         set_autostart(site.name, True)
+        if supervisor_service.switch_program_user(config_path(site.name), "website", site.name,
+                                                  program_name(site.name)):
+            action = "start"                       # `update` already restarted it
     result = supervisor_service.run_supervisorctl(action, program_name(site.name))
     out = (result.stdout + result.stderr).strip()
     if "ERROR" in out and not supervisor_service.is_benign_output(out):
