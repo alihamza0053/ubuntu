@@ -266,40 +266,33 @@ def project_block(domain: str, port: int, project: str, panel_port: int,
     return _wrap_server(domain, locations)
 
 
-def react_block(domain: str, folder: str) -> str:
-    return f"""server {{
-    listen 80;
-    server_name {domain};
-    root {settings.WEBSITES_ROOT}/{folder}/dist;
-    index index.html;
-    location / {{ try_files $uri /index.html; }}
-}}
+# Sites served straight from a folder must never hand out hidden files: .env
+# (passwords), .git (all the source), .htpasswd… Scanners ask for these all day.
+# .well-known stays open, Let's Encrypt needs it.
+HIDE_DOTFILES = r"""    location ~ /\.(?!well-known(/|$)) { deny all; return 404; }
 """
+
+
+def react_block(domain: str, folder: str) -> str:
+    return _wrap_server(domain, f"""    root {settings.WEBSITES_ROOT}/{folder}/dist;
+    index index.html;
+{HIDE_DOTFILES}    location / {{ try_files $uri /index.html; }}""")
 
 
 def php_block(domain: str, folder: str) -> str:
-    return f"""server {{
-    listen 80;
-    server_name {domain};
-    root {settings.WEBSITES_ROOT}/{folder};
+    return _wrap_server(domain, f"""    root {settings.WEBSITES_ROOT}/{folder};
     index index.php index.html;
-    location / {{ try_files $uri $uri/ =404; }}
+{HIDE_DOTFILES}    location / {{ try_files $uri $uri/ =404; }}
     location ~ \\.php$ {{
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
-    }}
-}}
-"""
+    }}""")
 
 
 def html_block(domain: str, folder: str) -> str:
-    return f"""server {{
-    listen 80;
-    server_name {domain};
-    root {settings.WEBSITES_ROOT}/{folder};
+    return _wrap_server(domain, f"""    root {settings.WEBSITES_ROOT}/{folder};
     index index.html;
-}}
-"""
+{HIDE_DOTFILES.rstrip()}""")
 
 
 def build_block(entity_type: str, **kw) -> str:
