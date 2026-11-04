@@ -2,10 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
+import { useAuth } from '../context/AuthContext'
 import { openInEditor } from '../lib/openEditor'
 
 /** Sidebar → Code: VS Code in the browser (code-server), on any project or website. */
 export default function Code() {
+  const { isAdmin } = useAuth()
+  const [deleteData, setDeleteData] = useState(false)
   const [status, setStatus] = useState(null)
   const [folders, setFolders] = useState({ projects: [], websites: [] })
   const [filter, setFilter] = useState('')
@@ -107,6 +110,27 @@ export default function Code() {
             <FolderGroup title="Websites" kind="website" items={folders.websites.filter((f) => match(f.name))}
               subs={[['', 'Open']]} />
           </div>
+
+          {isAdmin && (
+            <div className="card space-y-2">
+              <h3 className="section-title">Uninstall</h3>
+              <p className="text-xs text-slate-500">
+                Removes the editor from this server. Your projects, websites, dashboards and databases are not
+                touched. You can install it again from this page at any time.
+              </p>
+              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={deleteData} onChange={(e) => setDeleteData(e.target.checked)} />
+                Also delete the editor's settings and installed extensions
+              </label>
+              <button className="btn-secondary text-red-300" disabled={busy === 'uninstall'}
+                onClick={() => {
+                  const what = deleteData ? "the editor, its settings and its extensions" : 'the editor (its settings are kept)'
+                  if (!window.confirm(`Uninstall ${what}? Anyone using it now will be disconnected.`)) return
+                  act('uninstall', () => api.post('/code/uninstall', null, { params: { delete_data: deleteData } }))
+                }}>
+                <Icon name="trash" size={15} />{busy === 'uninstall' ? 'Removing…' : 'Uninstall code editor'}</button>
+            </div>
+          )}
         </>
       )}
     </div>

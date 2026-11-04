@@ -88,6 +88,7 @@ export default function Home() {
           label="CPU"
           icon="cpu"
           value={stats ? `${stats.cpu_percent}%` : '…'}
+          sub={stats?.cpu_cores && `${stats.cpu_cores} cores${stats.load_avg != null ? ` · load ${stats.load_avg}` : ''}`}
           percent={stats?.cpu_percent}
         />
         <StatTile

@@ -92,12 +92,24 @@ async def session(request: Request, response: Response, kind: str | None = None,
                   sub: str = "", user: User = Depends(allowed_user), db: Session = Depends(get_db)):
     """Set the editor cookie (and make sure the editor runs); returns the /ide/ link to open."""
     folder = _folder(db, user, kind, name, sub)
+    if not ce.installed():
+        raise HTTPException(409, "The code editor isn't installed — install it from the Code page first.")
     if not await asyncio.to_thread(ce.running):
         await asyncio.to_thread(ce.start)
     secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
     response.set_cookie(ce.COOKIE, ce.make_cookie_token(user.username), max_age=ce.COOKIE_HOURS * 3600,
                         path="/", httponly=True, secure=secure, samesite="lax")
     return {"url": f"/ide/?folder={quote(folder)}"}
+
+
+@router.post("/uninstall", response_model=DetailResponse)
+async def uninstall(delete_data: bool = False, user: User = Depends(allowed_user)):
+    """Administrators only. Projects and websites are not touched."""
+    if not user.is_admin:
+        raise HTTPException(403, "Only administrators can uninstall the editor.")
+    detail = await asyncio.to_thread(ce.uninstall, delete_data)
+    log_activity(f"💻 code editor uninstalled{' (data deleted)' if delete_data else ''}")
+    return DetailResponse(detail=detail)
 
 
 @router.get("/folders")

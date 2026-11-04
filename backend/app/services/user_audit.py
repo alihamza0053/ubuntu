@@ -79,6 +79,7 @@ _ROUTES = [
     ("POST", r"/api/postgres/query$", "Ran a PostgreSQL query"),
     ("POST", r"/api/postgres/([^/]+)/import$", "Imported into PostgreSQL database {1}"),
     ("POST", r"/api/code/install$", "Installed the code editor"),
+    ("POST", r"/api/code/uninstall$", "Uninstalled the code editor"),
     ("POST", r"/api/code/start$", "Started the code editor"),
     ("POST", r"/api/code/stop$", "Stopped the code editor"),
     ("POST", r"/api/code/session$", "Opened the code editor"),

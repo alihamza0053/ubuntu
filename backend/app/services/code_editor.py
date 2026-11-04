@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -213,6 +214,31 @@ def stop() -> str:
     _set_autostart(False)
     r = supervisor_service.run_supervisorctl("stop", PROGRAM)
     return (r.stdout + r.stderr).strip() or "stopped"
+
+
+def installed() -> bool:
+    return Path(BINARY).exists()
+
+
+def uninstall(delete_data: bool = False) -> str:
+    """
+    Remove the editor: its Supervisor program, the /ide/ path and the package.
+    Projects and websites are never touched. The editor's own settings and
+    extensions (DATA_DIR) stay unless delete_data is set, for a later reinstall.
+    """
+    path = config_path()
+    if path.exists():
+        supervisor_service.run_supervisorctl("stop", PROGRAM)
+        path.unlink()
+        supervisor_service.run_supervisorctl("reread")
+        supervisor_service.run_supervisorctl("update")
+    code, out = _helper("uninstall", timeout=300)
+    if code != 0:
+        raise HTTPException(500, f"Uninstall failed: {out[-800:]}")
+    if delete_data:
+        shutil.rmtree(DATA_DIR, ignore_errors=True)
+        return "Code editor removed, including its settings and extensions."
+    return f"Code editor removed. Its settings and extensions were kept in {DATA_DIR}."
 
 
 def status_nginx_ok() -> bool:

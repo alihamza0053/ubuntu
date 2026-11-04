@@ -18,6 +18,14 @@ router = APIRouter(
 )
 
 
+def _load_avg() -> float | None:
+    """1-minute load average (how many cores' worth of work is waiting or running)."""
+    try:
+        return round(psutil.getloadavg()[0], 2)
+    except (AttributeError, OSError):
+        return None
+
+
 @router.get("/stats")
 def server_stats():
     """Point-in-time CPU / RAM / disk / uptime snapshot."""
@@ -29,6 +37,8 @@ def server_stats():
     minutes = rem // 60
     return {
         "cpu_percent": psutil.cpu_percent(interval=0.2),
+        "cpu_cores": psutil.cpu_count(logical=True),
+        "load_avg": _load_avg(),
         "memory": {"percent": memory.percent,
                    "used_gb": round(memory.used / 1024**3, 2),
                    "total_gb": round(memory.total / 1024**3, 2)},

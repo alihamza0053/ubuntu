@@ -2,9 +2,10 @@
 # ServerHub — code editor helper (runs as root via a single sudoers rule).
 # Installed to $PANEL_ROOT/bin/serverhub-code by deploy/install.sh|update.sh.
 #
-# Usage: serverhub-code <install|nginx|status> [port]
+# Usage: serverhub-code <install|nginx|uninstall|status> [port]
 #   install       install code-server (VS Code in the browser) from its official .deb
 #   nginx <port>  serve it at <panel>/ide/, behind the panel's login check
+#   uninstall     remove the /ide/ path and the code-server package
 #   status        installed=… version=… nginx=…
 #
 # code-server itself listens on 127.0.0.1 only. nginx forwards /ide/ to it only
@@ -87,9 +88,19 @@ EOF
   fi
 }
 
+uninstall_code_server() {
+  rm -f "$SNIPPET_DIR/ide.conf"
+  if nginx -t 2>/dev/null; then systemctl reload nginx; fi
+  if dpkg -s code-server >/dev/null 2>&1; then
+    DEBIAN_FRONTEND=noninteractive apt-get remove -y code-server >/dev/null
+  fi
+  echo "✓ code-server removed"
+}
+
 case "${1:-}" in
-  install) install_code_server ;;
-  nginx)   setup_nginx "${2:-}" ;;
+  install)   install_code_server ;;
+  nginx)     setup_nginx "${2:-}" ;;
+  uninstall) uninstall_code_server ;;
   status)
     if command -v code-server >/dev/null 2>&1; then
       echo "installed=yes"
@@ -103,5 +114,5 @@ case "${1:-}" in
       echo "nginx=no"
     fi
     ;;
-  *) echo "usage: serverhub-code <install|nginx|status> [port]" >&2; exit 2 ;;
+  *) echo "usage: serverhub-code <install|nginx|uninstall|status> [port]" >&2; exit 2 ;;
 esac
