@@ -1,0 +1,4 @@
+fastapi
+uvicorn[standard]
+psycopg[binary,pool]>=3.2,<4
+pyjwt>=2.8
