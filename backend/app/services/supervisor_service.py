@@ -44,12 +44,23 @@ FRAMEWORK_BINS = {"streamlit": "streamlit", "flask": "gunicorn", "fastapi": "uvi
 SUPERVISOR_TEMPLATE = """[program:{name}_dashboard]
 command={command}
 directory={dashboard_dir}
-environment=PATH="{venv_bin}:/usr/local/bin:/usr/bin:/bin",PYTHONUNBUFFERED="1"{db_env}
+{run_as}environment=PATH="{venv_bin}:/usr/local/bin:/usr/bin:/bin",PYTHONUNBUFFERED="1"{run_env}{db_env}
 autostart=false
 autorestart=true
 stderr_logfile={log_dir}/{name}.err.log
 stdout_logfile={log_dir}/{name}.out.log
 """
+
+
+def run_as_line() -> str:
+    """`user=` line for a program config ('' = root, the old default)."""
+    return f"user={settings.DASHBOARD_USER}\n" if settings.DASHBOARD_USER else ""
+
+
+def run_as_env() -> str:
+    """Supervisor doesn't change HOME with `user=`: without this, apps try to write to /root."""
+    user = settings.DASHBOARD_USER
+    return f',HOME="/home/{user}",USER="{user}"' if user else ""
 
 
 def program_name(project_name: str) -> str:
@@ -82,7 +93,7 @@ API_PORT_OFFSET = 1000
 API_TEMPLATE = """[program:{name}_api]
 command={uvicorn} api:app --host 127.0.0.1 --port {port}
 directory={dashboard_dir}
-environment=PATH="{venv_bin}:/usr/local/bin:/usr/bin:/bin",PYTHONUNBUFFERED="1"{db_env}
+{run_as}environment=PATH="{venv_bin}:/usr/local/bin:/usr/bin:/bin",PYTHONUNBUFFERED="1"{run_env}{db_env}
 autostart={autostart}
 autorestart=true
 startsecs=3
@@ -127,7 +138,8 @@ def sync_api_program(project_name: str, dashboard_port: int) -> bool:
         name=project_name, uvicorn=venv_bin_dir(project_name) / "uvicorn", port=api_port(dashboard_port),
         dashboard_dir=dashboard_dir(project_name), venv_bin=venv_bin_dir(project_name),
         autostart=current.group(1) if current else "false", log_dir=settings.SUPERVISOR_LOG_DIR,
-        db_env=db_env.supervisor_env("project", project_name))
+        db_env=db_env.supervisor_env("project", project_name),
+        run_as=run_as_line(), run_env=run_as_env())
     if content != existing:
         settings.SUPERVISOR_CONF_DIR.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
@@ -270,6 +282,7 @@ def write_config(project_name: str, port: int, framework: str | None = None,
         log_dir=settings.SUPERVISOR_LOG_DIR,
         # a linked PostgreSQL database's DATABASE_URL / PG* (services/db_env.py)
         db_env=db_env.supervisor_env("project", project_name),
+        run_as=run_as_line(), run_env=run_as_env(),
     )
     path = config_path(project_name)
     existing = path.read_text(encoding="utf-8") if path.exists() else None

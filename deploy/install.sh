@@ -159,6 +159,8 @@ if [ ! -f "$PANEL_ROOT/backend/.env" ]; then
   else
     echo "UPDATE_SRC=$REPO_DIR" >> "$PANEL_ROOT/backend/.env"
   fi
+  # New servers never run dashboards as root
+  grep -q "^DASHBOARD_USER=" "$PANEL_ROOT/backend/.env" || echo "DASHBOARD_USER=$PANEL_USER" >> "$PANEL_ROOT/backend/.env"
   echo "    Generated backend/.env with a fresh SECRET_KEY"
 fi
 

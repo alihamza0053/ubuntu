@@ -74,6 +74,10 @@ class Settings:
     # --- Supervisor (Streamlit dashboard process manager) ---
     SUPERVISOR_CONF_DIR: Path = _env_path("SUPERVISOR_CONF_DIR", "/srv/serverhub/supervisor.d")
     SUPERVISOR_LOG_DIR: Path = _env_path("SUPERVISOR_LOG_DIR", "/var/log/supervisor")
+    # Linux user that dashboards, api.py and Python websites run as. Empty = root
+    # (the old behaviour, kept until a server is switched over): a bug in any
+    # one of them would then mean the whole server.
+    DASHBOARD_USER: str = os.getenv("DASHBOARD_USER", "")
     SUPERVISORCTL_USE_SUDO: bool = os.getenv("SUPERVISORCTL_USE_SUDO", "true").lower() == "true"
 
     # --- Streamlit dashboards ---

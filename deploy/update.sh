@@ -125,6 +125,10 @@ if ! node_ok; then
   fi
 fi
 
+# Dashboards that ran as root left root-owned files behind. Hand those (and only
+# those: PHP upload folders may belong to www-data) to the panel user.
+find /srv/projects /srv/websites -user root -exec chown -h "$PANEL_USER:$PANEL_USER" {} + 2>/dev/null || true
+
 # PostgreSQL's access rules changed with the role-based query box: re-apply once.
 if ls /etc/postgresql/*/main/conf.d/serverhub.conf >/dev/null 2>&1 && [ -x "$PANEL_ROOT/bin/serverhub-postgres" ]; then
   if grep -qE '^local +sameuser +all +peer' /etc/postgresql/*/main/pg_hba.conf; then
