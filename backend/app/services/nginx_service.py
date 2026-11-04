@@ -394,6 +394,14 @@ def remove_site(slug: str) -> None:
         pass
 
 
+def delete_certificate(domain: str) -> None:
+    """Drop a domain's certificate, so certbot stops renewing it. Never raises."""
+    try:
+        _sudo("certbot", "delete", "--cert-name", domain, "--non-interactive")
+    except (HTTPException, OSError):
+        pass
+
+
 def request_ssl(domain: str) -> str:
     """Obtain/renew a Let's Encrypt cert and configure nginx for it."""
     result = _sudo(

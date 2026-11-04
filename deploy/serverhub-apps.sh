@@ -2,7 +2,7 @@
 # ServerHub — Apps installer helper (runs as root via a single sudoers rule).
 # Installed to $PANEL_ROOT/bin/serverhub-apps by deploy/install.sh|update.sh.
 #
-# Usage: serverhub-apps <install|remove|probe> <chromium|brave|n8n|ollama>
+# Usage: serverhub-apps <install|remove|purge|probe> <chromium|brave|n8n|ollama>
 #
 # Only those four app names are accepted and every package list is hard-coded
 # below, so nothing the panel passes in can turn into an arbitrary apt/npm
@@ -258,12 +258,19 @@ remove_app() {
       fi
       rm -f /usr/local/bin/ollama /usr/bin/ollama
       rm -rf /usr/local/lib/ollama /usr/lib/ollama
-      # Models live in $APPS_ROOT/ollama/models (the data directory) — kept
-      # unless the panel was asked to delete the data too.
+      # Models live in $APPS_ROOT/ollama/models: see purge_app.
       ;;
   esac
   rm -f "$(app_dir "$1")/install.env"
-  echo "✓ $1 removed (its data directory was left in place)"
+  echo "✓ $1 removed"
+}
+
+# Everything the app kept: profile, workflows, models, logs. As root, because the
+# install step creates some of it as root. $1 is one of the fixed app names.
+purge_app() {
+  local dir; dir="$(app_dir "$1")"
+  case "$dir" in "$APPS_ROOT"/?*) rm -rf -- "$dir" ;; *) die "refusing to delete $dir" ;; esac
+  echo "✓ $1 data deleted"
 }
 
 # ---------------------------------------------------------------------------
@@ -281,7 +288,7 @@ probe_app() {
 
 # ---------------------------------------------------------------------------
 
-[ "$#" -ge 2 ] || { echo "usage: serverhub-apps <install|remove|probe> <chromium|brave|n8n|ollama>" >&2; exit 1; }
+[ "$#" -ge 2 ] || { echo "usage: serverhub-apps <install|remove|purge|probe> <chromium|brave|n8n|ollama>" >&2; exit 1; }
 
 ACTION="$1"
 APP="$2"
@@ -306,6 +313,7 @@ case "$ACTION" in
     echo "═══ $APP install finished ═══"
     ;;
   remove) remove_app "$APP" ;;
+  purge)  purge_app "$APP" ;;
   probe)  probe_app "$APP" ;;
   *) die "unknown action: $ACTION" ;;
 esac

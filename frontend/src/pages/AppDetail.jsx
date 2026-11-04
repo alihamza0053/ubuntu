@@ -68,12 +68,15 @@ export default function AppDetail() {
   }
 
   async function uninstall() {
-    const deleteData = window.confirm(
-      `Remove ${app.label}?\n\nOK = also delete its data (browser profile / workflows)\n` +
-      'Cancel = keep the data so a re-install picks up where you left off',
+    const typed = window.prompt(
+      `Completely remove ${app.label}?\n\n` +
+      'This deletes the app and ALL its data (workflows, browser profile, downloaded models, logs), ' +
+      'its domain setup and SSL certificate. This cannot be undone.\n\n' +
+      `Type ${key} to confirm:`,
     )
+    if (typed !== key) return
     try {
-      const res = await api.delete(`/apps/${key}`, { params: { delete_data: deleteData } })
+      const res = await api.delete(`/apps/${key}`)
       setMsg(res.data.detail)
       refresh()
     } catch (err) {
@@ -204,12 +207,12 @@ function OverviewTab({ app, installed, isAdmin, openUrl, onAction, onUninstall,
         <BrowserSettings app={app} onChanged={onChanged} setMsg={setMsg} />
       )}
 
-      {isAdmin && installed && (
+      {isAdmin && (installed || app.domain) && (
         <div className="card space-y-2">
           <h3 className="section-title text-red-300">Remove</h3>
           <p className="text-xs text-slate-500">
-            Stops {app.label}, removes its nginx block and uninstalls the packages.
-            You choose whether its data goes too.
+            Removes {app.label} completely: the program, its packages, <b>all its data</b>, its domain
+            setup and SSL certificate, and its logs. This can't be undone.
           </p>
           <button className="btn-secondary text-red-400" onClick={onUninstall}>
             <Icon name="trash" size={15} />Uninstall {app.label}

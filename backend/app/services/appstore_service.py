@@ -280,6 +280,23 @@ def _run_helper(key: str, action: str) -> None:
     _log_install(key, f"✓ finished" if code == 0 else f"✗ exited with code {code}")
 
 
+def _purge(key: str) -> None:
+    """Delete everything the app kept. The helper runs as root: the install step
+    creates some of these files as root, which the panel user couldn't remove."""
+    try:
+        subprocess.run(["sudo", "-n", str(settings.APPS_BIN), "purge", key],
+                       capture_output=True, timeout=600)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    shutil.rmtree(app_dir(key), ignore_errors=True)   # whatever is left, as far as we can
+    log = log_path(key)
+    for path in (log, log.with_name(log.name.replace(".out.log", ".err.log"))):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def _install_worker(key: str, action: str, purge_after: bool) -> None:
     try:
         _run_helper(key, action)
@@ -287,7 +304,7 @@ def _install_worker(key: str, action: str, purge_after: bool) -> None:
         # Only now is it safe to delete the data directory: the helper logs
         # into it, and wiping it while that is running just recreates it.
         if purge_after:
-            shutil.rmtree(app_dir(key), ignore_errors=True)
+            _purge(key)
         with _lock:
             _installing.discard(key)
 

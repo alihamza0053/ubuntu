@@ -163,14 +163,15 @@ def install_app(key: str, db: Session = Depends(get_db)):
 
 @router.delete("/{key}", response_model=DetailResponse,
                dependencies=[Depends(require_admin)])
-def uninstall_app(key: str, delete_data: bool = Query(False),
-                  db: Session = Depends(get_db)):
-    """Stop the app, remove its packages, and optionally its data directory."""
+def uninstall_app(key: str, db: Session = Depends(get_db)):
+    """Remove the app completely: program, packages, data, nginx site, certificate, logs."""
     entry = appstore_service.spec(key)
     app = db.query(ManagedApp).filter(ManagedApp.key == key).first()
 
     appstore_service.remove_program(key)
     nginx_service.remove_site(appstore_service.nginx_slug(key))
+    if app is not None and app.domain:
+        nginx_service.delete_certificate(app.domain)
     if app is not None:
         db.query(NginxConfig).filter(
             NginxConfig.entity_type == "app", NginxConfig.entity_id == app.id
@@ -178,10 +179,8 @@ def uninstall_app(key: str, delete_data: bool = Query(False),
         db.delete(app)
         db.commit()
 
-    appstore_service.start_install(key, action="remove", purge_after=delete_data)
-    return DetailResponse(
-        detail=f"Removing {entry['label']}"
-               + (" and its data" if delete_data else " (its data was kept)"))
+    appstore_service.start_install(key, action="remove", purge_after=True)
+    return DetailResponse(detail=f"Removing {entry['label']} and all its data…")
 
 
 @router.put("/{key}/hidden", response_model=DetailResponse,
