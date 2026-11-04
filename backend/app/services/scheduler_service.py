@@ -6,6 +6,9 @@ every active schedule from the DB and register a cron job. Each job triggers
 the same async run_script() used by manual runs, so logs and last-run status
 update identically.
 """
+import sys
+from pathlib import Path
+
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MAX_INSTANCES, EVENT_JOB_MISSED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -215,6 +218,70 @@ def auto_clean_temp_next_run():
     return job.next_run_time if job else None
 
 
+AUTO_BACKUP_KEY = "auto_backup_weekly"
+AUTO_BACKUP_JOB = "weekly-backup"
+AUTO_BACKUP_DAY, AUTO_BACKUP_HOUR = "sat", 2      # every Saturday 02:00 server time
+AUTO_BACKUP_TIMEOUT = 8 * 3600
+_backup_running = False
+
+
+def backup_running() -> bool:
+    return _backup_running
+
+
+async def _weekly_backup() -> None:
+    """
+    The whole panel, in a separate process at the lowest CPU and disk priority so
+    dashboards and the panel don't feel it (see services/weekly_backup.py).
+    """
+    global _backup_running
+    if _backup_running:
+        return
+    _backup_running = True
+    log_activity("💾 weekly backup started")
+    try:
+        code, out = await run_command(
+            ["nice", "-n", "19", "ionice", "-c", "3", sys.executable, "-m", "app.services.weekly_backup"],
+            cwd=str(Path(__file__).resolve().parents[2]), timeout=AUTO_BACKUP_TIMEOUT)
+        tail = (out or "").strip().splitlines()[-1:] or [""]
+        log_activity(f"💾 weekly backup: {tail[0][:200]}" if code == 0
+                     else f"💾 weekly backup FAILED (previous backup kept): {tail[0][:200]}")
+    except Exception as exc:  # noqa: BLE001 — never take the scheduler down
+        log_activity(f"💾 weekly backup FAILED (previous backup kept): {exc}")
+    finally:
+        _backup_running = False
+
+
+def auto_backup_enabled(db=None) -> bool:
+    """Whether the weekly backup is on (defaults to on)."""
+    own = db is None
+    db = db or SessionLocal()
+    try:
+        row = db.query(Setting).filter(Setting.key == AUTO_BACKUP_KEY).first()
+        return True if row is None else row.value == "1"
+    finally:
+        if own:
+            db.close()
+
+
+def set_auto_backup(enabled: bool) -> None:
+    """Register or drop the weekly job to match the setting."""
+    if enabled:
+        scheduler.add_job(_weekly_backup,
+                          trigger=CronTrigger(day_of_week=AUTO_BACKUP_DAY, hour=AUTO_BACKUP_HOUR, minute=0),
+                          id=AUTO_BACKUP_JOB, replace_existing=True,
+                          misfire_grace_time=6 * 3600, coalesce=True)   # server was off at 02:00? catch up
+    else:
+        job = scheduler.get_job(AUTO_BACKUP_JOB)
+        if job:
+            job.remove()
+
+
+def auto_backup_next_run():
+    job = scheduler.get_job(AUTO_BACKUP_JOB)
+    return job.next_run_time if job else None
+
+
 def _sweep_browsers() -> None:
     try:
         stopped = chrome_reaper.sweep()
@@ -241,6 +308,7 @@ def start() -> None:
     try:
         # Daily temp-file cleanup (on unless an admin turned it off)
         set_auto_clean_temp(auto_clean_temp_enabled(db))
+        set_auto_backup(auto_backup_enabled(db))
         for schedule in db.query(Schedule).filter(Schedule.is_active.is_(True)).all():
             try:
                 add_or_update_job(schedule)

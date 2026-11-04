@@ -9,6 +9,8 @@ Creates compressed archives (``serverhub-backup-<stamp>.tar.gz``) under
   websites   /srv/websites        (hosted sites)
   nginx      /srv/nginx-configs   (generated vhosts)
   databases  all MySQL databases  (via mysqldump)
+  postgres   all PostgreSQL databases (via pg_dump, one .sql per database)
+  panel_config  backend/.env + dbenv/ (secret key, linked-database connections)
 
 Most paths are owned by the panel user, so create/restore are plain file ops;
 only MySQL needs the (already whitelisted) ``sudo mysqldump`` / ``sudo mysql``.
@@ -27,6 +29,8 @@ import tarfile
 import tempfile
 from datetime import datetime
 from pathlib import Path
+
+from fastapi import HTTPException
 
 from ..config import settings
 
@@ -49,8 +53,14 @@ COMPONENTS: list[dict] = [
      "desc": "/srv/nginx-configs — generated vhosts"},
     {"key": "databases", "label": "MySQL databases",
      "desc": "All MySQL databases (mysqldump)"},
+    {"key": "postgres", "label": "PostgreSQL databases",
+     "desc": "All PostgreSQL databases (pg_dump)"},
+    {"key": "panel_config", "label": "Panel config",
+     "desc": "Secret key (.env) and linked-database connection files"},
 ]
 COMPONENT_KEYS = {c["key"] for c in COMPONENTS}
+ALL_COMPONENTS = [c["key"] for c in COMPONENTS]
+AUTO_PREFIX = "serverhub-auto"          # automatic weekly backups; others are never auto-deleted
 
 
 def _component_path(key: str) -> Path | None:
@@ -109,15 +119,18 @@ def _add_tree(tar: tarfile.TarFile, src: Path, arcname: str) -> None:
 # ---------------------------------------------------------------------------
 # Create
 # ---------------------------------------------------------------------------
-def create_backup(components: list[str]) -> dict:
+def create_backup(components: list[str], prefix: str = "serverhub-backup") -> dict:
     selected = [c for c in components if c in COMPONENT_KEYS]
     if not selected:
         raise ValueError("Select at least one thing to back up.")
 
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    name = f"serverhub-backup-{stamp}.tar.gz"
-    out = BACKUP_DIR / name
+    name = f"{prefix}-{stamp}.tar.gz"
+    final = BACKUP_DIR / name
+    # Written under another name and renamed when complete, so an interrupted
+    # backup can never look like a finished one.
+    out = BACKUP_DIR / f"{name}.partial"
 
     included: list[str] = []
     try:
@@ -136,6 +149,28 @@ def create_backup(components: list[str]) -> dict:
                         raise RuntimeError(f"mysqldump failed: {err[:300]}")
                     tar.add(dump, arcname="databases/all-databases.sql")
                     included.append(c)
+                elif c == "postgres":
+                    from . import postgres_service as pg
+                    if not pg.is_running():
+                        continue                 # not installed: nothing to back up
+                    for db in pg.list_databases():
+                        dump = Path(tmp) / f"{db['name']}.sql"
+                        try:
+                            pg.dump_database(db["name"], dump)
+                        except HTTPException as exc:
+                            raise RuntimeError(f"pg_dump of {db['name']} failed: {exc.detail}")
+                        tar.add(dump, arcname=f"postgres/{db['name']}.sql")
+                        dump.unlink()            # big dumps shouldn't pile up in /tmp
+                    included.append(c)
+                elif c == "panel_config":
+                    added = False
+                    for src, arc in ((settings.PANEL_ROOT / "backend" / ".env", "panel_config/.env"),
+                                     (settings.PANEL_ROOT / "dbenv", "panel_config/dbenv")):
+                        if src.exists():
+                            _add_tree(tar, src, arc)
+                            added = True
+                    if added:
+                        included.append(c)
                 elif c == "panel_db":
                     src = _component_path(c)
                     if not src or not src.exists():
@@ -169,7 +204,8 @@ def create_backup(components: list[str]) -> dict:
     if not included:
         out.unlink(missing_ok=True)
         raise ValueError("Nothing to back up — selected items were empty/missing.")
-    return backup_info(out)
+    out.replace(final)
+    return backup_info(final)
 
 
 # ---------------------------------------------------------------------------
@@ -181,8 +217,8 @@ def _read_manifest(path: Path) -> dict:
             m = tar.extractfile("manifest.json")
             if m is not None:
                 return json.loads(m.read().decode("utf-8"))
-    except (KeyError, tarfile.TarError, json.JSONDecodeError, OSError):
-        pass
+    except (KeyError, EOFError, tarfile.TarError, json.JSONDecodeError, OSError):
+        pass                    # truncated/corrupt archive: no manifest, not a crash
     return {}
 
 
@@ -308,6 +344,34 @@ def restore_backup(name: str, components: list[str]) -> dict:
                         err = proc.stderr.decode("utf-8", "replace").strip()
                         raise RuntimeError(f"mysql restore failed: {err[:300]}")
                     restored.append(c)
+
+                elif c == "postgres":
+                    from . import postgres_service as pg
+                    dumps = sorted((staging / "postgres").glob("*.sql"))
+                    if not dumps:
+                        continue
+                    for dump in dumps:
+                        try:
+                            pg.restore_dump(dump.stem, dump, rollback / "postgres")
+                        except HTTPException as exc:
+                            raise RuntimeError(f"PostgreSQL restore of {dump.stem} failed: {exc.detail}")
+                    restored.append(c)
+
+                elif c == "panel_config":
+                    src_env, src_dbenv = staging / "panel_config" / ".env", staging / "panel_config" / "dbenv"
+                    if src_env.is_file():
+                        dst = settings.PANEL_ROOT / "backend" / ".env"
+                        if dst.exists():
+                            _stash(dst, rollback / "panel_config" / ".env")
+                        dst.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(src_env, dst)
+                    if src_dbenv.is_dir():
+                        dst = settings.PANEL_ROOT / "dbenv"
+                        if dst.exists():
+                            _stash(dst, rollback / "panel_config" / "dbenv")
+                        shutil.copytree(src_dbenv, dst)
+                    restored.append(c)
+                    restart_panel = True
 
                 elif c == "panel_db":
                     src = staging / "panel_db" / "serverhub.db"

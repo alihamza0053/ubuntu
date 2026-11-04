@@ -153,8 +153,8 @@ EOF
 case "${1:-}" in
   install)
     export DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1   # no service-restart chatter
-    apt-get update -qq
-    apt-get install -y -qq postgresql postgresql-contrib >/dev/null
+    apt-get -o DPkg::Lock::Timeout=300 update -qq
+    apt-get -o DPkg::Lock::Timeout=300 install -y -qq postgresql postgresql-contrib >/dev/null
     configure
     ;;
   configure) configure ;;

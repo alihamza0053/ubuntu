@@ -17,7 +17,7 @@ from ..database import get_db
 from ..deps import get_current_user
 from ..models import PgDatabase, Project, Website
 from ..schemas import DetailResponse
-from ..services import db_env, postgres_service as pg
+from ..services import bg_tasks, db_env, postgres_service as pg
 from ..services.activity import log_activity
 
 router = APIRouter(prefix="/api/postgres", tags=["postgres"], dependencies=[Depends(get_current_user)])
@@ -82,21 +82,33 @@ def _link(db: Session, row: PgDatabase, kind: str | None, target: str | None) ->
     return _connection(row.name, password)
 
 
+TASK = "postgres-setup"
+
+
 @router.get("/status")
 def status():
-    return pg.status()
+    return {**pg.status(), "task": bg_tasks.state(TASK)}
+
+
+def _install() -> str:
+    out = pg.install()
+    log_activity("🐘 PostgreSQL installed")
+    return out or "PostgreSQL installed"
 
 
 @router.post("/install", response_model=DetailResponse)
-async def install():
-    out = await asyncio.to_thread(pg.install)
-    log_activity("🐘 PostgreSQL installed")
-    return DetailResponse(detail=out or "PostgreSQL installed")
+def install():
+    """Starts in the background; the page polls /status for the result."""
+    if not bg_tasks.start(TASK, _install):
+        raise HTTPException(409, "PostgreSQL setup is already running.")
+    return DetailResponse(detail="Installing in the background…")
 
 
 @router.post("/configure", response_model=DetailResponse)
-async def configure():
-    return DetailResponse(detail=await asyncio.to_thread(pg.reconfigure))
+def configure():
+    if not bg_tasks.start(TASK, pg.reconfigure):
+        raise HTTPException(409, "PostgreSQL setup is already running.")
+    return DetailResponse(detail="Configuring in the background…")
 
 
 @router.get("")

@@ -30,7 +30,7 @@ install_code_server() {
   deb="$(mktemp --suffix=.deb)"
   echo "── downloading code-server $ver ($arch) ──"
   curl -fsSL -o "$deb" "https://github.com/coder/code-server/releases/download/v${ver}/code-server_${ver}_${arch}.deb"
-  DEBIAN_FRONTEND=noninteractive apt-get install -y "$deb" >/dev/null
+  DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get -o DPkg::Lock::Timeout=300 install -y "$deb" >/dev/null
   rm -f "$deb"
   echo "✓ code-server $(code-server --version | head -1) installed"
 }
@@ -92,7 +92,7 @@ uninstall_code_server() {
   rm -f "$SNIPPET_DIR/ide.conf"
   if nginx -t 2>/dev/null; then systemctl reload nginx; fi
   if dpkg -s code-server >/dev/null 2>&1; then
-    DEBIAN_FRONTEND=noninteractive apt-get remove -y code-server >/dev/null
+    DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get -o DPkg::Lock::Timeout=300 remove -y code-server >/dev/null
   fi
   echo "✓ code-server removed"
 }

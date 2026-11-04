@@ -175,6 +175,8 @@ export default function Backups() {
         </p>
       )}
 
+      <WeeklyBackup onChanged={load} />
+
       {/* What to back up */}
       <div>
         <p className="text-sm text-slate-400 mb-2">Choose what to include:</p>
@@ -266,6 +268,72 @@ export default function Backups() {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/** Every Saturday: a verified backup of the whole panel, replacing the previous automatic one. */
+function WeeklyBackup({ onChanged }) {
+  const [auto, setAuto] = useState(null)
+  const [error, setError] = useState('')
+
+  const refresh = useCallback(() => {
+    api.get('/settings/backups/auto').then((r) => setAuto(r.data)).catch((err) => setError(errorMessage(err)))
+  }, [])
+
+  useEffect(() => { refresh() }, [refresh])
+
+  // while a backup runs, check back so the result appears without a reload
+  useEffect(() => {
+    if (!auto?.running) return undefined
+    const t = setInterval(() => { refresh(); onChanged?.() }, 15000)
+    return () => clearInterval(t)
+  }, [auto?.running, refresh, onChanged])
+
+  if (!auto) return error ? <p className="text-sm text-red-400">{error}</p> : null
+  const last = auto.last
+
+  async function toggle(e) {
+    try { await api.put('/settings/backups/auto', { enabled: e.target.checked }); refresh() }
+    catch (err) { setError(errorMessage(err)) }
+  }
+
+  async function runNow() {
+    if (!window.confirm('Back up the whole panel now? It runs in the background at low priority, and replaces the previous automatic backup once it has been verified.')) return
+    try { await api.post('/settings/backups/auto/run'); refresh() }
+    catch (err) { setError(errorMessage(err)) }
+  }
+
+  return (
+    <div className="rounded-lg border border-panel-border p-3 space-y-2">
+      <label className="flex items-start gap-2 cursor-pointer">
+        <input type="checkbox" className="mt-1" checked={auto.enabled} onChange={toggle} />
+        <span>
+          <span className="text-sm text-slate-200">Back up the whole panel every Saturday at 02:00</span>
+          <span className="block text-xs text-slate-500">
+            Everything in the list below. The previous automatic backup is deleted only after the new one is
+            finished and verified. Backups you create by hand are never deleted.
+          </span>
+        </span>
+      </label>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
+        {auto.enabled && auto.next_run && <span>Next: {String(auto.next_run).replace('T', ' ').slice(0, 16)}</span>}
+        {auto.running && <span className="text-sky-300">Backup running now…</span>}
+        {last?.ok && (
+          <span className="text-emerald-400">
+            Last: {last.at.replace('T', ' ').slice(0, 16)} · {last.size_human} · {last.minutes} min
+            {last.deleted?.length > 0 && ` · replaced ${last.deleted.length} older`}
+          </span>
+        )}
+        {last && !last.ok && (
+          <span className="text-red-400">
+            Last run failed ({last.at.replace('T', ' ').slice(0, 16)}): {last.error} — the previous backup was kept.
+          </span>
+        )}
+        <button className="btn-secondary ml-auto" disabled={auto.running} onClick={runNow}>
+          <Icon name="play" size={14} />Run now</button>
+      </div>
     </div>
   )
 }

@@ -105,6 +105,8 @@ _ROUTES = [
     ("PUT", r"/api/settings$", "Changed panel settings"),
     ("POST", r"/api/settings/backups/([^/]+)/restore$", "Restored backup {1}"),
     ("POST", r"/api/settings/backup-db$", "Made a database backup"),
+    ("POST", r"/api/settings/backups/auto/run$", "Started the weekly backup by hand"),
+    ("PUT", r"/api/settings/backups/auto$", "Changed the weekly backup setting"),
     ("POST", r"/api/settings/backups$", "Made a backup"),
     ("DELETE", r"/api/settings/backups/([^/]+)$", "Deleted backup {1}"),
     ("POST", r"/api/onedrive/resync$", "Started a OneDrive resync"),

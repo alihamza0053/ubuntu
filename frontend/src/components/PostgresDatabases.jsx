@@ -170,6 +170,14 @@ export default function PostgresDatabases({ tabs }) {
 
   useEffect(() => { refresh() }, [refresh])
 
+  // install/configure run in the background on the server: check back until done
+  const settingUp = !!status?.task?.running
+  useEffect(() => {
+    if (!settingUp) return undefined
+    const t = setInterval(refresh, 4000)
+    return () => clearInterval(t)
+  }, [settingUp, refresh])
+
   async function act(label, fn) {
     setBusy(label); setError('')
     try { return await fn() } catch (err) { setError(errorMessage(err)) } finally { setBusy('') }
@@ -306,8 +314,10 @@ export default function PostgresDatabases({ tabs }) {
             machine's RAM so it can't slow the dashboards down.
           </p>
           {status.error && <p className="text-xs text-amber-300">{status.error}</p>}
-          <button className="btn-primary" onClick={install} disabled={busy === 'install'}>
-            {busy === 'install' ? 'Installing… (a minute or two)' : <><Icon name="download" size={15} />Install PostgreSQL</>}
+          {status.task?.ok === false && <p className="text-sm text-red-400 whitespace-pre-wrap">{status.task.error}</p>}
+          <button className="btn-primary" onClick={install} disabled={busy === 'install' || settingUp}>
+            {settingUp ? 'Installing… this can take a few minutes, you can leave this page'
+              : <><Icon name="download" size={15} />Install PostgreSQL</>}
           </button>
         </div>
       )}
@@ -316,9 +326,10 @@ export default function PostgresDatabases({ tabs }) {
         <div className="card space-y-3">
           <h3 className="section-title">PostgreSQL is installed but not running</h3>
           {status.error && <p className="text-xs text-amber-300">{status.error}</p>}
-          <button className="btn-primary" disabled={busy === 'cfg'}
+          {status.task?.ok === false && <p className="text-sm text-red-400 whitespace-pre-wrap">{status.task.error}</p>}
+          <button className="btn-primary" disabled={busy === 'cfg' || settingUp}
             onClick={() => act('cfg', async () => { await api.post('/postgres/configure'); refresh() })}>
-            {busy === 'cfg' ? 'Starting…' : 'Re-apply config & start'}</button>
+            {settingUp ? 'Starting…' : 'Re-apply config & start'}</button>
         </div>
       )}
 

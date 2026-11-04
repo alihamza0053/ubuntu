@@ -10,7 +10,6 @@ What was paused/stopped is kept in the settings table, so "only the previous
 ones" still works after a panel restart. Each project is handled on its own:
 one failing dashboard never stops the rest, and the result lists every one.
 """
-import asyncio
 import json
 from datetime import datetime
 
@@ -20,7 +19,7 @@ from sqlalchemy.orm import Session
 from ..database import SessionLocal, get_db
 from ..deps import require_admin
 from ..models import PipelineSchedule, Project, Schedule, Setting
-from ..services import pipeline_service, scheduler_service, supervisor_service
+from ..services import bg_tasks, pipeline_service, scheduler_service, supervisor_service
 from ..services.activity import log_activity
 from .dashboard import start_dashboard
 from .projects import project_root
@@ -29,6 +28,7 @@ router = APIRouter(prefix="/api/bulk", tags=["bulk"], dependencies=[Depends(requ
 
 PAUSED_KEY = "bulk_paused_schedules"        # {"pipelines": [ids], "schedules": [ids], "at": iso}
 STOPPED_KEY = "bulk_stopped_dashboards"     # {"projects": [names], "at": iso}
+TASK = "bulk-dashboards"
 
 
 def _get(db: Session, key: str) -> dict | None:
@@ -71,6 +71,7 @@ def status(db: Session = Depends(get_db)):
                               "schedules": len(paused.get("schedules", [])), "at": paused.get("at")},
         "dashboards": {"total": sum(1 for p in projects if _has_dashboard(p)), "running": len(running)},
         "stopped": stopped and {"projects": stopped.get("projects", []), "at": stopped.get("at")},
+        "task": bg_tasks.state(TASK),
     }
 
 
@@ -206,11 +207,18 @@ def _start_all(mode: str) -> dict:
         db.close()
 
 
+# Dozens of dashboards take minutes: run in the background, the page polls /status.
 @router.post("/dashboards/stop")
-async def stop_dashboards():
-    return await asyncio.to_thread(_stop_all)
+def stop_dashboards():
+    if not bg_tasks.start(TASK, _stop_all):
+        raise HTTPException(409, "A bulk dashboard action is already running.")
+    return {"detail": "Stopping dashboards in the background…"}
 
 
 @router.post("/dashboards/start")
-async def start_dashboards(mode: str = Query("previous", pattern="^(previous|all)$")):
-    return await asyncio.to_thread(_start_all, mode)
+def start_dashboards(mode: str = Query("previous", pattern="^(previous|all)$"), db: Session = Depends(get_db)):
+    if mode == "previous" and not _get(db, STOPPED_KEY):
+        raise HTTPException(400, "No dashboards were stopped with “Stop all” — use “Start all” instead.")
+    if not bg_tasks.start(TASK, _start_all, mode):
+        raise HTTPException(409, "A bulk dashboard action is already running.")
+    return {"detail": "Starting dashboards in the background…"}

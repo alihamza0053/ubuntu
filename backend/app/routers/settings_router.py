@@ -19,7 +19,7 @@ from ..database import get_db
 from ..deps import authenticate_websocket, get_current_user, require_admin
 from ..models import Setting
 from ..schemas import DetailResponse
-from ..services import backup_service, scheduler_service, trash_service
+from ..services import backup_service, scheduler_service, trash_service, weekly_backup
 from ..services.streaming import run_command, stream_command, tail_file
 
 router = APIRouter(
@@ -119,6 +119,41 @@ def create_backup(body: BackupCreate):
         raise HTTPException(status_code=400, detail=str(exc))
     except (RuntimeError, OSError) as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+class AutoBackupRequest(BaseModel):
+    enabled: bool
+
+
+@router.get("/backups/auto", dependencies=[Depends(require_admin)])
+def auto_backup_status():
+    """The weekly automatic backup: on/off, next run, last result."""
+    return {"enabled": scheduler_service.auto_backup_enabled(),
+            "next_run": scheduler_service.auto_backup_next_run(),
+            "running": scheduler_service.backup_running(),
+            "last": weekly_backup.last_result()}
+
+
+@router.put("/backups/auto", response_model=DetailResponse, dependencies=[Depends(require_admin)])
+def set_auto_backup(body: AutoBackupRequest, db: Session = Depends(get_db)):
+    row = db.query(Setting).filter(Setting.key == scheduler_service.AUTO_BACKUP_KEY).first()
+    value = "1" if body.enabled else "0"
+    if row is None:
+        db.add(Setting(key=scheduler_service.AUTO_BACKUP_KEY, value=value))
+    else:
+        row.value = value
+    db.commit()
+    scheduler_service.set_auto_backup(body.enabled)
+    return DetailResponse(detail="Weekly backup is on." if body.enabled else "Weekly backup is off.")
+
+
+@router.post("/backups/auto/run", response_model=DetailResponse, dependencies=[Depends(require_admin)])
+async def run_auto_backup_now():
+    """Start the weekly backup now (in the background)."""
+    if scheduler_service.backup_running():
+        raise HTTPException(409, "A backup is already running.")
+    asyncio.create_task(scheduler_service._weekly_backup())
+    return DetailResponse(detail="Backup started in the background.")
 
 
 @router.get("/backups/{name}/download")

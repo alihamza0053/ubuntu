@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import api, { errorMessage } from '../api/client'
 import Icon from './ui/Icon'
 
@@ -18,6 +18,25 @@ export default function BulkControls({ onChanged }) {
   }, [])
 
   useEffect(() => { if (open) load() }, [open, load])
+
+  // dashboard start/stop run in the background on the server: follow them to the end
+  const taskRunning = !!st?.task?.running
+  const wasRunning = useRef(false)
+  useEffect(() => {
+    if (taskRunning) {
+      wasRunning.current = true
+      const t = setInterval(load, 4000)
+      return () => clearInterval(t)
+    }
+    if (wasRunning.current && st?.task) {
+      wasRunning.current = false
+      const task = st.task
+      setMsg(task.ok ? { text: task.result?.detail, results: task.result?.results }
+        : { text: task.error, error: true })
+      onChanged?.()
+    }
+    return undefined
+  }, [taskRunning, load, st, onChanged])
 
   async function run(label, confirmText, request) {
     if (confirmText && !window.confirm(confirmText)) return
@@ -94,6 +113,7 @@ export default function BulkControls({ onChanged }) {
                 <p className="text-sm font-medium text-slate-200">Dashboards</p>
                 <p className="text-xs text-slate-400">
                   Running: <b>{st.dashboards.running}</b> / {st.dashboards.total} with a dashboard
+                  {taskRunning && <span className="text-sky-300"> · working… (you can leave this page)</span>}
                 </p>
                 {st.stopped && (
                   <p className="text-xs text-amber-300">
@@ -102,15 +122,15 @@ export default function BulkControls({ onChanged }) {
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <button className="btn-secondary" disabled={!!busy || st.dashboards.running === 0}
+                  <button className="btn-secondary" disabled={taskRunning || !!busy || st.dashboards.running === 0}
                     onClick={() => run('dstop', `Stop all ${st.dashboards.running} running dashboard(s)? Their sites go offline until started again.`,
                       () => api.post('/bulk/dashboards/stop'))}>
                     <Icon name="stop" size={14} />{busy === 'dstop' ? 'Stopping…' : 'Stop all'}</button>
-                  <button className="btn-primary" disabled={!!busy || !st.stopped}
+                  <button className="btn-primary" disabled={taskRunning || !!busy || !st.stopped}
                     title="Start only the dashboards that were running before “Stop all”"
                     onClick={() => run('dstart', null, () => api.post('/bulk/dashboards/start', null, { params: { mode: 'previous' } }))}>
                     <Icon name="play" size={14} />{busy === 'dstart' ? 'Starting… (can take a minute)' : 'Start previous'}</button>
-                  <button className="btn-secondary" disabled={!!busy || st.dashboards.running === st.dashboards.total}
+                  <button className="btn-secondary" disabled={taskRunning || !!busy || st.dashboards.running === st.dashboards.total}
                     onClick={() => run('dstartall', `Start ALL ${st.dashboards.total} dashboard(s) — including ones that were stopped before? This can load the server for a few minutes.`,
                       () => api.post('/bulk/dashboards/start', null, { params: { mode: 'all' } }))}>
                     {busy === 'dstartall' ? 'Starting… (can take a minute)' : 'Start all'}</button>

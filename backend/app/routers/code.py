@@ -17,10 +17,19 @@ from ..deps import get_current_user
 from ..models import Project, User, Website
 from ..config import settings
 from ..schemas import DetailResponse
-from ..services import code_editor as ce, user_audit
+from ..services import bg_tasks, code_editor as ce, user_audit
 from ..services.activity import log_activity
 
 router = APIRouter(prefix="/api/code", tags=["code"])
+
+
+TASK = "code-install"
+
+
+def _install() -> str:
+    out = ce.install()
+    log_activity("💻 code editor installed")
+    return out.strip()[-400:] or "Installed"
 
 
 class OwnerOnlyRequest(BaseModel):
@@ -46,14 +55,16 @@ def auth(serverhub_code: str | None = Cookie(default=None), db: Session = Depend
 def status(user: User = Depends(allowed_user)):
     st = ce.status()
     st["can_set_owner_only"] = user_audit.is_owner(user)
+    st["task"] = bg_tasks.state(TASK)
     return st
 
 
 @router.post("/install", response_model=DetailResponse)
-async def install(user: User = Depends(allowed_user)):
-    out = await asyncio.to_thread(ce.install)
-    log_activity("💻 code editor installed")
-    return DetailResponse(detail=out.strip()[-400:] or "Installed")
+def install(user: User = Depends(allowed_user)):
+    """Starts in the background; the page polls /status for the result."""
+    if not bg_tasks.start(TASK, _install):
+        raise HTTPException(409, "The editor is already being installed.")
+    return DetailResponse(detail="Installing in the background…")
 
 
 @router.post("/start", response_model=DetailResponse)

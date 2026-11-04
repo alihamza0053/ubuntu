@@ -461,16 +461,51 @@ def run_query(name: str, query: str) -> dict:
 # export / import
 # ---------------------------------------------------------------------------
 def export_database(name: str, dest: Path) -> Path:
-    name = check_name(name)
+    return dump_database(check_name(name), dest)
+
+
+def dump_database(name: str, dest: Path) -> Path:
+    """pg_dump one database (argument list, no shell) as plain SQL."""
     try:
         r = subprocess.run(["pg_dump", "-h", SOCKET_DIR, "-p", str(server_port()), "-U", "postgres",
                             "--no-owner", "--no-privileges",
-                            "-f", str(dest), name], capture_output=True, text=True, timeout=1800)
+                            "-f", str(dest), f"--dbname={name}"], capture_output=True, text=True, timeout=7200)
     except FileNotFoundError:
         raise HTTPException(500, "pg_dump isn't installed (install PostgreSQL from this page first).")
     if r.returncode != 0:
         raise HTTPException(500, f"pg_dump failed: {r.stderr.strip()[-500:]}")
     return dest
+
+
+def is_running() -> bool:
+    """Reachable right now? (False when PostgreSQL isn't installed.)"""
+    try:
+        with connect() as conn:
+            conn.execute("SELECT 1")
+        return True
+    except HTTPException:
+        return False
+
+
+def restore_dump(name: str, path: Path, rollback_dir: Path | None = None) -> None:
+    """
+    Put a backed-up database back: a missing one is created (with a new password —
+    link it again), an existing one keeps its user and password but has its tables
+    replaced. The current contents are dumped to rollback_dir first.
+    """
+    _, sql = _psycopg()
+    with connect() as conn:
+        exists = conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone()
+    if not exists:
+        create_database(name)
+    else:
+        if rollback_dir is not None:
+            rollback_dir.mkdir(parents=True, exist_ok=True)
+            dump_database(name, rollback_dir / f"{name}.sql")
+        with connect(name) as conn:
+            conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+            conn.execute(sql.SQL("CREATE SCHEMA public AUTHORIZATION {}").format(sql.Identifier(name)))
+    import_sql(name, path)
 
 
 def import_sql(name: str, path: Path) -> str:

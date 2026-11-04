@@ -23,6 +23,14 @@ export default function Code() {
 
   useEffect(() => { refresh() }, [refresh])
 
+  // the install runs in the background on the server: check back until it's done
+  const installing = !!status?.task?.running
+  useEffect(() => {
+    if (!installing) return undefined
+    const t = setInterval(refresh, 4000)
+    return () => clearInterval(t)
+  }, [installing, refresh])
+
   async function act(label, fn) {
     setBusy(label); setError('')
     try { await fn(); refresh() } catch (err) { setError(errorMessage(err)) } finally { setBusy('') }
@@ -66,9 +74,11 @@ export default function Code() {
             reach it, and there's no extra password to share.
           </p>
           {status.error && <p className="text-xs text-amber-300">{status.error}</p>}
-          <button className="btn-primary" disabled={busy === 'install'}
+          {status.task?.ok === false && <p className="text-sm text-red-400 whitespace-pre-wrap">{status.task.error}</p>}
+          <button className="btn-primary" disabled={busy === 'install' || installing}
             onClick={() => act('install', () => api.post('/code/install'))}>
-            {busy === 'install' ? 'Installing… (a minute or two)' : <><Icon name="download" size={15} />Install code editor</>}
+            {installing ? 'Installing… this can take a few minutes, you can leave this page'
+              : <><Icon name="download" size={15} />Install code editor</>}
           </button>
         </div>
       )}
