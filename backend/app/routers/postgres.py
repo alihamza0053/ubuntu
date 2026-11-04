@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..deps import get_current_user
+from ..deps import get_current_user, require_admin
 from ..models import PgDatabase, Project, Website
 from ..schemas import DetailResponse
 from ..services import bg_tasks, db_env, postgres_service as pg
@@ -267,7 +267,7 @@ def export(name: str):
                         background=BackgroundTask(dest.unlink, missing_ok=True))   # don't fill /tmp
 
 
-@router.post("/{name}/import", response_model=DetailResponse)
+@router.post("/{name}/import", response_model=DetailResponse, dependencies=[Depends(require_admin)])
 async def import_dump(name: str, file: UploadFile):
     name = pg.check_name(name)
     if not (file.filename or "").lower().endswith(".sql"):

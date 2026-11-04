@@ -48,6 +48,8 @@ app = FastAPI(
     description="Self-hosted Ubuntu VPS management panel",
     version="1.0.0",
     lifespan=lifespan,
+    # no public map of every endpoint
+    docs_url=None, redoc_url=None, openapi_url=None,
 )
 
 # CORS is only needed for the Vite dev server; in production the frontend is
@@ -163,7 +165,11 @@ if settings.STATIC_DIR.is_dir():
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa_fallback(full_path: str):
-        candidate = settings.STATIC_DIR / full_path
-        if full_path and candidate.is_file():
+        # full_path comes straight from the URL and may be absolute ("//etc/passwd"
+        # reaches here as "/etc/passwd", and Path("static") / "/etc/passwd" IS
+        # /etc/passwd) or contain "..": only ever serve what's inside STATIC_DIR.
+        root = settings.STATIC_DIR.resolve()
+        candidate = (root / full_path).resolve()
+        if full_path and root in candidate.parents and candidate.is_file():
             return FileResponse(candidate)
-        return FileResponse(settings.STATIC_DIR / "index.html")
+        return FileResponse(root / "index.html")

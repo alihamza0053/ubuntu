@@ -144,7 +144,7 @@ export default function Settings() {
       <OneDriveSetup />
 
       {/* Backup & Restore */}
-      <Backups />
+      {isAdmin && <Backups />}
 
       {/* System cleanup: CPU / RAM / Disk cards (admins only) */}
       {isAdmin && <SystemCleanup />}

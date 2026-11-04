@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..deps import get_current_user
+from ..deps import get_current_user, require_admin
 from ..models import Website
 from ..schemas import DetailResponse
 from ..services import mysql_service
@@ -105,7 +105,7 @@ def export_database(name: str):
     return FileResponse(tmp, filename=f"{name}.sql", media_type="application/sql")
 
 
-@router.post("/{name}/import", response_model=DetailResponse)
+@router.post("/{name}/import", response_model=DetailResponse, dependencies=[Depends(require_admin)])
 async def import_database(name: str, file: UploadFile):
     """Import an uploaded .sql file into the database."""
     if not (file.filename or "").lower().endswith(".sql"):

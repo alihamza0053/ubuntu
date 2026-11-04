@@ -5,6 +5,7 @@ All values come from environment variables (loaded from backend/.env via
 python-dotenv) with sensible defaults for an Ubuntu VPS deployment.
 """
 import os
+import secrets
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -24,7 +25,7 @@ class Settings:
     """Plain settings object — read once at import time."""
 
     # --- Security / JWT ---
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-insecure-secret-change-me")
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "720"))
 
@@ -117,3 +118,28 @@ class Settings:
 
 
 settings = Settings()
+
+
+def _ensure_secret_key() -> None:
+    """
+    The key that signs logins must never be a value published in this repo. If
+    .env has none (or the placeholder), make a random one and keep it next to
+    the database, readable only by the panel. Logins made before are signed
+    out; nothing else changes.
+    """
+    if settings.SECRET_KEY and "change-me" not in settings.SECRET_KEY:
+        return
+    path = settings.DB_PATH.parent / ".secret_key"
+    try:
+        settings.SECRET_KEY = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        settings.SECRET_KEY = ""
+    if not settings.SECRET_KEY:
+        settings.SECRET_KEY = secrets.token_hex(32)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(settings.SECRET_KEY)
+
+
+_ensure_secret_key()

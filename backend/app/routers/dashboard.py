@@ -6,6 +6,7 @@ The dashboard entrypoint is always `dashboard/app.py`, but it may be a
 Streamlit script, a Flask app or a FastAPI app: the framework is read from the
 code at start time unless the user pinned one in the UI.
 """
+import re
 from pathlib import Path, PurePosixPath
 
 from fastapi import (APIRouter, Depends, HTTPException, WebSocket,
@@ -19,7 +20,7 @@ from ..deps import authenticate_websocket, get_current_user
 from ..schemas import DashboardStatusOut, DetailResponse
 from ..services import app_detect, supervisor_service, venv_service
 from ..services.activity import log_activity
-from ..services.streaming import tail_file
+from ..services.streaming import tail_ws
 from ..services.supervisor_service import dashboard_log_path
 from .projects import _write_project_site, get_project_or_404, project_root
 
@@ -36,6 +37,14 @@ class FrameworkRequest(BaseModel):
     """null/empty framework = go back to auto-detecting from the code."""
     framework: str | None = None
     target: str | None = None
+
+    @field_validator("target")
+    @classmethod
+    def target_ok(cls, v: str | None) -> str | None:
+        # "module:app" — it goes into a Supervisor command line
+        if v and not re.fullmatch(r"[A-Za-z0-9_.:-]{1,120}", v.strip()):
+            raise ValueError("target must look like app:app")
+        return v
 
     @field_validator("framework")
     @classmethod
@@ -256,7 +265,7 @@ async def dashboard_log_ws(websocket: WebSocket, name: str, stream: str = "out")
         await websocket.send_text(line)
 
     try:
-        await tail_file(dashboard_log_path(name, stream), send)
+        await tail_ws(websocket, dashboard_log_path(name, stream), send)
     except (WebSocketDisconnect, RuntimeError):
         pass
     except Exception:

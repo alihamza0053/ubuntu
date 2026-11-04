@@ -15,7 +15,7 @@ from ..models import Script
 from ..permissions import hidden_for
 from ..schemas import DetailResponse
 from ..services.script_runner import log_path_for, run_script, stop_script
-from ..services.streaming import tail_file
+from ..services.streaming import tail_ws
 from .projects import get_project_or_404, sync_scripts
 
 router = APIRouter(tags=["scripts"])
@@ -149,7 +149,7 @@ async def script_logs_ws(websocket: WebSocket, script_id: int):
         await websocket.send_text(line)
 
     try:
-        await tail_file(log_path_for(project_name, filename), send_line, backlog=500)
+        await tail_ws(websocket, log_path_for(project_name, filename), send_line, backlog=500)
     except (WebSocketDisconnect, RuntimeError):
         pass
     except Exception:

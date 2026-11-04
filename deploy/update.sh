@@ -125,6 +125,16 @@ if ! node_ok; then
   fi
 fi
 
+# PostgreSQL's access rules changed with the role-based query box: re-apply once.
+if ls /etc/postgresql/*/main/conf.d/serverhub.conf >/dev/null 2>&1 && [ -x "$PANEL_ROOT/bin/serverhub-postgres" ]; then
+  if grep -qE '^local +sameuser +all +peer' /etc/postgresql/*/main/pg_hba.conf; then
+    "$PANEL_ROOT/bin/serverhub-postgres" sync-roles || echo "    WARNING: PostgreSQL role sync failed"
+  else
+    echo "==> Updating PostgreSQL access rules"
+    "$PANEL_ROOT/bin/serverhub-postgres" configure || echo "    WARNING: PostgreSQL configure failed"
+  fi
+fi
+
 echo "==> Chrome policy (no software GPU)"
 # Headless Chrome on a server with no graphics card emulates a GPU in software,
 # which costs a lot of CPU (the "--type=gpu-process"). Chrome's managed policy

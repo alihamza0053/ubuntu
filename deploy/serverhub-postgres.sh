@@ -2,9 +2,10 @@
 # ServerHub — PostgreSQL helper (runs as root via a single sudoers rule).
 # Installed to $PANEL_ROOT/bin/serverhub-postgres by deploy/install.sh|update.sh.
 #
-# Usage: serverhub-postgres <install|configure|status|restart>
+# Usage: serverhub-postgres <install|configure|sync-roles|status|restart>
 #   install    apt install PostgreSQL, then `configure`
 #   configure  (re)write the locked-down config below and reload
+#   sync-roles let the panel log in as each database's role over the local socket
 #   status     installed / running / version (one line each)
 #   restart    restart the service (after a config change)
 #
@@ -68,6 +69,31 @@ start_server() {
   wait_ready
 }
 
+write_ident() {
+  local dir port role
+  dir="/etc/postgresql/$(pg_version)/main"
+  port=$(configured_port)
+  {
+    echo "# Written by ServerHub. MAPNAME  SYSTEM-USER  PG-USER"
+    echo "serverhub  postgres       postgres"
+    echo "serverhub  ${PANEL_USER}  postgres"
+    runuser -u postgres -- psql -X -At -p "$port" \
+      -c "SELECT rolname FROM pg_roles WHERE rolcanlogin AND NOT rolsuper AND rolname !~ '^pg_'" 2>/dev/null \
+      | while read -r role; do
+          case "$role" in *[!a-z0-9_]*|'') ;; *) echo "serverhub  ${PANEL_USER}  $role" ;; esac
+        done
+  } > "$dir/pg_ident.conf.new"
+  chown postgres:postgres "$dir/pg_ident.conf.new"
+  chmod 640 "$dir/pg_ident.conf.new"
+  mv -f "$dir/pg_ident.conf.new" "$dir/pg_ident.conf"
+}
+
+sync_roles() {
+  write_ident
+  runuser -u postgres -- psql -X -q -p "$(configured_port)" -c "SELECT pg_reload_conf();" >/dev/null
+  echo "roles synced"
+}
+
 configure() {
   local ver dir ram_mb shared cache maint
   ver=$(pg_version)
@@ -115,7 +141,8 @@ EOF
 # admin: only the postgres OS user and the panel user, over the local socket
 local   all       postgres                 peer map=serverhub
 # every other user: only its OWN database (same name), with a password, from this machine
-local   sameuser  all                      scram-sha-256
+# (the panel's query box logs in over the socket as the database's own role)
+local   sameuser  all                      peer map=serverhub
 host    sameuser  all       127.0.0.1/32   scram-sha-256
 host    sameuser  all       ::1/128        scram-sha-256
 # anything else is refused
@@ -147,6 +174,7 @@ EOF
   if [ "$port" != 5432 ]; then
     echo "note: port 5432 is used by something else on this server (left alone) — PostgreSQL uses $port"
   fi
+  sync_roles >/dev/null
   echo "configured PostgreSQL $ver on 127.0.0.1:$port (shared_buffers ${shared}MB)"
 }
 
@@ -158,6 +186,7 @@ case "${1:-}" in
     configure
     ;;
   configure) configure ;;
+  sync-roles) sync_roles ;;
   restart)
     if start_server; then echo "restarted"; else echo "PostgreSQL did not start"; show_logs; exit 1; fi
     ;;
@@ -170,5 +199,5 @@ case "${1:-}" in
     echo "port=$(configured_port)"
     if pg_isready -q -h /var/run/postgresql -p "$(configured_port)" 2>/dev/null; then echo "running=yes"; else echo "running=no"; fi
     ;;
-  *) echo "usage: serverhub-postgres <install|configure|status|restart>" >&2; exit 2 ;;
+  *) echo "usage: serverhub-postgres <install|configure|sync-roles|status|restart>" >&2; exit 2 ;;
 esac

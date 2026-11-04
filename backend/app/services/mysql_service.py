@@ -13,7 +13,12 @@ from pathlib import Path
 from fastapi import HTTPException
 
 IDENT_RE = re.compile(r"^[A-Za-z0-9_]+$")
-MYSQL = ["sudo", "-n", "mysql"]
+# --binary-mode turns off the mysql client's own commands (\! runs a shell — as
+# root here, because of sudo) for anything not typed at a real terminal.
+MYSQL = ["sudo", "-n", "mysql", "--binary-mode"]
+# Belt and braces for the query box: client commands + server-side file access.
+_FORBIDDEN_SQL = re.compile(r"\\[!.]|^\s*(system|source|pager|tee|edit)\b|"
+                            r"\b(into\s+(out|dump)file|load_file\s*\(|load\s+data)\b", re.I | re.M)
 MYSQLDUMP = ["sudo", "-n", "mysqldump"]
 
 
@@ -169,6 +174,8 @@ def delete_row(database: str, table: str, pk_column: str, pk_value: str) -> None
 
 def run_query(database: str, sql: str) -> dict:
     """Run arbitrary SQL against a database; return columns + rows (tab-parsed)."""
+    if _FORBIDDEN_SQL.search(sql or ""):
+        raise HTTPException(status_code=400, detail="Client commands and server file access aren't allowed here.")
     out = _exec_sql(sql, database=database)
     lines = out.splitlines()
     if not lines:

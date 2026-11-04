@@ -20,7 +20,7 @@ from ..deps import authenticate_websocket, get_current_user, require_admin
 from ..models import Setting
 from ..schemas import DetailResponse
 from ..services import backup_service, scheduler_service, trash_service, weekly_backup
-from ..services.streaming import run_command, stream_command, tail_file
+from ..services.streaming import run_command, stream_command, tail_ws
 
 router = APIRouter(
     prefix="/api/settings",
@@ -28,6 +28,11 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 ws_router = APIRouter(tags=["settings"])   # update WS authenticates via ?token=
+
+
+# Set only by their own (permission-checked) routes — this generic route must not
+# be a way round them, e.g. another admin switching off the owner's "Only me".
+PROTECTED_KEYS = {"code_owner_only", "auto_backup_weekly", "auto_backup_last", "auto_clean_temp"}
 
 
 class SettingsUpdate(BaseModel):
@@ -44,6 +49,9 @@ def get_settings(db: Session = Depends(get_db)):
 
 @router.put("", response_model=DetailResponse)
 def update_settings(body: SettingsUpdate, db: Session = Depends(get_db)):
+    protected = sorted(k for k in body.values if k in PROTECTED_KEYS or k.startswith("bulk_"))
+    if protected:
+        raise HTTPException(status_code=403, detail=f"Not changeable here: {', '.join(protected)}")
     for key, value in body.values.items():
         row = db.query(Setting).filter(Setting.key == key).first()
         if row:
@@ -81,7 +89,7 @@ def get_time():
     }
 
 
-@router.post("/backup-db")
+@router.post("/backup-db", dependencies=[Depends(require_admin)])
 def backup_db():
     """Download the panel's SQLite database file."""
     db_path = app_settings.DB_PATH
@@ -102,7 +110,7 @@ class RestoreRequest(BaseModel):
     components: list[str]
 
 
-@router.get("/backups")
+@router.get("/backups", dependencies=[Depends(require_admin)])
 def list_backups():
     """Installable backup components + existing backup archives."""
     return {
@@ -111,7 +119,7 @@ def list_backups():
     }
 
 
-@router.post("/backups")
+@router.post("/backups", dependencies=[Depends(require_admin)])
 def create_backup(body: BackupCreate):
     try:
         return backup_service.create_backup(body.components)
@@ -156,7 +164,7 @@ async def run_auto_backup_now():
     return DetailResponse(detail="Backup started in the background.")
 
 
-@router.get("/backups/{name}/download")
+@router.get("/backups/{name}/download", dependencies=[Depends(require_admin)])
 def download_backup(name: str):
     try:
         path = backup_service.backup_file_path(name)
@@ -165,7 +173,7 @@ def download_backup(name: str):
     return FileResponse(path, filename=name, media_type="application/gzip")
 
 
-@router.delete("/backups/{name}", response_model=DetailResponse)
+@router.delete("/backups/{name}", response_model=DetailResponse, dependencies=[Depends(require_admin)])
 def delete_backup(name: str):
     try:
         backup_service.delete_backup(name)
@@ -174,7 +182,7 @@ def delete_backup(name: str):
     return DetailResponse(detail="Backup deleted")
 
 
-@router.post("/backups/import")
+@router.post("/backups/import", dependencies=[Depends(require_admin)])
 async def import_backup(file: UploadFile = File(...)):
     data = await file.read()
     try:
@@ -183,7 +191,7 @@ async def import_backup(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.post("/backups/{name}/restore")
+@router.post("/backups/{name}/restore", dependencies=[Depends(require_admin)])
 def restore_backup(name: str, body: RestoreRequest):
     try:
         return backup_service.restore_backup(name, body.components)
@@ -627,6 +635,9 @@ async def update_ws(websocket: WebSocket):
     user = await authenticate_websocket(websocket, require="settings")
     if user is None:
         return
+    if not user.is_admin:                  # runs deploy/update.sh as root
+        await websocket.close(code=1008, reason="Administrators only")
+        return
     await websocket.accept()
 
     async def send(line: str):
@@ -679,7 +690,7 @@ async def update_ws(websocket: WebSocket):
     # writes to log_path. Tail it live until the panel is restarted under us.
     await send("[serverhub] ── live update log ──")
     try:
-        await tail_file(log_path, send, backlog=200)
+        await tail_ws(websocket, log_path, send, backlog=200)
     except (WebSocketDisconnect, RuntimeError):
         pass
     except Exception:

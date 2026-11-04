@@ -18,7 +18,8 @@ from ..permissions import hidden_for
 from ..schemas import DetailResponse, FileInfo
 from ..services import (app_detect, nginx_service, webapp_service,
                         website_service)
-from ..services.streaming import tail_file
+from ..services.paths import validate_command_line, validate_domain
+from ..services.streaming import tail_ws
 
 router = APIRouter(
     prefix="/api/websites",
@@ -68,6 +69,11 @@ class WebsiteCreate(BaseModel):
 
 class DomainRequest(BaseModel):
     domain: str
+
+    @field_validator("domain")
+    @classmethod
+    def domain_ok(cls, v: str) -> str:
+        return validate_domain(v)
 
 
 class LinkDatabaseRequest(BaseModel):
@@ -298,6 +304,11 @@ class RunCommandRequest(BaseModel):
     run_command: str
     framework: str | None = None
 
+    @field_validator("run_command")
+    @classmethod
+    def command_ok(cls, v: str) -> str:
+        return validate_command_line(v)
+
     @field_validator("framework")
     @classmethod
     def framework_ok(cls, v: str | None) -> str | None:
@@ -419,7 +430,7 @@ async def website_logs_ws(websocket: WebSocket, website_id: int, source: str = "
         await websocket.send_text(line)
 
     try:
-        await tail_file(path, send, backlog=200)
+        await tail_ws(websocket, path, send, backlog=200)
     except (WebSocketDisconnect, RuntimeError):
         pass
     except Exception:

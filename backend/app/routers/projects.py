@@ -18,7 +18,7 @@ from ..config import settings
 from ..database import get_db
 from ..deps import get_current_user, require_admin
 from ..models import Project, Script, User
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from ..schemas import (DetailResponse, FileInfo, ProjectCreate, ProjectFilesOut,
                        ProjectOut, ScriptOut)
@@ -26,10 +26,15 @@ from ..schemas import (DetailResponse, FileInfo, ProjectCreate, ProjectFilesOut,
 
 class DomainRequest(BaseModel):
     domain: str
+
+    @field_validator("domain")
+    @classmethod
+    def domain_ok(cls, v: str) -> str:
+        return validate_domain(v)
 from ..models import NginxConfig
 from ..security import hash_password
 from ..services import nginx_service, supervisor_service, trash_service, venv_service
-from ..services.paths import (ensure_within, safe_join, validate_extension,
+from ..services.paths import (ensure_within, safe_join, validate_domain, validate_extension,
                               validate_filename)
 
 router = APIRouter(

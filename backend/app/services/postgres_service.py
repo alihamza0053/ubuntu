@@ -34,10 +34,6 @@ RESERVED = {"postgres", "template0", "template1", "serverhub", "root", "admin", 
 STATEMENT_TIMEOUT = "5min"          # per role: a runaway query can't hog the server
 QUERY_TIMEOUT = "60s"               # the panel's query runner
 MAX_ROWS = 1000
-# The runner works under the database's role; these would step out of it.
-_ESCAPE_RE = re.compile(r"\b(reset\s+role|set\s+(local\s+|session\s+)?role|session\s+authorization|"
-                        r"reset\s+all|set\s+(local\s+|session\s+)?session_authorization)\b", re.I)
-
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -87,6 +83,26 @@ def connect(database: str = "postgres"):
                                autocommit=True, connect_timeout=5)
     except psycopg.OperationalError as exc:
         raise HTTPException(503, f"Can't reach PostgreSQL: {str(exc).strip()[:300]}")
+
+
+def connect_as(database: str):
+    """
+    Log in AS the database's own role (peer login over the local socket, mapped
+    by the helper). Whatever SQL then runs has that role's rights and nothing
+    more — no superuser session exists to escape back to, unlike SET ROLE.
+    """
+    psycopg, _ = _psycopg()
+    params = dict(host=SOCKET_DIR, port=server_port(), user=database, dbname=database,
+                  autocommit=True, connect_timeout=5)
+    try:
+        return psycopg.connect(**params)
+    except psycopg.OperationalError:
+        _helper("sync-roles")               # a role made before the mapping existed
+    try:
+        return psycopg.connect(**params)
+    except psycopg.OperationalError as exc:
+        raise HTTPException(503, f"Can't log in as “{database}”: {str(exc).strip()[:300]} "
+                                 "— run deploy/update.sh to refresh PostgreSQL's access rules.")
 
 
 def _helper(*args: str, timeout: int = 60) -> tuple[int, str]:
@@ -174,6 +190,7 @@ def create_database(name: str, conn_limit: int = 20) -> str:
     with connect(name) as conn:
         conn.execute("REVOKE ALL ON SCHEMA public FROM PUBLIC")
         conn.execute(sql.SQL("ALTER SCHEMA public OWNER TO {}").format(ident))
+    _helper("sync-roles")                   # lets the panel's query box log in as this role
     return password
 
 
@@ -434,14 +451,10 @@ def _cell(v):
 
 
 def run_query(name: str, query: str) -> dict:
-    """Run SQL as the database's own role, with a timeout and a row cap."""
-    _, sql = _psycopg()
+    """Run SQL logged in as the database's own role, with a timeout and a row cap."""
+    psycopg, sql = _psycopg()
     name = check_name(name)
-    if _ESCAPE_RE.search(query or ""):
-        raise HTTPException(400, "Changing the role or session user isn't allowed here.")
-    psycopg, _ = _psycopg()
-    with connect(name) as conn:
-        conn.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(name)))
+    with connect_as(name) as conn:
         conn.execute(sql.SQL("SET statement_timeout = {}").format(sql.Literal(QUERY_TIMEOUT)))
         try:
             cur = conn.execute(query)
@@ -509,12 +522,12 @@ def restore_dump(name: str, path: Path, rollback_dir: Path | None = None) -> Non
 
 
 def import_sql(name: str, path: Path) -> str:
-    """Load a plain .sql dump as the database's own role (so it owns what it creates)."""
+    """Load a plain .sql dump logged in as the database's own role (it owns what it creates)."""
     name = check_name(name)
     try:
         r = subprocess.run(["psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-h", SOCKET_DIR,
-                            "-p", str(server_port()), "-U", "postgres",
-                            "-d", name, "-c", f'SET ROLE "{name}"', "-f", str(path)],
+                            "-p", str(server_port()), "-U", name,
+                            "-d", name, "-f", str(path)],
                            capture_output=True, text=True, timeout=1800)
     except FileNotFoundError:
         raise HTTPException(500, "psql isn't installed (install PostgreSQL from this page first).")

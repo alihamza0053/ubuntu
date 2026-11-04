@@ -17,7 +17,7 @@ import secrets
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
@@ -26,6 +26,7 @@ from ..config import settings
 from ..database import get_db
 from ..models import Project
 from ..security import verify_password
+from ..services import rate_limit
 
 router = APIRouter(tags=["portal"])
 _basic = HTTPBasic(auto_error=False)
@@ -49,7 +50,7 @@ def _safe_name(filename: str) -> str:
 
 
 def _authed_project(project_name: str, credentials: HTTPBasicCredentials | None,
-                    db: Session) -> Project:
+                    db: Session, request: Request) -> Project:
     """Load the project and verify the portal credentials, else 401/404."""
     project = db.query(Project).filter(Project.name == project_name).first()
     if project is None or not (project.portal_username and project.portal_password_hash):
@@ -57,9 +58,14 @@ def _authed_project(project_name: str, credentials: HTTPBasicCredentials | None,
         raise HTTPException(status_code=404, detail="Upload portal not available")
     if credentials is None:
         raise UNAUTHORIZED
-    user_ok = secrets.compare_digest(credentials.username, project.portal_username)
+    # This page is public: limit guessing the same way as the panel login.
+    ip = rate_limit.client_ip(request)
+    keys = {f"portal-ip:{ip}": 20, f"portal:{project.name}": 40}
+    rate_limit.check(keys, 300)
+    user_ok = secrets.compare_digest(credentials.username.encode(), project.portal_username.encode())
     pass_ok = verify_password(credentials.password, project.portal_password_hash)
     if not (user_ok and pass_ok):
+        rate_limit.failed(keys)
         log.warning("portal: auth rejected for project=%r", project_name)
         raise UNAUTHORIZED
     return project
@@ -261,19 +267,19 @@ _PAGE_TEMPLATE = """<!doctype html>
 
 
 @router.get("/portal/{project_name}/", response_class=HTMLResponse)
-def portal_page(project_name: str,
+def portal_page(project_name: str, request: Request,
                 credentials: HTTPBasicCredentials | None = Depends(_basic),
                 db: Session = Depends(get_db)):
-    project = _authed_project(project_name, credentials, db)
+    project = _authed_project(project_name, credentials, db, request)
     return HTMLResponse(_render_page(project))
 
 
 @router.post("/portal/{project_name}/upload")
-async def portal_upload(project_name: str,
+async def portal_upload(project_name: str, request: Request,
                         files: list[UploadFile] = File(...),
                         credentials: HTTPBasicCredentials | None = Depends(_basic),
                         db: Session = Depends(get_db)):
-    project = _authed_project(project_name, credentials, db)
+    project = _authed_project(project_name, credentials, db, request)
     folder = _portal_dir(project)
     folder.mkdir(parents=True, exist_ok=True)
     for f in files:
@@ -286,10 +292,10 @@ async def portal_upload(project_name: str,
 
 
 @router.get("/portal/{project_name}/download/{filename}")
-def portal_download(project_name: str, filename: str,
+def portal_download(project_name: str, filename: str, request: Request,
                     credentials: HTTPBasicCredentials | None = Depends(_basic),
                     db: Session = Depends(get_db)):
-    project = _authed_project(project_name, credentials, db)
+    project = _authed_project(project_name, credentials, db, request)
     path = _portal_dir(project) / _safe_name(filename)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="File not found")

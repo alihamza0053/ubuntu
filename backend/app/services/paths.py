@@ -5,6 +5,7 @@ Every file operation that involves a user-supplied path MUST go through
 safe_join / ensure_within so a crafted path like "../../etc/passwd" can
 never escape the intended root directory.
 """
+import re
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -38,10 +39,18 @@ def allowed_roots() -> list[Path]:
     ]
 
 
-def ensure_in_allowed_roots(candidate: Path) -> Path:
-    """Verify an absolute path is inside one of the panel-managed roots."""
+def ensure_in_allowed_roots(candidate: Path, user=None) -> Path:
+    """
+    Verify an absolute path is inside one of the panel-managed roots. Non-admins
+    don't get nginx-configs (loaded by root) or /opt (update.sh runs from it as
+    root): writing there would be a way to run things as root.
+    """
     resolved = candidate.resolve()
-    for root in allowed_roots():
+    roots = allowed_roots()
+    if user is not None and not getattr(user, "is_admin", False):
+        roots = [settings.PROJECTS_ROOT.resolve(), settings.WEBSITES_ROOT.resolve(),
+                 settings.ONEDRIVE_ROOT.resolve()]
+    for root in roots:
         if resolved == root or root in resolved.parents:
             return resolved
     raise HTTPException(
@@ -66,3 +75,21 @@ def validate_extension(filename: str, allowed: set[str]) -> None:
             status_code=400,
             detail=f"File type '{ext}' not allowed here. Allowed: {sorted(allowed)}",
         )
+
+
+DOMAIN_RE = re.compile(r"^(?=.{1,253}$)([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$")
+
+
+def validate_domain(domain: str) -> str:
+    """A real host name only: it is written into nginx configs that root loads."""
+    value = (domain or "").strip().lower()
+    if not DOMAIN_RE.match(value):
+        raise ValueError("Enter a valid domain, like panel.example.com")
+    return value
+
+
+def validate_command_line(value: str) -> str:
+    """One line, no control characters: it is written into a Supervisor config."""
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value or ""):
+        raise ValueError("Must be a single line without control characters")
+    return value

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from ..config import settings
 from ..deps import get_current_user
+from ..models import User
 from ..schemas import DetailResponse, FileReadResponse, FileWriteRequest
 from ..services import trash_service
 from ..services.paths import ensure_in_allowed_roots, validate_filename
@@ -58,7 +59,8 @@ def _entry_info(entry: Path) -> dict:
 
 
 @router.get("/browse")
-def browse(path: str = Query("", description="Directory to list; defaults to /srv roots")):
+def browse(path: str = Query("", description="Directory to list; defaults to /srv roots"),
+           user: User = Depends(get_current_user)):
     """
     List a directory. With no path, returns the managed roots as the starting
     points so the user can drill into projects/websites/nginx-configs.
@@ -66,14 +68,14 @@ def browse(path: str = Query("", description="Directory to list; defaults to /sr
     if not path:
         roots = []
         for root in (settings.PROJECTS_ROOT, settings.WEBSITES_ROOT,
-                     settings.NGINX_CONFIGS_ROOT, settings.ONEDRIVE_ROOT):
+                     *([settings.NGINX_CONFIGS_ROOT] if user.is_admin else []), settings.ONEDRIVE_ROOT):
             roots.append({
                 "name": root.name, "is_dir": True, "size": 0,
                 "modified": datetime.utcnow(), "path": str(root),
             })
         return {"path": "", "parent": None, "entries": roots}
 
-    target = ensure_in_allowed_roots(Path(path))
+    target = ensure_in_allowed_roots(Path(path), user)
     if not target.is_dir():
         raise HTTPException(status_code=400, detail="Not a directory")
 
@@ -81,7 +83,7 @@ def browse(path: str = Query("", description="Directory to list; defaults to /sr
     # parent is null when at a managed root (don't allow climbing above)
     parent = str(target.parent)
     try:
-        ensure_in_allowed_roots(target.parent)
+        ensure_in_allowed_roots(target.parent, user)
     except HTTPException:
         parent = None
     return {"path": str(target), "parent": parent,
@@ -89,9 +91,9 @@ def browse(path: str = Query("", description="Directory to list; defaults to /sr
 
 
 @router.get("/read", response_model=FileReadResponse)
-def read_file(path: str = Query(...)):
+def read_file(path: str = Query(...), user: User = Depends(get_current_user)):
     """Load a file for the Monaco editor."""
-    file_path = ensure_in_allowed_roots(Path(path))
+    file_path = ensure_in_allowed_roots(Path(path), user)
     if file_path.suffix.lower() not in settings.EDITABLE_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"'{file_path.suffix}' is not an editable type")
     if not file_path.is_file():
@@ -103,9 +105,9 @@ def read_file(path: str = Query(...)):
 
 
 @router.post("/write", response_model=DetailResponse)
-def write_file(body: FileWriteRequest):
+def write_file(body: FileWriteRequest, user: User = Depends(get_current_user)):
     """Save edited content back to disk."""
-    file_path = ensure_in_allowed_roots(Path(body.path))
+    file_path = ensure_in_allowed_roots(Path(body.path), user)
     if file_path.suffix.lower() not in settings.EDITABLE_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"'{file_path.suffix}' is not an editable type")
     if not file_path.parent.is_dir():
@@ -116,9 +118,9 @@ def write_file(body: FileWriteRequest):
 
 @router.post("/upload", response_model=DetailResponse)
 async def upload(path: str = Query(..., description="Destination directory"),
-                 files: list[UploadFile] = None):
+                 files: list[UploadFile] = None, user: User = Depends(get_current_user)):
     """Upload one or more files into a directory."""
-    dest_dir = ensure_in_allowed_roots(Path(path))
+    dest_dir = ensure_in_allowed_roots(Path(path), user)
     if not dest_dir.is_dir():
         raise HTTPException(status_code=400, detail="Destination is not a directory")
     count = 0
@@ -133,15 +135,15 @@ async def upload(path: str = Query(..., description="Destination directory"),
 
 
 @router.post("/mkdir", response_model=DetailResponse)
-def mkdir(body: MkdirRequest):
-    target = ensure_in_allowed_roots(Path(body.path))
+def mkdir(body: MkdirRequest, user: User = Depends(get_current_user)):
+    target = ensure_in_allowed_roots(Path(body.path), user)
     target.mkdir(parents=True, exist_ok=True)
     return DetailResponse(detail=f"Created {target}")
 
 
 @router.post("/rename", response_model=DetailResponse)
-def rename(body: RenameRequest):
-    source = ensure_in_allowed_roots(Path(body.path))
+def rename(body: RenameRequest, user: User = Depends(get_current_user)):
+    source = ensure_in_allowed_roots(Path(body.path), user)
     new_name = validate_filename(body.new_name)
     if not source.exists():
         raise HTTPException(status_code=404, detail="Source not found")
@@ -151,9 +153,9 @@ def rename(body: RenameRequest):
 
 
 @router.post("/move", response_model=DetailResponse)
-def move(body: MoveRequest):
-    source = ensure_in_allowed_roots(Path(body.source))
-    dest_dir = ensure_in_allowed_roots(Path(body.dest_dir))
+def move(body: MoveRequest, user: User = Depends(get_current_user)):
+    source = ensure_in_allowed_roots(Path(body.source), user)
+    dest_dir = ensure_in_allowed_roots(Path(body.dest_dir), user)
     if not source.exists():
         raise HTTPException(status_code=404, detail="Source not found")
     if not dest_dir.is_dir():
@@ -163,8 +165,8 @@ def move(body: MoveRequest):
 
 
 @router.delete("/delete", response_model=DetailResponse)
-def delete(body: DeleteRequest):
-    target = ensure_in_allowed_roots(Path(body.path))
+def delete(body: DeleteRequest, user: User = Depends(get_current_user)):
+    target = ensure_in_allowed_roots(Path(body.path), user)
     if not target.exists():
         raise HTTPException(status_code=404, detail="Not found")
     # Project/website files go to the recycle bin (restorable for 24h); other
@@ -180,8 +182,8 @@ def delete(body: DeleteRequest):
 
 
 @router.get("/download")
-def download(path: str = Query(...)):
-    file_path = ensure_in_allowed_roots(Path(path))
+def download(path: str = Query(...), user: User = Depends(get_current_user)):
+    file_path = ensure_in_allowed_roots(Path(path), user)
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(file_path, filename=file_path.name)

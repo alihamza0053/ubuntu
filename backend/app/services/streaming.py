@@ -87,3 +87,26 @@ async def tail_file(path: Path, on_line: LineCallback, backlog: int = 50,
                 await on_line(line.rstrip("\n"))
             else:
                 await asyncio.sleep(poll)
+
+
+async def tail_ws(websocket, path, on_line, **kwargs) -> None:
+    """
+    tail_file for a WebSocket, ending when the browser goes away. tail_file only
+    notices a dead client when it tries to send, so on a quiet log the task,
+    its timer and its open file would otherwise live on for ever.
+    """
+    async def closed():
+        try:
+            while True:
+                await websocket.receive_text()
+        except Exception:  # noqa: BLE001 — disconnect in any form
+            return
+
+    tail = asyncio.create_task(tail_file(path, on_line, **kwargs))
+    watch = asyncio.create_task(closed())
+    done, pending = await asyncio.wait({tail, watch}, return_when=asyncio.FIRST_COMPLETED)
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+    if tail in done:
+        tail.result()

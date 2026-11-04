@@ -1,9 +1,6 @@
 """
 Auth routes: login (JWT issuance, rate-limited) and current-user lookup.
 """
-import time
-from collections import defaultdict
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
@@ -17,7 +14,7 @@ from ..permissions import (TABS, parse_permissions, serialize_permissions)
 from ..schemas import (DetailResponse, LoginRequest, PasswordReset,
                        TokenResponse, UserCreate, UserOut, UserUpdate)
 from ..security import create_access_token, hash_password, verify_password
-from ..services import user_audit
+from ..services import rate_limit, user_audit
 
 
 class PasswordChange(BaseModel):
@@ -33,33 +30,25 @@ def _user_out(u: User) -> UserOut:
                    permissions=parse_permissions(u.permissions),
                    code_access=code_editor.can_use(u))
 
-# In-memory login rate limiter: client_ip -> [attempt timestamps].
-# Fine for a single-process, single-admin panel.
-_attempts: dict[str, list[float]] = defaultdict(list)
-
-
-def _check_rate_limit(ip: str) -> None:
-    now = time.monotonic()
-    window = settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS
-    _attempts[ip] = [t for t in _attempts[ip] if now - t < window]
-    if len(_attempts[ip]) >= settings.LOGIN_RATE_LIMIT_ATTEMPTS:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Too many login attempts. Try again in {window} seconds.",
-        )
-    _attempts[ip].append(now)
+# Checked when the username doesn't exist, so both cases take the same time and
+# timing can't reveal which usernames are real.
+_DUMMY_HASH = hash_password("serverhub-no-such-user")
 
 
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     """Verify credentials and return a JWT."""
-    client_ip = request.client.host if request.client else "unknown"
-    _check_rate_limit(client_ip)
+    ip = rate_limit.client_ip(request)
+    limit = settings.LOGIN_RATE_LIMIT_ATTEMPTS
+    keys = {f"login-ip:{ip}": limit * 4, f"login-user:{body.username.lower()[:64]}": limit * 4,
+            f"login-pair:{ip}|{body.username.lower()[:64]}": limit}
+    rate_limit.check(keys, settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS)
 
     user = db.query(User).filter(User.username == body.username).first()
-    ip = request.headers.get("x-real-ip") or client_ip
+    password_ok = verify_password(body.password, user.hashed_password if user else _DUMMY_HASH)
     # Same error for unknown user / wrong password (no username enumeration)
-    if user is None or not verify_password(body.password, user.hashed_password):
+    if user is None or not password_ok:
+        rate_limit.failed(keys)
         if user is not None:
             user_audit.record(user.username, user.id, "Failed login (wrong password)",
                               "POST", "/api/auth/login", 401, ip)

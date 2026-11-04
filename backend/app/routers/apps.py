@@ -17,7 +17,8 @@ from ..deps import authenticate_websocket, get_current_user, require_admin
 from ..models import ManagedApp, NginxConfig, User
 from ..schemas import DetailResponse
 from ..services import appstore_service, nginx_service, ollama_service
-from ..services.streaming import tail_file
+from ..services.paths import validate_domain
+from ..services.streaming import tail_ws
 
 router = APIRouter(
     prefix="/api/apps",
@@ -29,6 +30,11 @@ ws_router = APIRouter(tags=["apps"])   # logs WS authenticates via ?token=
 
 class DomainRequest(BaseModel):
     domain: str
+
+    @field_validator("domain")
+    @classmethod
+    def domain_ok(cls, v: str) -> str:
+        return validate_domain(v)
 
 
 class SettingsRequest(BaseModel):
@@ -367,7 +373,7 @@ async def app_logs_ws(websocket: WebSocket, key: str, source: str = "app"):
         await websocket.send_text(line)
 
     try:
-        await tail_file(path, send, backlog=200)
+        await tail_ws(websocket, path, send, backlog=200)
     except (WebSocketDisconnect, RuntimeError):
         pass
     except Exception:
