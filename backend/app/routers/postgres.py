@@ -195,11 +195,11 @@ def connection(name: str, db: Session = Depends(get_db)):
 
 @router.put("/{name}/limit", response_model=DetailResponse)
 def set_limit(name: str, body: LimitRequest, db: Session = Depends(get_db)):
-    pg.set_conn_limit(name, body.conn_limit)
+    limit = pg.set_conn_limit(name, body.conn_limit)
     row = _row(db, pg.check_name(name))
-    row.conn_limit = body.conn_limit
+    row.conn_limit = limit
     db.commit()
-    return DetailResponse(detail=f"Connection limit set to {body.conn_limit}")
+    return DetailResponse(detail=f"Connection limit set to {limit}")
 
 
 @router.get("/{name}/tables")

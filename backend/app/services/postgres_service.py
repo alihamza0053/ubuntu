@@ -205,11 +205,14 @@ def set_password(name: str) -> str:
     return password
 
 
-def set_conn_limit(name: str, limit: int) -> None:
+def set_conn_limit(name: str, limit: int) -> int:
+    """Returns the limit applied, which is kept to 1-50."""
     _, sql = _psycopg()
+    limit = max(1, min(int(limit), 50))
     with connect() as conn:
         conn.execute(sql.SQL("ALTER ROLE {} CONNECTION LIMIT {}")
-                     .format(sql.Identifier(check_name(name)), sql.Literal(max(1, min(int(limit), 50)))))
+                     .format(sql.Identifier(check_name(name)), sql.Literal(limit)))
+    return limit
 
 
 def drop_database(name: str) -> Path:

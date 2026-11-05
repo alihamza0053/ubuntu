@@ -1,4 +1,0 @@
-fastapi
-uvicorn[standard]
-psycopg[binary,pool]>=3.2,<4
-pyjwt[crypto]>=2.8

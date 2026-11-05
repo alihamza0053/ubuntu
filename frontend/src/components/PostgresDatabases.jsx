@@ -231,6 +231,19 @@ export default function PostgresDatabases({ tabs }) {
     })
   }
 
+  const changeLimit = (d) => {
+    const value = window.prompt(`Maximum connections for “${d.name}” (1 to 50).\nEvery dashboard, API and pipeline using it needs its own.`,
+      d.conn_limit > 0 ? d.conn_limit : 20)
+    if (value === null) return
+    const limit = Number(value)
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) { alert('Enter a whole number from 1 to 50.'); return }
+    act('limit', async () => {
+      const r = await api.put(`/postgres/${d.name}/limit`, { conn_limit: limit })
+      alert(r.data.detail)
+      refresh()
+    })
+  }
+
   const drop = (d) => {
     if (!window.confirm(`Delete PostgreSQL database “${d.name}” and its user?\nA backup is saved first.`)) return
     if (window.prompt(`Type the name to confirm:`) !== d.name) return
@@ -266,7 +279,7 @@ export default function PostgresDatabases({ tabs }) {
     { key: 'linked', label: 'Used by', render: (d) => d.linked_name
       ? <span className="badge-muted">{d.linked_kind} · {d.linked_name}</span>
       : <span className="text-slate-600">—</span> },
-    { key: 'actions', label: 'Actions', align: 'right', width: '21rem', render: (d) => (
+    { key: 'actions', label: 'Actions', align: 'right', width: '23.5rem', render: (d) => (
       <RowActions>
         <button className="btn-icon" title="Connection details" onClick={() => showConnection(d)}><Icon name="plug" size={15} /></button>
         <button className="btn-icon" title="Link to a project / website"
@@ -274,6 +287,7 @@ export default function PostgresDatabases({ tabs }) {
           <Icon name="link" size={15} /></button>
         <button className="btn-icon" title="Browse tables" onClick={() => setBrowse(d.name)}><Icon name="layers" size={15} /></button>
         <button className="btn-icon" title="Query" onClick={() => setQueryDb(d.name)}><Icon name="terminal" size={15} /></button>
+        <button className="btn-icon" title="Connection limit" onClick={() => changeLimit(d)}><Icon name="gear" size={15} /></button>
         <button className="btn-icon" title="New password" onClick={() => resetPassword(d)}><Icon name="shield" size={15} /></button>
         <button className="btn-icon" title="Export whole database to Excel (one sheet per table)"
           onClick={() => exportExcel(d.name)} disabled={busy === `xlsx-${d.name}`}>
