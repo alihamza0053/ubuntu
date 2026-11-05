@@ -1,6 +1,6 @@
 # HR API: Flutter integration brief
 
-For the coding agent working in the Flutter app. Add three employee features to the existing app, using the existing login: attendance, salary and expense claims.
+For the coding agent working in the MG Apparel employee app. Add three employee features, using the existing Firebase login: attendance, salary and expense claims.
 
 Each employee sees only their own data. The API enforces that on the server, so the app never chooses whose data to load.
 
@@ -8,25 +8,31 @@ Each employee sees only their own data. The API enforces that on the server, so 
 
 | Item | State |
 |---|---|
-| API code | Written and tested with simulated data |
-| API deployment | **Not deployed yet.** Keep the base URL in one constant |
-| API token check | **Not connected to a login yet.** Calls return `503` until it is |
+| API code | Connected to Firebase Auth and tested with simulated data |
+| API deployment | The new version must be on `https://maapi.mgdashboard.tech` before login works. Until then, calls return `503` |
+| Real login | **Not tested yet** with a real employee account |
 | Database columns | Checked against the real schema |
 
-## Do this first: identify the login
+## Login: already decided
 
-Before writing feature code, read `pubspec.yaml` and the app's login code, then tell the project owner which case applies. The server's token check depends on the answer.
+The app uses Firebase Auth on project `mg-apparel-app-yuze`, so no new login work is needed.
 
-| You find | Meaning | Server work needed |
-|---|---|---|
-| `firebase_auth` | Firebase issues the token | Token check must change to verify Firebase tokens |
-| `supabase_flutter` | Supabase issues the token | Token check must change to verify Supabase tokens |
-| A custom login API that returns a JWT | Your backend issues the token | Must confirm the signing method and the fields it contains |
-| A custom login API with no JWT, or a local-only login | No usable token exists | Server login work is needed first. **Stop and report this** |
+- Send the signed-in user's **Firebase ID token** to the API.
+- The API verifies the token, then reads `employee_code` from that user's Firestore profile (`profiles/{uid}`). The app doesn't need to send it.
+- An account with no `employee_code`, or a `status` other than `active`, gets `403`.
 
-Also report how a logged-in user maps to an employee code (`emp_code`), for example a token field, or an email that matches the HR record. Don't guess this mapping.
+Don't add a new login screen, login API or custom token.
 
-Build the feature screens against the API contract below, but don't describe the feature as finished until the owner confirms the server side is connected.
+## This project
+
+Follow what the app already does:
+
+- **State:** Riverpod providers. **Routing:** go_router.
+- **Packages:** add `http` to `pubspec.yaml`, as it isn't a dependency yet.
+- **Demo mode:** repositories check `AppConfig.isDemoMode` and return sample data. Do the same, and never put real data in `demo_data.dart`.
+- **Text:** the app is in English and Urdu. Add new strings to both `app_en.arb` and `app_ur.arb`.
+- **Salary privacy:** the home screen hides salary by default through `SalaryVisibility` ("Rs ••••••"). Salary screens must respect the same setting.
+- **Existing pay card:** `myPayProvider` reads HR-entered pay from Firestore `pay/{employee_code}`. Leave it as it is unless the owner asks to switch it to this API.
 
 ## Security rules
 
@@ -35,16 +41,16 @@ Build the feature screens against the API contract below, but don't describe the
 3. **Never create or sign a token in Flutter.** Only the login provider or login server does that.
 4. **Never connect to PostgreSQL from the app.** All data goes through this API over HTTPS.
 5. **Don't rely on hiding things in the UI for privacy.** The server enforces access.
-6. Store tokens in secure storage (`flutter_secure_storage`, or the auth SDK's own storage), never in `SharedPreferences`.
+6. Let the Firebase SDK hold the token. Don't save it yourself.
 7. Never log tokens, salaries or full API responses, including in `debugPrint` and crash reports.
-8. On logout, clear the token and all cached HR data, so the next user of the device can't see it.
+8. On logout, clear all cached HR data and Riverpod state, so the next user of the device can't see it.
 
 ## API contract
 
-**Base URL:** not assigned yet. Put it in one constant:
+**Base URL:** put it in one constant, with no slash at the end. Every path below already starts with `/`, and a double slash returns `404`.
 
 ```dart
-const apiBaseUrl = 'https://REPLACE-WITH-HR-API-DOMAIN';
+const apiBaseUrl = 'https://maapi.mgdashboard.tech';
 ```
 
 **Every call except `/health` needs this header:**
@@ -95,7 +101,7 @@ Returns the `salary` list shown above. Up to 36 periods. Takes no parameters.
 
 ### `GET /health`
 
-No token needed. Returns `{"status": "ok"}`. Use it only to check that the API is reachable.
+No token needed. Returns `{"status": "ok", "database": "ok", "login": "ok"}`, or status `503` with `"error"` in the part that is down. Use it only to check that the API is reachable.
 
 ### Data details
 
@@ -112,30 +118,25 @@ No token needed. Returns `{"status": "ok"}`. Use it only to check that the API i
 | Status | Meaning | What the app does |
 |---|---|---|
 | `400` | Bad date range | Show the `detail` message |
-| `401` | Token missing, invalid or expired | Refresh the token if the SDK can, retry once, otherwise send the user to login |
+| `401` | Token missing, invalid or expired | Force a token refresh and retry once, then send the user to login |
+| `403` | Account has no linked employee code, or isn't active | Show the `detail` message. Don't retry or log out |
 | `404` | Wrong path | Treat as a bug |
 | `422` | Badly formatted date | Fix the request. `detail` is a list here, not a string |
 | `500` or `502` | Server problem | Show a retry message |
-| `503` | Login not connected on the server yet | Show a retry message |
+| `503` | The API can't check logins or reach its data right now | Show a retry message. Never log the user out on a `503` |
 
 Errors normally look like `{"detail": "Log in again."}`. `detail` isn't always a string, and a `502` may return HTML instead of JSON, so parse errors defensively.
 
 ## Getting the token
 
-Fetch the token immediately before each request, rather than holding one in a variable.
+Ask Firebase for the token immediately before each request, rather than holding one in a variable. The SDK refreshes it when it's close to expiry. Tokens last about an hour.
 
 ```dart
-// Firebase: refreshes itself when close to expiry
-final token = await FirebaseAuth.instance.currentUser?.getIdToken();
-
-// Supabase: the SDK keeps the session refreshed
-final token = Supabase.instance.client.auth.currentSession?.accessToken;
-
-// Custom login API: read what the login call saved
-final token = await const FlutterSecureStorage().read(key: 'auth_token');
+final hrApiProvider = Provider<HrApi>((ref) {
+  return HrApi(({bool refresh = false}) async =>
+      FirebaseService.currentUser?.getIdToken(refresh));
+});
 ```
-
-A custom-login token must be a JWT signed by the server, with an `exp` expiry and the employee code in an `emp_code` field. If it isn't, report that to the owner rather than working around it.
 
 ## Suggested client
 
@@ -153,21 +154,30 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+typedef TokenSource = Future<String?> Function({bool refresh});
+
 class HrApi {
   HrApi(this._getToken, {http.Client? client}) : _client = client ?? http.Client();
 
-  final Future<String?> Function() _getToken;
+  final TokenSource _getToken;
   final http.Client _client;
 
-  Future<dynamic> _get(String path, [Map<String, String>? query]) async {
-    final token = await _getToken();
+  Future<http.Response> _send(Uri uri, {bool refresh = false}) async {
+    final token = await _getToken(refresh: refresh);
     if (token == null || token.isEmpty) {
       throw ApiException(401, 'Log in first.');
     }
-    final uri = Uri.parse('$apiBaseUrl$path').replace(queryParameters: query);
-    final response = await _client
+    return _client
         .get(uri, headers: {'Authorization': 'Bearer $token'})
         .timeout(const Duration(seconds: 20));
+  }
+
+  Future<dynamic> _get(String path, [Map<String, String>? query]) async {
+    final uri = Uri.parse('$apiBaseUrl$path').replace(queryParameters: query);
+    var response = await _send(uri);
+    if (response.statusCode == 401) {
+      response = await _send(uri, refresh: true); // Retried once only.
+    }
     if (response.statusCode == 200) {
       return jsonDecode(utf8.decode(response.bodyBytes));
     }
@@ -261,12 +271,16 @@ Every screen needs loading, empty, error-with-retry and pull-to-refresh states.
 
 ## Done when
 
-- [ ] The login type and the `emp_code` mapping have been reported to the owner.
+- [ ] The app uses the existing Firebase login, with no new login code.
 - [ ] Nothing in the Dart code sends an employee ID to the API.
 - [ ] No secrets are in the Dart code, assets or build configuration.
 - [ ] The base URL exists in one place.
 - [ ] Null `check_out`, `net_salary` and `amount` values display without errors.
 - [ ] Claims with the same `voucher_no` all display.
-- [ ] A `401` refreshes the token or returns to login, with no retry loop.
+- [ ] A `401` refreshes the token and retries once, with no retry loop.
+- [ ] A `403` shows the "not linked" message.
+- [ ] Salary respects the existing hide/show setting.
+- [ ] New text exists in English and Urdu.
+- [ ] Demo mode works with no network.
 - [ ] Logout clears cached HR data.
 - [ ] After deployment, two different employees log in and each sees only their own data.
