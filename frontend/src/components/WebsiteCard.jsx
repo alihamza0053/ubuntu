@@ -7,7 +7,9 @@ const TYPES = {
   php: { pill: 'border-violet-400/25 bg-violet-400/[0.12] text-violet-300', tile: 'border-violet-400/25 bg-violet-400/10 text-violet-300' },
   html: { pill: 'border-amber-400/25 bg-amber-400/[0.12] text-amber-300', tile: 'border-amber-400/25 bg-amber-400/10 text-amber-300' },
   python: { pill: 'border-mint-400/25 bg-mint-400/[0.12] text-mint-300', tile: 'border-mint-400/25 bg-mint-400/10 text-mint-300' },
+  node: { pill: 'border-lime-400/25 bg-lime-400/[0.12] text-lime-300', tile: 'border-lime-400/25 bg-lime-400/10 text-lime-300' },
 }
+const SERVICE_TYPES = ['python', 'node']
 const FALLBACK = { pill: 'border-panel-border bg-panel-raise/70 text-slate-400', tile: 'border-panel-border bg-panel-raise text-slate-400' }
 
 function Meta({ label, children }) {
@@ -27,7 +29,7 @@ export default function WebsiteCard({ site, onDelete, onToggleHidden }) {
   const typeLabel =
     site.type === 'python' && site.framework && site.framework !== 'other'
       ? site.framework.toUpperCase()
-      : String(site.type || '').toUpperCase()
+      : site.type === 'node' ? 'NODE.JS' : String(site.type || '').toUpperCase()
 
   return (
     <article className="card card-hover flex flex-col">
@@ -70,7 +72,7 @@ export default function WebsiteCard({ site, onDelete, onToggleHidden }) {
           )}
         </Meta>
         <Meta label="Database">{site.db_name || '—'}</Meta>
-        {site.type === 'python' && (
+        {SERVICE_TYPES.includes(site.type) && (
           <Meta label="Service">
             <span className="inline-flex items-center gap-1.5">
               <span className={`dot ${site.status === 'RUNNING' ? 'bg-mint-400' : 'bg-slate-500'}`} />
@@ -86,7 +88,7 @@ export default function WebsiteCard({ site, onDelete, onToggleHidden }) {
         <button className="btn-icon" onClick={() => navigate(`/websites/${site.id}?tab=files`)} title="Files">
           <Icon name="folder" size={15} />
         </button>
-        {site.type === 'python' && (
+        {SERVICE_TYPES.includes(site.type) && (
           <button className="btn-icon" onClick={() => navigate(`/websites/${site.id}?tab=run`)} title="Run">
             <Icon name="play" size={15} />
           </button>

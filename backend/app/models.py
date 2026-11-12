@@ -117,7 +117,7 @@ class Website(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True)
     folder_path: Mapped[str] = mapped_column(String(255))
-    type: Mapped[str] = mapped_column(String(16))  # react / php / html / python
+    type: Mapped[str] = mapped_column(String(16))  # react / php / html / python / node
     domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     db_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # --- "python" type only: a run-it-yourself web service ---

@@ -21,11 +21,13 @@ const FRAMEWORK_LABELS = {
   flask: 'Flask (gunicorn)',
   fastapi: 'FastAPI (uvicorn)',
   other: 'Other (custom command)',
+  node: 'Node.js',
 }
+const SERVICE_TYPES = ['python', 'node']
 
-// Python apps get a "Run" tab (between Files and Database).
+// Python and Node.js apps get a "Run" tab (between Files and Database).
 function tabsFor(type) {
-  if (type !== 'python') return BASE_TABS
+  if (!SERVICE_TYPES.includes(type)) return BASE_TABS
   return [
     BASE_TABS[0], BASE_TABS[1],
     { key: 'run', label: 'Run' },
@@ -120,7 +122,7 @@ export default function WebsiteDetail() {
             <div className="flex justify-between"><dt className="text-slate-500">Folder</dt><dd className="font-mono break-all">{site.folder_path}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">Domain</dt><dd>{site.domain || '—'}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">Database</dt><dd>{site.db_name || '—'}</dd></div>
-            {site.type === 'python' && (
+            {SERVICE_TYPES.includes(site.type) && (
               <>
                 <div className="flex justify-between"><dt className="text-slate-500">Framework</dt><dd>{FRAMEWORK_LABELS[site.framework] || '—'}</dd></div>
                 <div className="flex justify-between"><dt className="text-slate-500">Port</dt><dd className="font-mono">127.0.0.1:{site.port}</dd></div>
@@ -131,7 +133,7 @@ export default function WebsiteDetail() {
         </div>
       )}
 
-      {/* Run (python apps) */}
+      {/* Run (python and node apps) */}
       {tab === 'run' && <RunTab site={site} onChanged={refresh} />}
 
       {/* Files */}
@@ -153,7 +155,8 @@ export default function WebsiteDetail() {
               <span className="text-xs text-slate-500">
                 Upload a .zip — it replaces the folder contents
                 {site.type === 'react' && ' (then builds to dist/)'}
-                {site.type === 'python' && ' (include requirements.txt; the panel then detects your app and sets the run command)'}.
+                {site.type === 'python' && ' (include requirements.txt; the panel then detects your app and sets the run command)'}
+                {site.type === 'node' && ' (include package.json and package-lock.json, but leave out node_modules; the panel then finds the start file)'}.
               </span>
             </div>
             {uploadMsg && <pre className="mt-3 bg-black text-slate-300 text-xs p-3 rounded-lg max-h-48 overflow-auto whitespace-pre-wrap">{uploadMsg}</pre>}
@@ -258,8 +261,9 @@ function DatabaseTab({ site, onChanged }) {
   )
 }
 
-/** Python web-service controls: framework, deps, run command, start/stop, logs. */
+/** Python / Node.js web-service controls: framework, deps, run command, start/stop, logs. */
 function RunTab({ site, onChanged }) {
+  const isNode = site.type === 'node'
   const [cmd, setCmd] = useState(site.run_command || '')
   const [framework, setFramework] = useState(site.framework || 'fastapi')
   const [presets, setPresets] = useState([])
@@ -285,7 +289,8 @@ function RunTab({ site, onChanged }) {
   async function saveCmd() {
     setMsg('')
     try {
-      const r = await api.put(`/websites/${site.id}/run-command`, { run_command: cmd, framework })
+      const r = await api.put(`/websites/${site.id}/run-command`,
+        { run_command: cmd, framework: isNode ? null : framework })
       setMsg(r.data.detail)
       onChanged()
     } catch (err) { setMsg(errorMessage(err)) }
@@ -341,8 +346,13 @@ function RunTab({ site, onChanged }) {
           </div>
         </div>
         <p className="text-xs text-slate-500">
-          Upload your app in the <b>Files</b> tab (a .zip with your code + requirements.txt),
-          then install deps and start it. It runs on <span className="font-mono">127.0.0.1:{site.port}</span>;
+          {isNode
+            ? <>Upload your app in the <b>Files</b> tab (a .zip with your code + package.json, without node_modules),
+              then install deps and start it. Install deps runs <span className="font-mono">npm ci</span>, which builds
+              a fresh node_modules for this server. </>
+            : <>Upload your app in the <b>Files</b> tab (a .zip with your code + requirements.txt),
+              then install deps and start it. </>}
+          It runs on <span className="font-mono">127.0.0.1:{site.port}</span>;
           assign a domain to reach it.
         </p>
         <div className="flex flex-wrap gap-2">
@@ -369,9 +379,9 @@ function RunTab({ site, onChanged }) {
       </div>
 
       <div className="card space-y-3">
-        <h3 className="section-title">Framework &amp; run command</h3>
+        <h3 className="section-title">{isNode ? 'Run command' : <>Framework &amp; run command</>}</h3>
 
-        <div>
+        {!isNode && <div>
           <label className="label">Framework</label>
           <select className="select max-w-xs" value={framework}
             onChange={(e) => changeFramework(e.target.value)}>
@@ -383,24 +393,28 @@ function RunTab({ site, onChanged }) {
             Picks the server installed with your deps and the nginx proxy style
             (Flask/WSGI has no websockets). Save to apply.
           </p>
-        </div>
+        </div>}
 
         <div>
           <label className="label">Run command</label>
           <input className="input font-mono text-sm" value={cmd} onChange={(e) => setCmd(e.target.value)} />
-          <p className="text-xs text-slate-500 mt-1">
+          {isNode ? <p className="text-xs text-slate-500 mt-1">
+            Usually <span className="font-mono">node server.js</span>. The app gets its port in the{' '}
+            <span className="font-mono">PORT</span> environment variable (this wins over a PORT in the app&apos;s .env),
+            and its own .env file is read by the app as usual.
+          </p> : <p className="text-xs text-slate-500 mt-1">
             Use <span className="font-mono">{'{port}'}</span> for the port. The app’s venv is on PATH,
             so <span className="font-mono">gunicorn</span>/<span className="font-mono">uvicorn</span>/<span className="font-mono">python</span> resolve to it.
             The import path is <span className="font-mono">module:variable</span> —
             e.g. <span className="font-mono">app:app</span> for an <span className="font-mono">app = Flask(__name__)</span> in <span className="font-mono">app.py</span>.
-          </p>
+          </p>}
         </div>
 
         <div className="flex gap-2 flex-wrap">
           <button className="btn-primary" onClick={saveCmd}>Save</button>
           {framework !== 'other' && defaultFor(framework) && (
             <button className="btn-secondary" onClick={() => setCmd(defaultFor(framework))}>
-              Reset to {framework} default
+              Reset to {isNode ? 'detected' : framework} default
             </button>
           )}
         </div>

@@ -28,7 +28,7 @@ router = APIRouter(
 )
 ws_router = APIRouter(tags=["websites"])   # logs WS authenticates via ?token=
 
-VALID_TYPES = {"react", "php", "html", "python"}
+VALID_TYPES = {"react", "php", "html", "python", "node"}
 # "python" websites additionally pick a framework: it decides the default run
 # command (flask → gunicorn, fastapi → uvicorn), which server package gets
 # installed, and which nginx proxy block is generated.
@@ -96,12 +96,12 @@ def _to_out(site: Website) -> dict:
         "run_command": site.run_command, "port": site.port, "status": site.status,
         "hidden": site.hidden, "framework": site.framework,
     }
-    if site.type == "python":
+    if site.type in webapp_service.SERVICE_TYPES:
         try:
             out["status"] = webapp_service.status(site.name)
         except Exception:
             pass
-        out["env_status"] = webapp_service.env_status(site.name)
+        out["env_status"] = webapp_service.env_status(site.name, site.type)
     return out
 
 
@@ -140,6 +140,10 @@ def create_website(body: WebsiteCreate, db: Session = Depends(get_db)):
         site.framework = webapp_service.normalise_framework(body.framework)
         site.port = webapp_service.allocate_port(db)
         site.run_command = webapp_service.default_run_command(site.framework)
+    elif body.type == "node":
+        site.framework = "node"
+        site.port = webapp_service.allocate_port(db)
+        site.run_command = webapp_service.NODE_DEFAULT_COMMAND
     db.add(site)
     db.commit()
     db.refresh(site)
@@ -155,7 +159,7 @@ def get_website(website_id: int, db: Session = Depends(get_db)):
 def delete_website(website_id: int, delete_files: bool = Query(False),
                    db: Session = Depends(get_db)):
     site = get_website_or_404(website_id, db)
-    if site.type == "python":
+    if site.type in webapp_service.SERVICE_TYPES:
         try:
             webapp_service.remove_program(site.name)
         except HTTPException:
@@ -223,6 +227,25 @@ async def upload_website(website_id: int, file: UploadFile,
         else:
             result["detail"] = ("Uploaded — no Flask/FastAPI app object found; "
                                 "set the run command yourself in the Run tab.")
+    elif site.type == "node":
+        moved = webapp_service.flatten_single_folder(site.name)
+        found = webapp_service.detect_node(site.name)
+        note = f" (moved the contents of '{moved}/' up a level)" if moved else ""
+        if not found:
+            result["detail"] = (f"Uploaded{note} — no package.json with a start file found; "
+                                "set the run command yourself in the Run tab.")
+        elif webapp_service.is_default_node_command(site.run_command):
+            site.run_command = found["run_command"]
+            db.commit()
+            if webapp_service.config_path(site.name).exists():
+                webapp_service.write_program(site)
+            result.update(detected=found, applied=True,
+                          detail=f"Uploaded{note} — run command set to: {found['run_command']}. "
+                                 "Next: Install deps in the Run tab.")
+        else:
+            result.update(detected=found, applied=False,
+                          detail=f"Uploaded{note} — your custom run command was kept. "
+                                 f"Suggested: {found['run_command']}")
     return result
 
 
@@ -263,7 +286,7 @@ def assign_domain(website_id: int, body: DomainRequest, db: Session = Depends(ge
     """Generate the nginx block matching the website type and reload."""
     site = get_website_or_404(website_id, db)
     slug = f"website-{site.name}"
-    if site.type == "python":
+    if site.type in webapp_service.SERVICE_TYPES:
         if not site.port:
             raise HTTPException(status_code=400, detail="This app has no port yet")
         # Reverse-proxy the domain to the app's localhost port, with the proxy
@@ -321,8 +344,8 @@ class RunCommandRequest(BaseModel):
 
 
 def _require_python(site: Website) -> None:
-    if site.type != "python":
-        raise HTTPException(status_code=400, detail="Only Python websites can be run")
+    if site.type not in webapp_service.SERVICE_TYPES:
+        raise HTTPException(status_code=400, detail="Only Python and Node.js websites can be run")
 
 
 @router.get("/{website_id}/frameworks")
@@ -331,6 +354,10 @@ def list_frameworks(website_id: int, db: Session = Depends(get_db)):
     drives the preset buttons in the Run tab."""
     site = get_website_or_404(website_id, db)
     _require_python(site)
+    if site.type == "node":
+        found = webapp_service.detect_node(site.name)
+        return [{"key": "node", "label": "Node.js",
+                 "run_command": found["run_command"] if found else webapp_service.NODE_DEFAULT_COMMAND}]
     return [
         {"key": key, "label": spec["label"],
          "run_command": webapp_service.build_run_command(key)}
@@ -348,6 +375,21 @@ def detect_app(website_id: int, apply: bool = Query(True, description="Save what
     """
     site = get_website_or_404(website_id, db)
     _require_python(site)
+    if site.type == "node":
+        found = webapp_service.detect_node(site.name)
+        if not found:
+            return {"detected": False, "applied": False,
+                    "detail": "No package.json with a start file found — upload your app "
+                              "first, or set the run command manually."}
+        if apply:
+            site.run_command = found["run_command"]
+            db.commit()
+            if webapp_service.config_path(site.name).exists():
+                webapp_service.write_program(site)
+        return {"detected": True, "applied": apply, **found, "warning": None,
+                "detail": (f"Found a Node.js app starting from {found['file']}"
+                           + (" — run command saved. Restart the app to apply." if apply
+                              else f" — suggested command: {found['run_command']}"))}
     found = webapp_service.detect_app(site.name)
     if not found:
         return {"detected": False, "applied": False,
@@ -375,7 +417,7 @@ def install_deps(website_id: int, db: Session = Depends(get_db)):
     """Build the venv and pip-install requirements.txt in the background."""
     site = get_website_or_404(website_id, db)
     _require_python(site)
-    started = webapp_service.build_env_async(site.name, site.framework)
+    started = webapp_service.build_env_async(site.name, site.framework, site.type)
     if not started:
         return DetailResponse(detail="Already installing… watch the setup log")
     return DetailResponse(detail="Installing dependencies… watch the setup log")
@@ -386,7 +428,7 @@ def set_run_command(website_id: int, body: RunCommandRequest, db: Session = Depe
     site = get_website_or_404(website_id, db)
     _require_python(site)
     site.run_command = body.run_command.strip()
-    if body.framework:
+    if body.framework and site.type == "python":
         site.framework = body.framework
     db.commit()
     # Refresh the supervisor program if it already exists.

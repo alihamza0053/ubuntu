@@ -13,6 +13,7 @@ const FILTERS = [
   { key: 'react', label: 'React' },
   { key: 'php', label: 'PHP' },
   { key: 'python', label: 'Python' },
+  { key: 'node', label: 'Node.js' },
 ]
 
 export default function Websites() {
@@ -197,6 +198,7 @@ export default function Websites() {
               <option value="react">React (build → dist/)</option>
               <option value="php">PHP</option>
               <option value="python">Python app — upload &amp; run</option>
+              <option value="node">Node.js app — upload &amp; run</option>
             </select>
           </div>
 
