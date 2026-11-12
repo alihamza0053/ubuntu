@@ -7,17 +7,23 @@ plus a supervisor program for its Streamlit dashboard.
 """
 import shutil
 import os
+import tempfile
+import zipfile
+import zlib
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import (APIRouter, Depends, HTTPException, Query, UploadFile)
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
+from starlette.concurrency import run_in_threadpool
 
 from ..config import settings
 from ..database import get_db
 from ..deps import get_current_user, require_admin
 from ..models import Project, Script, User
+from ..permissions import hidden_for
 from pydantic import BaseModel, field_validator
 
 from ..schemas import (DetailResponse, FileInfo, ProjectCreate, ProjectFilesOut,
@@ -351,6 +357,149 @@ def download_file(
     if not path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(path, filename=path.name)
+
+
+# Rebuilt by the panel (Install packages) or pure cache: they only make the zip big.
+ZIP_SKIP_DIRS = {"venv", ".venv", "node_modules", "__pycache__", ".git", ".ipynb_checkpoints"}
+
+
+@router.get("/{project_id}/zip")
+def download_project_zip(project_id: int, db: Session = Depends(get_db),
+                         user: User = Depends(get_current_user)):
+    """The whole project folder as one .zip: code, scripts, data, dashboard, logs."""
+    project = get_project_or_404(project_id, db)
+    if hidden_for(user, project):
+        raise HTTPException(status_code=404, detail="Project not found")
+    root = project_root(project)
+    if not root.is_dir():
+        raise HTTPException(status_code=404, detail="Project folder not found")
+    fd, tmp = tempfile.mkstemp(prefix="serverhub-project-", suffix=".zip")
+    os.close(fd)
+    dest = Path(tmp)
+    try:
+        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+            for dirpath, dirnames, filenames in os.walk(root):
+                # Symlinks are skipped, so a link can't pull files from outside the project.
+                dirnames[:] = sorted(d for d in dirnames if d not in ZIP_SKIP_DIRS
+                                     and not os.path.islink(os.path.join(dirpath, d)))
+                for name in sorted(filenames):
+                    path = Path(dirpath) / name
+                    if name.endswith(".pyc") or path.is_symlink() or not path.is_file():
+                        continue
+                    try:
+                        zf.write(path, Path(project.name) / path.relative_to(root))
+                    except OSError:      # unreadable, or removed while zipping
+                        continue
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
+    return FileResponse(dest, media_type="application/zip",
+                        filename=f"{project.name}-{datetime.now():%Y%m%d-%H%M}.zip",
+                        background=BackgroundTask(dest.unlink, missing_ok=True))   # don't fill /tmp
+
+
+IMPORT_MAX_FILES = 20000
+IMPORT_MAX_BYTES = 4 * 1024 ** 3        # unpacked: a small zip can expand to a lot
+
+
+def _import_zip(zip_path: Path, root: Path) -> dict:
+    """
+    Unpack a project zip into the project folder. Files in the zip are added or
+    replaced (the old copy goes to the recycle bin); files not in the zip stay.
+    An export's top folder (the project's name) is dropped, so a zip from any
+    project imports into this one.
+    """
+    try:
+        zf = zipfile.ZipFile(zip_path)
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="That file isn't a valid .zip")
+    with zf:
+        infos = [i for i in zf.infolist() if not i.is_dir()]
+        if len(infos) > IMPORT_MAX_FILES:
+            raise HTTPException(status_code=400, detail=f"The zip has more than {IMPORT_MAX_FILES} files")
+        total = sum(i.file_size for i in infos)
+        if total > IMPORT_MAX_BYTES:
+            raise HTTPException(status_code=400, detail=f"The zip unpacks to more than "
+                                                        f"{IMPORT_MAX_BYTES / 1024 ** 3:g} GB")
+        if shutil.disk_usage(root).free < total + 512 * 1024 ** 2:
+            raise HTTPException(status_code=400, detail="Not enough free disk space to unpack it")
+
+        names = [i.filename.replace("\\", "/") for i in infos]
+        tops = {n.split("/", 1)[0] for n in names}
+        strip_top = len(tops) == 1 and all("/" in n for n in names)
+        base = root.resolve()
+        added, replaced, unchanged, skipped = 0, 0, 0, []
+        for info, name in zip(infos, names):
+            rel = name.split("/", 1)[1] if strip_top else name
+            parts = [p for p in rel.split("/") if p not in ("", ".")]
+            is_link = (info.external_attr >> 16) & 0o170000 == 0o120000
+            if (not parts or ".." in parts or is_link or name.endswith(".pyc")
+                    or any(p in ZIP_SKIP_DIRS for p in parts)):
+                skipped.append(name)
+                continue
+            dest = root.joinpath(*parts)
+            if base not in dest.resolve().parents or dest.is_symlink() or dest.is_dir():
+                skipped.append(name)
+                continue
+            try:
+                if dest.exists() and _same_content(dest, info):
+                    unchanged += 1                      # don't fill the bin with identical copies
+                    continue
+                if dest.exists():
+                    trash_service.move_to_trash(dest)   # recoverable from the recycle bin
+                    replaced += 1
+                else:
+                    added += 1
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(info) as src, dest.open("wb") as out:
+                    shutil.copyfileobj(src, out, 1024 * 1024)
+            except OSError:
+                skipped.append(name)
+    return {"added": added, "replaced": replaced, "unchanged": unchanged,
+            "skipped": skipped[:50], "skipped_count": len(skipped)}
+
+
+def _same_content(path: Path, info: zipfile.ZipInfo) -> bool:
+    """True when the file on disk already holds exactly what the zip entry holds."""
+    if path.stat().st_size != info.file_size:
+        return False
+    crc = 0
+    with path.open("rb") as fh:
+        while chunk := fh.read(1024 * 1024):
+            crc = zlib.crc32(chunk, crc)
+    return crc == info.CRC
+
+
+@router.post("/{project_id}/import")
+async def import_project_zip(project_id: int, file: UploadFile, db: Session = Depends(get_db),
+                             user: User = Depends(get_current_user)):
+    """Unpack an uploaded .zip (e.g. an export) into this project."""
+    project = get_project_or_404(project_id, db)
+    if hidden_for(user, project):
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not (file.filename or "").lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Upload a .zip file")
+    root = project_root(project)
+    root.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="serverhub-import-", suffix=".zip")
+    os.close(fd)
+    tmp_path = Path(tmp)
+    try:
+        with tmp_path.open("wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                out.write(chunk)
+        result = await run_in_threadpool(_import_zip, tmp_path, root)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    sync_scripts(project, db)          # register any new .py files as runnable scripts
+    detail = f"Imported: {result['added']} new file(s), {result['replaced']} replaced"
+    if result["replaced"]:
+        detail += " (the old versions are in the recycle bin)"
+    if result["unchanged"]:
+        detail += f", {result['unchanged']} already up to date"
+    if result["skipped_count"]:
+        detail += f", {result['skipped_count']} skipped (venv/cache folders, links or unsafe paths)"
+    return {**result, "detail": detail + ". Restart the dashboard to load new dashboard code."}
 
 
 @router.delete("/{project_id}/files", response_model=DetailResponse)

@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import api, { errorMessage } from '../api/client'
 import { formatDateTime } from '../lib/datetime'
+import ProjectZipButton, { ProjectImportButton } from './ProjectZipButton'
 import StatusBadge from './StatusBadge'
 import Icon from './ui/Icon'
 
@@ -122,6 +123,8 @@ export default function ProjectCard({ project, onChanged, onDelete, onToggleHidd
         >
           <Icon name="folder" size={15} />
         </button>
+        <ProjectZipButton project={project} compact />
+        <ProjectImportButton project={project} compact onDone={onChanged} />
 
         <span className="ml-auto flex items-center gap-1">
           {onToggleHidden && (

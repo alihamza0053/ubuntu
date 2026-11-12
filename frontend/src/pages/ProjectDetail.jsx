@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { openInEditor } from '../lib/openEditor'
+import ProjectZipButton, { ProjectImportButton } from '../components/ProjectZipButton'
 import StatusBadge from '../components/StatusBadge'
 import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
@@ -69,6 +70,8 @@ export default function ProjectDetail() {
           <>
             <StatusBadge status={project.dashboard_status} />
             <span className="badge-muted">port {project.dashboard_port}</span>
+            <ProjectImportButton project={project} onDone={refresh} />
+            <ProjectZipButton project={project} />
             {can('code') && (
               <>
                 <button className="btn-secondary" title="Open this project's dashboard folder in the code editor"
