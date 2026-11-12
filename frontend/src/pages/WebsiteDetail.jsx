@@ -20,6 +20,7 @@ const BASE_TABS = [
 
 // nginx's client_max_body_size for the panel (deploy/nginx-panel.conf).
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024
+const CLOUDFLARE_FREE_LIMIT = 100 * 1024 * 1024
 
 const FRAMEWORK_LABELS = {
   flask: 'Flask (gunicorn)',
@@ -75,6 +76,13 @@ export default function WebsiteDetail() {
         'Leave out node_modules, venv and other generated folders and zip it again.')
       return
     }
+    // Cloudflare's free plan refuses request bodies over 100 MB before any of it
+    // reaches the server, and the browser then just sits on a frozen progress bar.
+    if (file.size > CLOUDFLARE_FREE_LIMIT && !window.confirm(
+      `${file.name} is ${formatSize(file.size)}. If this panel's domain goes through Cloudflare, ` +
+      'uploads over 100 MB are refused and the bar stops part-way.\n\n' +
+      'Leaving out node_modules, venv and other generated folders usually makes the zip much smaller.\n\n' +
+      'Upload anyway?')) return
     setUploadMsg('')
     const form = new FormData()
     form.append('file', file)
