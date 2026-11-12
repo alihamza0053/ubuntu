@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import api, { errorMessage } from '../api/client'
+import api, { errorMessage, isCancel } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { openInEditor } from '../lib/openEditor'
 import EditorModal from '../components/EditorModal'
 import LiveLog from '../components/LiveLog'
+import ProgressBar from '../components/ProgressBar'
 import StatusBadge from '../components/StatusBadge'
 import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
@@ -16,6 +17,9 @@ const BASE_TABS = [
   { key: 'database', label: 'Database' },
   { key: 'domain', label: 'Domain & SSL' },
 ]
+
+// nginx's client_max_body_size for the panel (deploy/nginx-panel.conf).
+const MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 
 const FRAMEWORK_LABELS = {
   flask: 'Flask (gunicorn)',
@@ -52,6 +56,8 @@ export default function WebsiteDetail() {
   const [editorPath, setEditorPath] = useState(null)
   const uploadRef = useRef(null)
   const [uploadMsg, setUploadMsg] = useState('')
+  const [transfer, setTransfer] = useState(null)   // { name, pct, sent } while uploading
+  const transferRef = useRef(null)                 // AbortController for the upload
 
   const refresh = useCallback(() => {
     api.get(`/websites/${id}`).then((res) => setSite(res.data))
@@ -63,18 +69,35 @@ export default function WebsiteDetail() {
   }, [refresh])
 
   async function uploadZip(file, build) {
-    if (!file) return
-    setUploadMsg('Uploading…')
+    if (!file || transferRef.current) return
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setUploadMsg(`${file.name} is ${formatSize(file.size)}; the limit is 200 MB. ` +
+        'Leave out node_modules, venv and other generated folders and zip it again.')
+      return
+    }
+    setUploadMsg('')
     const form = new FormData()
     form.append('file', file)
+    const controller = new AbortController()
+    transferRef.current = controller
+    setTransfer({ name: file.name, pct: 0, sent: false })
     try {
       const res = await api.post(`/websites/${id}/upload`, form, {
         params: { build, replace: true },
+        signal: controller.signal,
+        onUploadProgress: (e) => {
+          if (!e.total) return
+          const pct = Math.round((e.loaded / e.total) * 100)
+          setTransfer((t) => t && { ...t, pct, sent: pct >= 100 })
+        },
       })
       setUploadMsg(res.data.detail + (res.data.build_output ? `\n${res.data.build_output}` : ''))
-      refresh()
     } catch (err) {
-      setUploadMsg(errorMessage(err))
+      setUploadMsg(isCancel(err) ? 'Upload cancelled.' : errorMessage(err))
+    } finally {
+      setTransfer(null)
+      transferRef.current = null
+      refresh()
     }
   }
 
@@ -142,9 +165,9 @@ export default function WebsiteDetail() {
           <div className="card">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="section-title">Deploy</h3>
-              <button className="btn-primary" onClick={() => uploadRef.current?.click()}><Icon name="upload" size={15} />Upload .zip</button>
+              <button className="btn-primary" disabled={!!transfer} onClick={() => uploadRef.current?.click()}><Icon name="upload" size={15} />Upload .zip</button>
               {site.type === 'react' && (
-                <button className="btn-secondary" onClick={() => {
+                <button className="btn-secondary" disabled={!!transfer} onClick={() => {
                   const f = uploadRef.current?.files?.[0]
                   if (f) uploadZip(f, true)
                   else alert('Pick a zip first via Upload')
@@ -159,6 +182,12 @@ export default function WebsiteDetail() {
                 {site.type === 'node' && ' (include package.json and package-lock.json, but leave out node_modules; the panel then finds the start file)'}.
               </span>
             </div>
+            {transfer && (transfer.sent
+              // Every byte has arrived: the server is unpacking it (and building, for React).
+              // Cancelling now wouldn't stop that, so the button goes away.
+              ? <ProgressBar dir="up" name={`${transfer.name}: unpacking on the server`} pct={null} />
+              : <ProgressBar dir="up" name={transfer.name} pct={transfer.pct}
+                  onCancel={() => transferRef.current?.abort()} />)}
             {uploadMsg && <pre className="mt-3 bg-black text-slate-300 text-xs p-3 rounded-lg max-h-48 overflow-auto whitespace-pre-wrap">{uploadMsg}</pre>}
           </div>
 
