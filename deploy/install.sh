@@ -217,17 +217,6 @@ if [ ! -f "$SITE" ] || grep -q "panel.yourdomain.com" "$SITE"    || { [ -n "$PAN
   echo "    panel site written for: ${PANEL_DOMAIN:-any address (no domain yet)}"
 else
   echo "    keeping the existing panel site ($(grep -m1 -o 'server_name [^;]*' "$SITE"))"
-  # Older sites have no upload limit, so nginx caps uploads at its 1 MB default.
-  if ! grep -q "client_max_body_size" "$SITE"; then
-    cp "$SITE" "$SITE.before-upload-limit"
-    sed -i -E '/^[[:space:]]*server_name[[:space:]]/a\    client_max_body_size 200M;' "$SITE"
-    if nginx -t 2>/dev/null; then
-      echo "    added a 200 MB upload limit to it"
-    else
-      cp "$SITE.before-upload-limit" "$SITE"
-      echo "    could not add an upload limit (nginx rejected it); left the site as it was"
-    fi
-  fi
 fi
 mkdir -p /etc/nginx/serverhub-panel.d        # extra panel paths (e.g. the code editor at /ide/)
 ln -sf "$SITE" /etc/nginx/sites-enabled/serverhub

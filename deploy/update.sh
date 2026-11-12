@@ -181,21 +181,6 @@ fi
 # "dubious ownership" error, so the in-panel "Check for updates" works.
 sudo -u "$PANEL_USER" git config --global --add safe.directory "$SRC" 2>/dev/null || true
 
-# 4e. Panel sites written before the upload limit existed have none, so nginx
-# caps every upload at its 1 MB default and big zips hang part-way. Add it.
-PANEL_SITE=/etc/nginx/sites-available/serverhub
-if [ -f "$PANEL_SITE" ] && ! grep -q "client_max_body_size" "$PANEL_SITE"; then
-  echo "==> Panel nginx site: allowing uploads up to 200 MB"
-  cp "$PANEL_SITE" "$BACKUP_DIR/nginx-serverhub.conf"
-  sed -i -E '/^[[:space:]]*server_name[[:space:]]/a\    client_max_body_size 200M;' "$PANEL_SITE"
-  if nginx -t 2>/dev/null; then
-    systemctl reload nginx
-  else
-    cp "$BACKUP_DIR/nginx-serverhub.conf" "$PANEL_SITE"
-    echo "    nginx rejected the change; the site was left as it was"
-  fi
-fi
-
 # 5. Ownership + restart
 echo "==> Fixing ownership (excluding apps/ — leftover container data)"
 # NEVER recurse into $PANEL_ROOT/apps: containers from the retired Apps section
