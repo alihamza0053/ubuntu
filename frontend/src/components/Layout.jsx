@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { NAV } from '../nav'
 import Icon from './ui/Icon'
+import ThemeSwitcher from './ui/ThemeSwitcher'
+
+const COLLAPSE_KEY = 'serverhub.sidebar-collapsed'
 
 /** Close a popover when the user clicks anywhere outside it. */
 function useClickOutside(onOutside) {
@@ -18,73 +21,102 @@ function useClickOutside(onOutside) {
   return ref
 }
 
-/* ── Left icon rail ───────────────────────────────────────────────────── */
-function Rail({ items, onLogout }) {
+function Brand({ collapsed }) {
   return (
-    <aside
-      className="fixed inset-y-0 left-0 z-30 flex w-[68px] flex-col items-center
-                 border-r border-panel-border/60 bg-panel-rail/90 py-4 backdrop-blur-md"
-    >
-      {/* Brand mark */}
-      <NavLink
-        to={items[0]?.to || '/dashboard'}
-        className="mb-6 flex h-10 w-10 items-center justify-center rounded-xl
-                   bg-mint-grad text-sm font-black tracking-tight text-[#04231a] shadow-rail"
-        title="ServerHub"
-      >
+    <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : 'px-1'}`}>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-mint-grad
+                       text-sm font-black tracking-tight text-ink shadow-rail">
         SH
-      </NavLink>
+      </span>
+      {!collapsed && (
+        <span className="min-w-0">
+          <span className="block text-[15px] font-semibold leading-tight text-slate-100">ServerHub</span>
+          <span className="block text-xs text-slate-500">Control panel</span>
+        </span>
+      )}
+    </div>
+  )
+}
 
-      <nav className="flex flex-1 flex-col items-center gap-1.5">
+/* ── Sidebar: one bento tile with every section, labelled ────────────── */
+function Sidebar({ items, collapsed, onToggle, onNavigate, user, isAdmin, onLogout, mobile = false }) {
+  const initials = (user?.username || '?').slice(0, 2).toUpperCase()
+  return (
+    <div className="flex h-full flex-col rounded-tile border border-panel-border/80 bg-panel-rail p-3 shadow-card">
+      <div className={`flex items-center ${collapsed ? 'flex-col gap-3' : 'justify-between'} pb-4 pt-1`}>
+        <Brand collapsed={collapsed} />
+        {!mobile && (
+          <button onClick={onToggle} className="btn-icon h-8 w-8"
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+            <Icon name="sidebar" size={16} />
+          </button>
+        )}
+      </div>
+
+      <nav aria-label="Main" className="-mx-1 flex-1 space-y-1 overflow-y-auto px-1">
+        {!collapsed && <p className="tile-label px-3 pb-1 pt-1">Menu</p>}
         {items.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
-            className={({ isActive }) => `group rail-btn ${isActive ? 'rail-btn-active' : ''}`}
+            onClick={onNavigate}
+            title={collapsed ? item.label : undefined}
+            className={({ isActive }) =>
+              `nav-item ${collapsed ? 'justify-center px-0' : ''} ${isActive ? 'nav-item-active' : ''}`}
           >
-            <Icon name={item.icon} size={19} />
-            {/* Hover tooltip */}
-            <span
-              className="pointer-events-none absolute left-full z-40 ml-3 whitespace-nowrap rounded-lg
-                         border border-panel-border bg-panel-card px-2.5 py-1 text-xs font-medium
-                         text-slate-200 opacity-0 shadow-card transition-opacity duration-150
-                         group-hover:opacity-100"
-            >
-              {item.label}
-            </span>
+            <Icon name={item.icon} size={18} />
+            {collapsed ? <span className="sr-only">{item.label}</span> : <span className="truncate">{item.label}</span>}
           </NavLink>
         ))}
       </nav>
 
-      <button onClick={onLogout} className="group rail-btn mt-2" title="Sign out">
-        <Icon name="logout" size={19} />
-        <span
-          className="pointer-events-none absolute left-full z-40 ml-3 whitespace-nowrap rounded-lg
-                     border border-panel-border bg-panel-card px-2.5 py-1 text-xs font-medium
-                     text-slate-200 opacity-0 shadow-card transition-opacity duration-150
-                     group-hover:opacity-100"
-        >
-          Sign out
+      {/* Phones: the header has no room for it, so the theme control lives here. */}
+      {mobile && (
+        <div className="mt-3 sm:hidden">
+          <p className="tile-label px-1 pb-1.5">Theme</p>
+          <ThemeSwitcher showLabels className="w-full justify-between" />
+        </div>
+      )}
+
+      {/* Account tile at the foot of the sidebar */}
+      <div className={`mt-3 flex items-center gap-2.5 rounded-2xl border border-panel-border/70 bg-panel-raise/60
+                      p-2 ${collapsed ? 'flex-col' : ''}`}>
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-mint-grad
+                         text-xs font-bold text-ink">
+          {initials}
         </span>
-      </button>
-    </aside>
+        {!collapsed && (
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium text-slate-100">{user?.username}</span>
+            <span className="block text-xs text-slate-500">{isAdmin ? 'Administrator' : 'Standard user'}</span>
+          </span>
+        )}
+        <button onClick={onLogout} className="btn-icon-danger h-8 w-8" title="Sign out" aria-label="Sign out">
+          <Icon name="logout" size={16} />
+        </button>
+      </div>
+    </div>
   )
 }
 
-/* ── Quick search over the nav sections ───────────────────────────────── */
+/* ── Quick search over the sections (Ctrl/⌘-K) ───────────────────────── */
 function QuickSearch({ items }) {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const [cursor, setCursor] = useState(0)
   const inputRef = useRef(null)
-  const boxRef = useClickOutside(() => setOpen(false))
+  const close = useCallback(() => setOpen(false), [])
+  const boxRef = useClickOutside(close)
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
     return q ? items.filter((i) => i.label.toLowerCase().includes(q)) : items
   }, [query, items])
 
-  // Ctrl/⌘-K focuses the search box.
+  useEffect(() => setCursor(0), [query])
+
   useEffect(() => {
     function onKey(e) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -105,41 +137,49 @@ function QuickSearch({ items }) {
   }
 
   return (
-    <div ref={boxRef} className="relative w-full max-w-xs">
+    <div ref={boxRef} className="relative w-full max-w-sm">
       <div className="search-pill">
         <Icon name="search" size={15} className="text-slate-500" />
         <input
           ref={inputRef}
           value={query}
-          placeholder="Search…"
+          placeholder="Jump to a section…"
+          aria-label="Jump to a section"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls="quick-search-list"
           onFocus={() => setOpen(true)}
-          onChange={(e) => {
-            setQuery(e.target.value)
-            setOpen(true)
-          }}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && matches[0]) go(matches[0].to)
-            if (e.key === 'Escape') setOpen(false)
+            if (e.key === 'ArrowDown') { e.preventDefault(); setCursor((c) => Math.min(c + 1, matches.length - 1)) }
+            if (e.key === 'ArrowUp') { e.preventDefault(); setCursor((c) => Math.max(c - 1, 0)) }
+            if (e.key === 'Enter' && matches[cursor]) go(matches[cursor].to)
+            if (e.key === 'Escape') { setOpen(false); inputRef.current?.blur() }
           }}
         />
         <span className="kbd hidden sm:inline">Ctrl K</span>
       </div>
 
       {open && (
-        <div className="absolute left-0 right-0 top-11 z-40 animate-fade-up overflow-hidden rounded-xl
-                        border border-panel-border bg-panel-card/95 py-1.5 shadow-card backdrop-blur-md">
+        <div id="quick-search-list" role="listbox"
+          className="absolute left-0 right-0 top-12 z-40 animate-fade-up overflow-hidden rounded-2xl
+                     border border-panel-border bg-panel-card p-1.5 shadow-pop">
           {matches.length === 0 ? (
             <p className="px-3 py-2.5 text-sm text-slate-500">No section matches “{query}”.</p>
           ) : (
-            matches.map((item) => (
+            matches.map((item, i) => (
               <button
                 key={item.to}
+                role="option"
+                aria-selected={i === cursor}
+                onMouseEnter={() => setCursor(i)}
                 onClick={() => go(item.to)}
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-300
-                           transition-colors hover:bg-mint-400/10 hover:text-mint-300"
+                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm transition-colors
+                            ${i === cursor ? 'bg-mint-400/10 text-mint-300' : 'text-slate-300'}`}
               >
-                <Icon name={item.icon} size={15} className="text-slate-500" />
+                <Icon name={item.icon} size={15} className={i === cursor ? '' : 'text-slate-500'} />
                 {item.label}
+                {i === cursor && <span className="kbd ml-auto">Enter</span>}
               </button>
             ))
           )}
@@ -149,11 +189,12 @@ function QuickSearch({ items }) {
   )
 }
 
-/* ── Server-health popover behind the bell ────────────────────────────── */
+/* ── Server health popover ────────────────────────────────────────────── */
 function HealthBell() {
   const [open, setOpen] = useState(false)
   const [stats, setStats] = useState(null)
-  const ref = useClickOutside(() => setOpen(false))
+  const close = useCallback(() => setOpen(false), [])
+  const ref = useClickOutside(close)
 
   useEffect(() => {
     if (!open) return
@@ -171,22 +212,18 @@ function HealthBell() {
 
   return (
     <div ref={ref} className="relative">
-      <button onClick={() => setOpen((v) => !v)} className="btn-icon" aria-label="Server health">
+      <button onClick={() => setOpen((v) => !v)} className="btn-icon" aria-label="Server health" title="Server health">
         <Icon name="bell" size={17} />
-        <span
-          className={`absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full
-                      ${alert ? 'bg-red-400' : 'bg-mint-400'} animate-pulse-ring`}
-        />
+        <span className={`absolute right-2 top-2 h-1.5 w-1.5 rounded-full
+                          ${alert ? 'bg-red-400' : 'bg-mint-400'} animate-pulse-ring`} />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-40 w-64 animate-fade-up rounded-xl border
-                        border-panel-border bg-panel-card/95 p-4 shadow-card backdrop-blur-md">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-            Server health
-          </p>
+        <div className="absolute right-0 top-12 z-40 w-72 animate-fade-up rounded-2xl border
+                        border-panel-border bg-panel-card p-4 shadow-pop">
+          <p className="tile-label mb-3">Server health</p>
           {!stats ? (
-            <p className="text-sm text-slate-500">Stats unavailable.</p>
+            <p className="text-sm text-slate-500">Loading…</p>
           ) : (
             <div className="space-y-3">
               {rows.map((r) => (
@@ -195,11 +232,9 @@ function HealthBell() {
                     <span className="text-slate-400">{r.label}</span>
                     <span className="font-medium text-slate-200">{r.value}</span>
                   </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-panel-bg">
-                    <div
-                      className={`h-full rounded-full ${r.pct > 85 ? 'bg-red-500' : 'bg-mint-grad'}`}
-                      style={{ width: `${Math.min(r.pct, 100)}%` }}
-                    />
+                  <div className="h-1.5 overflow-hidden rounded-full bg-panel-raise">
+                    <div className={`h-full rounded-full ${r.pct > 85 ? 'bg-red-500' : 'bg-mint-grad'}`}
+                      style={{ width: `${Math.min(r.pct, 100)}%` }} />
                   </div>
                 </div>
               ))}
@@ -214,101 +249,82 @@ function HealthBell() {
   )
 }
 
-/* ── Account chip ─────────────────────────────────────────────────────── */
-function AccountMenu({ user, isAdmin, onLogout }) {
-  const [open, setOpen] = useState(false)
-  const ref = useClickOutside(() => setOpen(false))
-  const initials = (user?.username || '?').slice(0, 2).toUpperCase()
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2.5 rounded-full border border-transparent py-1 pl-2.5 pr-1
-                   transition-colors hover:border-panel-border hover:bg-panel-raise/60"
-      >
-        <span className="hidden text-sm font-medium text-slate-200 sm:block">{user?.username}</span>
-        <span
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-mint-grad
-                     text-xs font-bold text-[#04231a]"
-        >
-          {initials}
-        </span>
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-12 z-40 w-52 animate-fade-up overflow-hidden rounded-xl
-                        border border-panel-border bg-panel-card/95 shadow-card backdrop-blur-md">
-          <div className="border-b border-panel-border/70 px-4 py-3">
-            <p className="truncate text-sm font-medium text-slate-100">{user?.username}</p>
-            <p className="mt-0.5 text-xs text-mint-400">{isAdmin ? 'Administrator' : 'Standard user'}</p>
-          </div>
-          <button
-            onClick={onLogout}
-            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-slate-300
-                       transition-colors hover:bg-red-500/10 hover:text-red-300"
-          >
-            <Icon name="logout" size={15} />
-            Sign out
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
 /* ── Shell ────────────────────────────────────────────────────────────── */
 export default function Layout() {
   const { user, logout, isAdmin, can } = useAuth()
   const items = NAV.filter((item) => can(item.perm))
-  // Top-bar shortcuts: the first few sections this user is allowed to open.
-  const quickLinks = items.filter((i) => i.to !== '/settings').slice(0, 3)
+  const location = useLocation()
+  const [drawer, setDrawer] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(COLLAPSE_KEY) === '1' } catch { return false }
+  })
+
+  function toggleCollapsed() {
+    setCollapsed((c) => {
+      try { localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1') } catch { /* private mode */ }
+      return !c
+    })
+  }
+
+  // The mobile menu closes on navigation and with Escape.
+  useEffect(() => setDrawer(false), [location.pathname])
+  useEffect(() => {
+    if (!drawer) return undefined
+    const onKey = (e) => e.key === 'Escape' && setDrawer(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [drawer])
+
+  const current = items.find((i) => location.pathname.startsWith(i.to))
+  const sidebarProps = { items, user, isAdmin, onLogout: logout }
 
   return (
     <div className="relative z-10 min-h-screen">
-      <Rail items={items} onLogout={logout} />
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60]
+                                 focus:rounded-xl focus:bg-panel-card focus:px-4 focus:py-2 focus:text-sm
+                                 focus:text-mint-300 focus:shadow-pop">
+        Skip to content
+      </a>
 
-      <div className="pl-[68px]">
-        <header
-          className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-panel-border/60
-                     bg-panel-bg/80 px-5 backdrop-blur-xl"
-        >
-          <QuickSearch items={items} />
+      {/* Desktop sidebar: a floating tile */}
+      <aside className={`fixed inset-y-0 left-0 z-30 hidden p-3 transition-[width] duration-200 lg:block
+                         ${collapsed ? 'w-[92px]' : 'w-[264px]'}`}>
+        <Sidebar {...sidebarProps} collapsed={collapsed} onToggle={toggleCollapsed} />
+      </aside>
 
-          <nav className="mx-auto hidden items-center gap-1 lg:flex">
-            {quickLinks.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  `rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors ${
-                    isActive ? 'text-mint-300' : 'text-slate-400 hover:text-slate-100'
-                  }`
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
+      {/* Mobile drawer */}
+      {drawer && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+          <button className="absolute inset-0 bg-scrim/60 backdrop-blur-sm" aria-label="Close menu"
+            onClick={() => setDrawer(false)} />
+          <div className="absolute inset-y-0 left-0 w-[280px] max-w-[85vw] animate-fade-up p-3">
+            <Sidebar {...sidebarProps} collapsed={false} mobile onNavigate={() => setDrawer(false)} />
+          </div>
+        </div>
+      )}
 
-          <div className="ml-auto flex items-center gap-1.5">
-            {can('databases') && (
-              <NavLink to="/databases" className="btn-icon" title="Databases">
-                <Icon name="database" size={17} />
-              </NavLink>
-            )}
-            {can('files') && (
-              <NavLink to="/files" className="btn-icon" title="File manager">
-                <Icon name="folder" size={17} />
-              </NavLink>
-            )}
-            <HealthBell />
-            <span className="mx-1 h-6 w-px bg-panel-border" />
-            <AccountMenu user={user} isAdmin={isAdmin} onLogout={logout} />
+      <div className={`transition-[padding] duration-200 ${collapsed ? 'lg:pl-[92px]' : 'lg:pl-[264px]'}`}>
+        <header className="sticky top-0 z-20 px-3 pt-3">
+          <div className="flex h-16 items-center gap-3 rounded-tile border border-panel-border/80
+                          bg-panel-card/85 px-3 shadow-card backdrop-blur-xl sm:px-4">
+            <button className="btn-icon lg:hidden" onClick={() => setDrawer(true)} aria-label="Open menu">
+              <Icon name="menu" size={18} />
+            </button>
+            <span className="truncate text-sm font-semibold text-slate-100 sm:hidden">
+              {current?.label || 'ServerHub'}
+            </span>
+            <div className="hidden min-w-0 flex-1 sm:block">
+              <QuickSearch items={items} />
+            </div>
+
+            <div className="ml-auto flex items-center gap-1.5">
+              <ThemeSwitcher className="hidden sm:inline-flex" />
+              <HealthBell />
+            </div>
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1600px] px-6 py-7">
+        <main id="main" className="mx-auto w-full max-w-[1600px] px-3 pb-10 pt-6 sm:px-5 lg:px-6">
           <Outlet />
         </main>
       </div>

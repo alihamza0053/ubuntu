@@ -61,7 +61,7 @@ export default function DataTable({
 export function NameCell({ icon, tint = 'mint', title, subtitle, onClick }) {
   const tints = {
     mint: 'bg-mint-400/[0.12] text-mint-300 border-mint-400/25',
-    aqua: 'bg-[#22E5CE]/[0.12] text-[#22E5CE] border-[#22E5CE]/25',
+    aqua: 'bg-aqua/[0.12] text-aqua border-aqua/25',
     amber: 'bg-amber-400/[0.12] text-amber-300 border-amber-400/25',
     violet: 'bg-violet-400/[0.12] text-violet-300 border-violet-400/25',
     slate: 'bg-panel-raise text-slate-400 border-panel-border',

@@ -302,7 +302,7 @@ function ScreenTab({ app, openUrl }) {
         </div>
       ) : (
         <>
-          <div className="rounded-lg border border-panel-border overflow-hidden bg-black">
+          <div className="rounded-xl border border-panel-border overflow-hidden bg-term">
             <iframe title={`${app.label} screen`} src={openUrl}
               className="w-full h-[70vh]" allow="clipboard-read; clipboard-write" />
           </div>

@@ -1,5 +1,6 @@
 import Editor from '@monaco-editor/react'
 import { useEffect, useState } from 'react'
+import { useTheme } from '../context/ThemeContext'
 import api, { errorMessage } from '../api/client'
 
 // Map extension → Monaco language id
@@ -22,6 +23,7 @@ function languageFor(path) {
  * Props: path (absolute server path), onClose()
  */
 export default function EditorModal({ path, onClose }) {
+  const { theme } = useTheme()
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -67,7 +69,7 @@ export default function EditorModal({ path, onClose }) {
   if (!path) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#03080b]/90 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex flex-col bg-panel-bg/95 p-4 backdrop-blur-sm">
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <span className="truncate font-mono text-sm text-slate-300">{path}</span>
         {error && <span className="text-xs text-red-400">{error}</span>}
@@ -88,7 +90,7 @@ export default function EditorModal({ path, onClose }) {
         ) : (
           <Editor
             height="100%"
-            theme="vs-dark"
+            theme={theme === 'light' ? 'light' : 'vs-dark'}
             language={languageFor(path)}
             value={content}
             onChange={(v) => setContent(v ?? '')}

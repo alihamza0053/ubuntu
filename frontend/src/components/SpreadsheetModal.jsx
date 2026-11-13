@@ -86,7 +86,7 @@ export default function SpreadsheetModal({ entry, onClose }) {
   if (!entry) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#03080b]/90 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex flex-col bg-panel-bg/95 p-4 backdrop-blur-sm">
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <span className="truncate font-mono text-sm text-slate-300">{entry.name}</span>
         {error && <span className="text-xs text-red-400">{error}</span>}
@@ -108,7 +108,7 @@ export default function SpreadsheetModal({ entry, onClose }) {
               onClick={() => setActive(name)}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                 name === active
-                  ? 'bg-mint-grad text-[#04231a]'
+                  ? 'bg-mint-grad text-ink'
                   : 'border border-panel-border bg-panel-raise text-slate-300 hover:text-mint-300'
               }`}
             >

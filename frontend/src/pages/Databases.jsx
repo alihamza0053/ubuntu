@@ -434,7 +434,7 @@ function DbBrowser({ databases, db, setDb }) {
                         key={v}
                         onClick={() => setView(v)}
                         className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
-                          view === v ? 'bg-mint-grad text-[#04231a]' : 'text-slate-400 hover:text-slate-100'
+                          view === v ? 'bg-mint-grad text-ink' : 'text-slate-400 hover:text-slate-100'
                         }`}
                       >
                         {v}

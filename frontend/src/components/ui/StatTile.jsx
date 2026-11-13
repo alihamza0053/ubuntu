@@ -19,22 +19,22 @@ export default function StatTile({ label, value, sub, percent, icon }) {
   }[tone]
 
   return (
-    <div className="card card-hover overflow-hidden">
+    <div className="card flex h-full flex-col justify-between overflow-hidden max-sm:p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</p>
-          <p className="mt-1.5 truncate text-2xl font-semibold tracking-tight text-slate-100">{value}</p>
-          {sub && <p className="mt-0.5 truncate text-xs text-slate-500">{sub}</p>}
+          <p className="tile-label">{label}</p>
+          <p className="mt-1.5 text-xl font-semibold tracking-tight text-slate-100 sm:truncate sm:text-2xl">{value}</p>
+          {sub && <p className="mt-0.5 text-xs text-slate-500 sm:truncate">{sub}</p>}
         </div>
         {icon && (
-          <span className={`flex h-9 w-9 items-center justify-center rounded-lg border ${glyph}`}>
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${glyph}`}>
             <Icon name={icon} size={17} />
           </span>
         )}
       </div>
 
       {known && (
-        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-panel-bg">
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-panel-raise">
           <div
             className={`h-full rounded-full ${bar} transition-[width] duration-500`}
             style={{ width: `${Math.min(Math.max(percent, 0), 100)}%` }}

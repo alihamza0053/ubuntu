@@ -113,7 +113,7 @@ function ConnectionModal({ conn, note, onClose }) {
       <div className="flex flex-wrap gap-1">
         {Object.keys(code).map((k) => (
           <button key={k} type="button" onClick={() => setTab(k)}
-            className={`rounded px-2 py-1 text-xs ${tab === k ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-300'}`}>{k}</button>
+            className={`rounded px-2 py-1 text-xs ${tab === k ? 'bg-mint-grad font-semibold text-ink' : 'bg-panel-raise text-slate-300 hover:text-slate-100'}`}>{k}</button>
         ))}
       </div>
       <div className="relative">

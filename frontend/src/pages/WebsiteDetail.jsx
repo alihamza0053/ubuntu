@@ -196,7 +196,7 @@ export default function WebsiteDetail() {
               ? <ProgressBar dir="up" name={`${transfer.name}: unpacking on the server`} pct={null} />
               : <ProgressBar dir="up" name={transfer.name} pct={transfer.pct}
                   onCancel={() => transferRef.current?.abort()} />)}
-            {uploadMsg && <pre className="mt-3 bg-black text-slate-300 text-xs p-3 rounded-lg max-h-48 overflow-auto whitespace-pre-wrap">{uploadMsg}</pre>}
+            {uploadMsg && <pre className="terminal mt-3 max-h-48 overflow-auto whitespace-pre-wrap p-3">{uploadMsg}</pre>}
           </div>
 
           <div className="card">

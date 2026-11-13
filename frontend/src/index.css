@@ -2,42 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Colours live in theme.css (dark + light). Everything here is shape, spacing
+   and behaviour: the bento look is large rounded tiles on a calm background,
+   laid out in grids of different sizes. */
+
 /* ─────────────────────────────────────────────────────────────────────────
    Base
    ───────────────────────────────────────────────────────────────────────── */
 @layer base {
-  html {
-    color-scheme: dark;
-  }
-
   body {
     @apply bg-panel-bg text-slate-200 antialiased;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
-  /* Ambient corner glow — the teal/mint bloom from the reference shell.
-     Fixed + non-interactive so it never affects layout or clicks. */
+  /* Soft corner glow behind the tiles. Fixed and non-interactive. */
   body::before {
     content: '';
     position: fixed;
     inset: 0;
     z-index: 0;
     pointer-events: none;
+    opacity: var(--ambient);
     background:
-      radial-gradient(60rem 34rem at 108% -8%, rgba(34, 229, 206, 0.20), transparent 62%),
-      radial-gradient(46rem 30rem at 100% 18%, rgba(34, 208, 126, 0.14), transparent 60%),
-      radial-gradient(34rem 26rem at -6% 96%, rgba(34, 229, 206, 0.13), transparent 62%);
+      radial-gradient(60rem 34rem at 108% -8%, rgb(var(--aqua) / 0.16), transparent 62%),
+      radial-gradient(46rem 30rem at 100% 18%, rgb(var(--mint-500) / 0.10), transparent 60%),
+      radial-gradient(34rem 26rem at -6% 96%, rgb(var(--aqua) / 0.10), transparent 62%);
   }
 
   ::selection {
-    background: rgba(63, 227, 155, 0.28);
-    color: #eaf7f2;
+    background: rgb(var(--mint-400) / 0.28);
   }
 
   /* Slim, themed scrollbars */
   * {
     scrollbar-width: thin;
-    scrollbar-color: #1d3d49 transparent;
+    scrollbar-color: rgb(var(--slate-600) / 0.55) transparent;
   }
   ::-webkit-scrollbar {
     width: 9px;
@@ -47,27 +47,47 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: #1d3d49;
+    background: rgb(var(--slate-600) / 0.55);
     border-radius: 999px;
     border: 2px solid transparent;
     background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #2b5a68;
+    background: rgb(var(--slate-500) / 0.8);
     background-clip: content-box;
   }
 
+  /* A clear focus ring for keyboard users only (never on mouse clicks). */
   :focus-visible {
-    @apply outline-none ring-2 ring-mint-400/60 ring-offset-2 ring-offset-panel-bg;
+    @apply outline-none ring-2 ring-mint-400/70 ring-offset-2 ring-offset-panel-bg;
   }
 
-  /* Native checkboxes/radios pick up the mint accent everywhere. */
+  /* Edge/IE draw their own reveal and clear buttons inside inputs; the panel
+     has its own show-password button, so two eyes would sit side by side. */
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none;
+  }
+
+  /* Native checkboxes/radios pick up the accent everywhere. */
   input[type='checkbox'],
   input[type='radio'] {
-    accent-color: #22d07e;
+    accent-color: rgb(var(--mint-500));
     width: 0.95rem;
     height: 0.95rem;
     cursor: pointer;
+  }
+
+  /* Respect "reduce motion": no lifts, slides or pulses. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
@@ -75,50 +95,63 @@
    Components
    ───────────────────────────────────────────────────────────────────────── */
 @layer components {
-  /* ── Surfaces ─────────────────────────────────────────────────────── */
+  /* ── Bento tiles ──────────────────────────────────────────────────── */
   .card {
-    @apply relative rounded-2xl border border-panel-border/80 bg-panel-card/85
-           p-5 shadow-card backdrop-blur-sm;
+    @apply relative rounded-tile border border-panel-border/80 bg-panel-card p-5 shadow-card;
   }
-  /* Card that lifts + rims mint on hover (grid tiles, list entries) */
+  /* Tile that lifts and rims mint on hover (clickable grid tiles). */
   .card-hover {
-    @apply transition-all duration-200 hover:-translate-y-0.5
-           hover:border-mint-400/45 hover:shadow-glow;
+    @apply transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5
+           hover:border-mint-400/40 hover:shadow-lift;
   }
   .panel {
-    @apply rounded-2xl border border-panel-border/70 bg-panel-card/60 backdrop-blur-sm;
+    @apply rounded-tile border border-panel-border/70 bg-panel-card;
+  }
+  /* Bento grid: 12 columns from tablet up, tiles choose their span. */
+  .bento {
+    @apply grid grid-cols-2 gap-3 sm:grid-cols-6 sm:gap-4 lg:grid-cols-12;
+  }
+  /* Small all-caps tile caption ("CPU", "Dashboards"). */
+  .tile-label {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500;
+  }
+  /* Square icon chip at the corner of a tile. */
+  .tile-icon {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border
+           border-mint-400/25 bg-mint-400/10 text-mint-300;
   }
 
   /* ── Buttons ──────────────────────────────────────────────────────── */
+  /* min-h keeps every button a comfortable click / tap target. */
   .btn {
-    @apply inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap
-           rounded-lg px-3.5 py-2 text-sm font-medium leading-none
+    @apply inline-flex min-h-[2.25rem] select-none items-center justify-center gap-1.5 whitespace-nowrap
+           rounded-xl px-3.5 py-2 text-sm font-medium leading-none
            transition-all duration-150 active:scale-[0.98]
            disabled:pointer-events-none disabled:opacity-45;
   }
   .btn-primary {
-    @apply btn bg-mint-grad font-semibold text-[#04231a]
-           shadow-[0_6px_18px_-8px_rgba(34,208,126,0.9)]
-           hover:brightness-110 hover:shadow-[0_8px_22px_-8px_rgba(34,208,126,1)];
+    @apply btn bg-mint-grad font-semibold text-ink
+           shadow-[0_6px_18px_-8px_rgba(34,208,126,0.8)]
+           hover:brightness-105 hover:shadow-[0_8px_22px_-8px_rgba(34,208,126,0.95)];
   }
   .btn-secondary {
-    @apply btn border border-panel-border bg-panel-raise/70 text-slate-200
-           hover:border-mint-400/40 hover:bg-panel-raise hover:text-mint-300;
+    @apply btn border border-panel-border bg-panel-raise text-slate-200
+           hover:border-mint-400/40 hover:text-mint-300;
   }
   .btn-ghost {
     @apply btn border border-transparent text-slate-400
-           hover:border-panel-border hover:bg-panel-raise/60 hover:text-slate-100;
+           hover:border-panel-border hover:bg-panel-raise hover:text-slate-100;
   }
   .btn-danger {
-    @apply btn border border-red-500/30 bg-red-500/[0.12] text-red-300
-           hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-200;
+    @apply btn border border-red-500/30 bg-red-500/[0.10] text-red-300
+           hover:border-red-500/60 hover:bg-red-500/[0.16];
   }
   .btn-sm {
-    @apply px-2.5 py-1.5 text-xs;
+    @apply min-h-[1.875rem] rounded-lg px-2.5 py-1.5 text-xs;
   }
-  /* Square icon button — the copy/delete/edit cluster in table rows */
+  /* Square icon button: the copy/delete/edit cluster in rows and cards. */
   .btn-icon {
-    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl
            border border-transparent text-slate-400 transition-all duration-150
            hover:border-panel-border hover:bg-panel-raise hover:text-mint-300
            disabled:pointer-events-none disabled:opacity-40;
@@ -126,19 +159,19 @@
   .btn-icon-danger {
     @apply btn-icon hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300;
   }
+
   /* ── Form controls ────────────────────────────────────────────────── */
   .input,
   .select,
   .textarea {
-    @apply w-full rounded-lg border border-panel-border bg-panel-bg/80 px-3.5 py-2.5
+    @apply w-full rounded-xl border border-panel-border bg-panel-bg/70 px-3.5 py-2.5
            text-sm text-slate-100 placeholder-slate-500 transition-colors
-           hover:border-panel-border focus:border-mint-400/70 focus:outline-none
-           focus:ring-2 focus:ring-mint-400/25;
+           hover:border-slate-600/60 focus:border-mint-400/70 focus:bg-panel-card
+           focus:outline-none focus:ring-4 focus:ring-mint-400/15;
   }
   .select {
     @apply cursor-pointer appearance-none bg-no-repeat pr-9;
-    color-scheme: dark;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235F7E89' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236E8C96' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-position: right 0.75rem center;
   }
   .select option,
@@ -157,11 +190,10 @@
   .label {
     @apply mb-1.5 block text-xs font-medium uppercase tracking-wider text-slate-500;
   }
-  /* Rounded search pill from the top bar */
   .search-pill {
-    @apply flex h-9 items-center gap-2 rounded-full border border-panel-border
+    @apply flex h-10 items-center gap-2 rounded-xl border border-panel-border
            bg-panel-bg/70 px-3.5 text-sm text-slate-300 transition-colors
-           focus-within:border-mint-400/50 focus-within:bg-panel-bg;
+           focus-within:border-mint-400/50 focus-within:bg-panel-card;
   }
   .search-pill input {
     @apply min-w-0 w-full bg-transparent text-sm text-slate-100
@@ -177,7 +209,7 @@
     @apply badge border-mint-400/25 bg-mint-400/[0.12] text-mint-300;
   }
   .badge-muted {
-    @apply badge border-panel-border bg-panel-raise/70 text-slate-400;
+    @apply badge border-panel-border bg-panel-raise text-slate-400;
   }
   .badge-danger {
     @apply badge border-red-500/25 bg-red-500/[0.12] text-red-300;
@@ -185,7 +217,6 @@
   .badge-warn {
     @apply badge border-amber-500/25 bg-amber-500/[0.12] text-amber-300;
   }
-  /* Small count bubble beside a tab label */
   .count-chip {
     @apply ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full
            bg-panel-raise px-1.5 py-0.5 text-[10px] font-bold text-slate-400;
@@ -193,57 +224,59 @@
   .count-chip-active {
     @apply bg-mint-400/15 text-mint-300;
   }
-  /* Status dot with a soft halo */
   .dot {
     @apply inline-block h-2 w-2 shrink-0 rounded-full;
   }
 
-  /* ── Tabs ─────────────────────────────────────────────────────────── */
+  /* ── Tabs: a segmented pill bar ───────────────────────────────────── */
   .tab-bar {
-    @apply flex items-center gap-1 overflow-x-auto border-b border-panel-border/70;
+    @apply flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl border border-panel-border/80
+           bg-panel-card p-1 shadow-card;
   }
   .tab {
-    @apply -mb-px flex items-center whitespace-nowrap border-b-2 border-transparent
-           px-4 py-2.5 text-sm font-medium text-slate-400 transition-colors
-           hover:text-slate-100;
+    @apply flex min-h-[2.25rem] items-center whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-medium
+           text-slate-400 transition-colors hover:bg-panel-raise hover:text-slate-100;
   }
   .tab-active {
-    @apply border-mint-400 text-mint-300;
+    @apply bg-mint-400/[0.12] text-mint-300 hover:bg-mint-400/[0.16] hover:text-mint-300;
   }
 
   /* ── Tables ───────────────────────────────────────────────────────── */
   .table-wrap {
-    @apply overflow-x-auto rounded-2xl border border-panel-border/70 bg-panel-card/70;
+    @apply overflow-x-auto rounded-tile border border-panel-border/80 bg-panel-card shadow-card;
   }
   .table {
     @apply w-full border-collapse text-sm;
   }
   .table thead th {
-    @apply whitespace-nowrap border-b border-panel-border/80 px-4 py-3 text-left
+    @apply whitespace-nowrap border-b border-panel-border/80 bg-panel-raise/50 px-4 py-3 text-left
            text-[11px] font-semibold uppercase tracking-wider text-slate-500;
   }
   .table tbody td {
-    @apply border-b border-panel-border/40 px-4 py-3 align-middle text-slate-300;
+    @apply border-b border-panel-border/50 px-4 py-3 align-middle text-slate-300;
   }
   .table tbody tr {
-    @apply transition-colors hover:bg-mint-400/[0.04];
+    @apply transition-colors hover:bg-mint-400/[0.05];
   }
   .table tbody tr:last-child td {
     @apply border-b-0;
   }
 
-  /* ── Navigation rail ──────────────────────────────────────────────── */
-  .rail-btn {
-    @apply relative flex h-11 w-11 items-center justify-center rounded-xl
-           border border-transparent text-slate-400 transition-all duration-200
-           hover:border-panel-border hover:bg-panel-raise hover:text-mint-300;
+  /* ── Sidebar navigation ───────────────────────────────────────────── */
+  .nav-item {
+    @apply relative flex min-h-[2.75rem] items-center gap-3 rounded-xl px-3 text-sm font-medium
+           text-slate-400 transition-colors hover:bg-panel-raise hover:text-slate-100;
   }
-  .rail-btn-active {
-    @apply border-transparent bg-mint-grad text-[#04231a] shadow-rail
-           hover:bg-mint-grad hover:text-[#04231a];
+  .nav-item-active {
+    @apply bg-mint-400/[0.12] text-mint-300 hover:bg-mint-400/[0.16] hover:text-mint-300;
+  }
+  /* Small bar marking the current page, beside the label. */
+  .nav-item-active::before {
+    content: '';
+    @apply absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-mint-grad;
   }
 
-  /* Card section heading — mint tick, then the label */
+  /* Tile heading: a mint tick, then the label. */
   .section-title {
     @apply flex items-center gap-2.5 text-sm font-semibold tracking-wide text-slate-100;
   }
@@ -260,16 +293,26 @@
     @apply text-sm text-slate-500;
   }
   .empty-state {
-    @apply flex flex-col items-center justify-center gap-2 rounded-2xl
-           border border-dashed border-panel-border/80 bg-panel-card/40
+    @apply flex flex-col items-center justify-center gap-2 rounded-tile
+           border border-dashed border-panel-border bg-panel-card/60
            px-6 py-14 text-center text-slate-500;
   }
-  /* Full-screen modal scrim */
   .scrim {
-    @apply fixed inset-0 z-50 flex items-center justify-center bg-[#03080b]/80 px-4 backdrop-blur-sm;
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-scrim/60 px-4 backdrop-blur-sm;
   }
   .kbd {
-    @apply inline-flex shrink-0 items-center whitespace-nowrap rounded border border-panel-border
+    @apply inline-flex shrink-0 items-center whitespace-nowrap rounded-md border border-panel-border
            bg-panel-raise px-1.5 py-0.5 font-mono text-[10px] leading-none text-slate-400;
+  }
+  /* Log / console output. theme.css keeps it on the dark palette in both themes. */
+  .terminal {
+    @apply rounded-xl border border-panel-border bg-term font-mono text-xs text-slate-300;
+  }
+}
+
+@layer utilities {
+  /* Marker for theme.css: keep this element on the dark palette. */
+  .force-dark {
+    color-scheme: dark;
   }
 }

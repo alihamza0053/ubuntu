@@ -1,5 +1,6 @@
 import Editor from '@monaco-editor/react'
 import { useEffect, useState } from 'react'
+import { useTheme } from '../../context/ThemeContext'
 import api, { errorMessage } from '../../api/client'
 import LiveLog from '../../components/LiveLog'
 import Icon from '../../components/ui/Icon'
@@ -25,6 +26,7 @@ function languageFor(filename) {
  * Files tab so it opens immediately.
  */
 export default function EditorTab({ project, files, initialFile }) {
+  const { theme } = useTheme()
   const [current, setCurrent] = useState(null) // { folder, filename, path }
   const [content, setContent] = useState('')
   const [dirty, setDirty] = useState(false)
@@ -159,7 +161,7 @@ export default function EditorTab({ project, files, initialFile }) {
           <div className="border border-panel-border rounded-lg overflow-hidden">
             <Editor
               height="55vh"
-              theme="vs-dark"
+              theme={theme === 'light' ? 'light' : 'vs-dark'}
               language={languageFor(current.filename)}
               value={content}
               onChange={(value) => {

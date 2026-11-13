@@ -3,7 +3,7 @@ import Icon from './ui/Icon'
 
 // Per-stack accent for the type pill + icon tile.
 const TYPES = {
-  react: { pill: 'border-[#22E5CE]/25 bg-[#22E5CE]/[0.12] text-[#22E5CE]', tile: 'border-[#22E5CE]/25 bg-[#22E5CE]/10 text-[#22E5CE]' },
+  react: { pill: 'border-aqua/25 bg-aqua/[0.12] text-aqua', tile: 'border-aqua/25 bg-aqua/10 text-aqua' },
   php: { pill: 'border-violet-400/25 bg-violet-400/[0.12] text-violet-300', tile: 'border-violet-400/25 bg-violet-400/10 text-violet-300' },
   html: { pill: 'border-amber-400/25 bg-amber-400/[0.12] text-amber-300', tile: 'border-amber-400/25 bg-amber-400/10 text-amber-300' },
   python: { pill: 'border-mint-400/25 bg-mint-400/[0.12] text-mint-300', tile: 'border-mint-400/25 bg-mint-400/10 text-mint-300' },

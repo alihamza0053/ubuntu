@@ -11,7 +11,7 @@ function lineColor(line) {
     return 'text-mint-400'
   }
   if (line.includes('[pipeline]') || line.includes('[serverhub]')) {
-    return 'text-[#22E5CE]'
+    return 'text-aqua'
   }
   return 'text-slate-300'
 }
@@ -66,7 +66,7 @@ export default function LiveLog({ path, onClose }) {
       </div>
       <div
         ref={boxRef}
-        className="h-64 overflow-y-auto whitespace-pre-wrap bg-[#04090c] p-3.5 font-mono text-xs
+        className="force-dark h-64 overflow-y-auto whitespace-pre-wrap bg-term p-3.5 font-mono text-xs
                    leading-relaxed text-slate-300"
       >
         {lines.length

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en" class="dark" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,7 +9,23 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#060E13" />
+    <meta name="color-scheme" content="dark light" />
     <title>ServerHub</title>
+    <!-- Apply the saved theme before the first paint (see ThemeContext.jsx),
+         so a light-theme user never sees a dark flash while the app loads. -->
+    <script>
+      (function () {
+        var mode = 'system'
+        try { mode = localStorage.getItem('serverhub.theme') || 'system' } catch (e) {}
+        var light = mode === 'light' ||
+          (mode !== 'dark' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches)
+        var root = document.documentElement
+        root.dataset.theme = light ? 'light' : 'dark'
+        root.classList.toggle('dark', !light)
+        var meta = document.querySelector('meta[name="theme-color"]')
+        if (meta) meta.setAttribute('content', light ? '#EEF3F1' : '#060E13')
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
