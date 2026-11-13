@@ -388,6 +388,8 @@ directory={directory}
 {run_as}environment=PATH="{venv_bin}:/usr/local/bin:/usr/bin:/bin",PYTHONUNBUFFERED="1"{run_env}{db_env}
 autostart=false
 autorestart=true
+startsecs=10
+startretries=3
 stopasgroup=true
 killasgroup=true
 redirect_stderr=true

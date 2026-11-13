@@ -41,12 +41,24 @@ FRAMEWORK_BINS = {"streamlit": "streamlit", "flask": "gunicorn", "fastapi": "uvi
 
 # redirect_stderr is deliberately NOT used here: the dashboard UI has separate
 # stdout/stderr log buttons, and both files are configured below.
+#
+# startsecs/startretries stop a restart storm. With supervisor's default
+# startsecs=1, a Streamlit app that loads for 3 s and then exits because its
+# port is taken counts as "started", and autorestart relaunches it forever:
+# one full Python import every few seconds, for every such dashboard (this
+# pinned an 8-core server at load 52). Now it must stay up 10 s to count, gets
+# 3 tries, then shows FATAL. stopasgroup/killasgroup take the app's children
+# down with it, so a stop can't leave a copy behind holding the port.
 SUPERVISOR_TEMPLATE = """[program:{name}_dashboard]
 command={command}
 directory={dashboard_dir}
 {run_as}environment=PATH="{venv_bin}:/usr/local/bin:/usr/bin:/bin",PYTHONUNBUFFERED="1"{run_env}{db_env}
 autostart=false
 autorestart=true
+startsecs=10
+startretries=3
+stopasgroup=true
+killasgroup=true
 stderr_logfile={log_dir}/{name}.err.log
 stdout_logfile={log_dir}/{name}.out.log
 """
@@ -138,7 +150,10 @@ directory={dashboard_dir}
 {run_as}environment=PATH="{venv_bin}:/usr/local/bin:/usr/bin:/bin",PYTHONUNBUFFERED="1"{run_env}{db_env}
 autostart={autostart}
 autorestart=true
-startsecs=3
+startsecs=10
+startretries=3
+stopasgroup=true
+killasgroup=true
 stderr_logfile={log_dir}/{name}.api.err.log
 stdout_logfile={log_dir}/{name}.api.out.log
 """
