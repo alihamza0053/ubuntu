@@ -188,13 +188,51 @@ echo "==> Fixing ownership (excluding apps/ — leftover container data)"
 # so a blanket 'chown -R' over it can break them.
 find "$PANEL_ROOT" -path "$PANEL_ROOT/apps" -prune -o -exec chown "$PANEL_USER:$PANEL_USER" {} +
 
+# An older panel config has no startsecs: a copy that exits after a second
+# counts as "started" and supervisor relaunches it forever. Add the limits.
+PANEL_CONF=/etc/supervisor/conf.d/serverhub.conf
+if [ -f "$PANEL_CONF" ] && ! grep -q '^startsecs=' "$PANEL_CONF"; then
+  echo "==> Panel program: adding restart limits (startsecs=10, startretries=3)"
+  sed -i '/^autorestart=/a startsecs=10\nstartretries=3' "$PANEL_CONF"
+  supervisorctl reread >/dev/null
+fi
+
+# A panel copy supervisor no longer manages (left behind when supervisord
+# itself restarted) keeps port 8765: a plain restart then starts a new copy that
+# can't bind and loops, while the old code goes on serving, so an update looks
+# fine but changes nothing. Stop such a leftover before restarting.
+panel_leftovers() {
+  for pid in $(ss -Hltnp 'sport = :8765' 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u); do
+    parent=$(ps -o comm= -p "$(ps -o ppid= -p "$pid" | tr -d ' ')" 2>/dev/null)
+    if [ "$parent" != "supervisord" ] && tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q 'uvicorn app.main:app'; then
+      echo "$pid"
+    fi
+  done
+}
+for pid in $(panel_leftovers); do
+  echo "==> Stopping a leftover panel copy (pid $pid) that was holding port 8765"
+  kill -TERM "$pid" 2>/dev/null
+  for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+  kill -KILL "$pid" 2>/dev/null || true
+done
+
 echo "==> Restarting panel"
+supervisorctl update serverhub >/dev/null 2>&1 || true
 supervisorctl restart serverhub
 
-# 6. Health check
+# 6. Health check: the panel must answer AND be supervisor's own copy.
 sleep 2
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  curl -fsS http://127.0.0.1:8765/api/health >/dev/null 2>&1 && break
+  sleep 1
+done
+if [ -n "$(panel_leftovers)" ]; then
+  echo "!! An old panel copy is still answering on port 8765, so the new code is not live." >&2
+  echo "   Run this update again; if it repeats, send: sudo ss -ltnp 'sport = :8765'" >&2
+  exit 1
+fi
 if curl -fsS http://127.0.0.1:8765/api/health >/dev/null; then
-  echo "==> OK — panel is healthy."
+  echo "==> OK — panel is healthy (running the new code)."
 else
   echo "!! Panel did not answer /api/health. Check logs:" >&2
   echo "   sudo tail -n 50 /var/log/supervisor/serverhub.err.log" >&2
