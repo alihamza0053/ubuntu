@@ -451,14 +451,22 @@ def free_port(port: int) -> str:
 
 
 def _heal_port(program: str, port: int | None) -> str:
-    """Free `port` when supervisor isn't running `program` but something answers on it."""
+    """
+    Free `port` when a leftover copy of the app (one supervisor doesn't manage)
+    holds it.
+
+    This used to run only when supervisor said `program` wasn't RUNNING. But a
+    program stuck in a restart loop behind a leftover copy shows RUNNING or
+    STARTING most of the time, so Restart skipped the cleanup and the loop went
+    on. The helper itself never touches a process supervisor manages, so it is
+    safe to ask it every time.
+    """
     if not port_in_use(port):
         return ""
-    raw = (lambda r: (r.stdout + r.stderr).upper())(_supervisorctl("status", program))
-    if "RUNNING" in raw or "STARTING" in raw:
-        return ""
     out = free_port(port)
-    return f"Port {port} was held by a leftover copy of the app — {out}" if out else ""
+    if "stopping leftover" not in out:      # nothing was stopped: port held by supervisor's own copy
+        return ""
+    return f"Port {port} was held by a leftover copy of the app — {out}"
 
 
 def _start_healing(action: str, project_name: str) -> str:
