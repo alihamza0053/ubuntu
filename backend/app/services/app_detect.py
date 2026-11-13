@@ -35,9 +35,12 @@ SKIP_DIRS = {"venv", ".venv", "env", "node_modules", "__pycache__", ".git",
 PREFERRED = ["app.py", "wsgi.py", "application.py", "main.py", "app_server.py",
              "server.py", "run.py", "dashboard.py", "asgi.py", "streamlit_app.py"]
 
-_FLASK_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*Flask\s*\(", re.M)
-_FASTAPI_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*FastAPI\s*\(", re.M)
-_DASH_RE = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(?:dash\.)?Dash\s*\(", re.M)
+# Module level only (no indent): an `app = Flask(...)` inside a function, e.g.
+# an app factory, isn't an attribute gunicorn/uvicorn can import, and picking
+# it up made `portal.__init__:app` targets that failed with "spawn error".
+_FLASK_RE = re.compile(r"^([A-Za-z_]\w*)[ \t]*=[ \t]*Flask\s*\(", re.M)
+_FASTAPI_RE = re.compile(r"^([A-Za-z_]\w*)[ \t]*=[ \t]*FastAPI\s*\(", re.M)
+_DASH_RE = re.compile(r"^([A-Za-z_]\w*)[ \t]*=[ \t]*(?:dash\.)?Dash\s*\(", re.M)
 _FACTORY_RE = re.compile(r"^\s*def\s+(create_app|make_app)\s*\(", re.M)
 _STREAMLIT_RE = re.compile(r"^\s*(?:import\s+streamlit|from\s+streamlit\b)", re.M)
 
@@ -51,7 +54,10 @@ MAX_SCAN_DEPTH = 2                    # root + two levels is plenty
 
 def module_path(root: Path, file: Path) -> str:
     """`/srv/websites/x/pkg/app.py` → `pkg.app` (a gunicorn/uvicorn import path)."""
-    return ".".join(file.relative_to(root).with_suffix("").parts)
+    parts = file.relative_to(root).with_suffix("").parts
+    if len(parts) > 1 and parts[-1] == "__init__":   # pkg/__init__.py is imported as `pkg`
+        parts = parts[:-1]
+    return ".".join(parts)
 
 
 def candidate_files(root: Path) -> list[Path]:
