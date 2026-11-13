@@ -369,6 +369,7 @@ ZIP_SKIP_DIRS = {"venv", ".venv", "node_modules", "__pycache__", ".git", ".ipynb
 EXPORT_FOLDERS = ("code", "allscripts", "data", "dashboard", "onedrivefiles")
 # Cache folders inside those (e.g. data/_cache) are rebuilt by the next run.
 EXPORT_SKIP_DIRS = ZIP_SKIP_DIRS | {"_cache", "cache", ".cache", "__cache__", "tmp", "temp"}
+EXPORT_SKIP_PREFIXES = ("_tmp", "tmp_", ".tmp")     # scratch folders like data/_tmp_64350a48
 # Already compressed: deflating them again costs time and saves almost nothing.
 STORE_SUFFIXES = {".xlsx", ".xlsm", ".xlsb", ".docx", ".pptx", ".zip", ".gz", ".7z", ".rar",
                   ".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".parquet", ".feather",
@@ -387,6 +388,7 @@ def _export_files(root: Path):
         for dirpath, dirnames, filenames in os.walk(top):
             # Symlinks are skipped, so a link can't pull files from outside the project.
             dirnames[:] = sorted(d for d in dirnames if d.lower() not in EXPORT_SKIP_DIRS
+                                 and not d.lower().startswith(EXPORT_SKIP_PREFIXES)
                                  and not os.path.islink(os.path.join(dirpath, d)))
             for name in sorted(filenames):
                 path = Path(dirpath) / name
