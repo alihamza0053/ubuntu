@@ -363,10 +363,41 @@ def download_file(
 ZIP_SKIP_DIRS = {"venv", ".venv", "node_modules", "__pycache__", ".git", ".ipynb_checkpoints"}
 
 
+# An export holds the project's own files: the folders shown in its Files tab
+# plus loose files at the top (requirements.txt…). Logs, browser profiles and
+# anything else a run leaves in the project folder stay out.
+EXPORT_FOLDERS = ("code", "allscripts", "data", "dashboard", "onedrivefiles")
+# Cache folders inside those (e.g. data/_cache) are rebuilt by the next run.
+EXPORT_SKIP_DIRS = ZIP_SKIP_DIRS | {"_cache", "cache", ".cache", "__cache__", "tmp", "temp"}
+# Already compressed: deflating them again costs time and saves almost nothing.
+STORE_SUFFIXES = {".xlsx", ".xlsm", ".xlsb", ".docx", ".pptx", ".zip", ".gz", ".7z", ".rar",
+                  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".parquet", ".feather",
+                  ".mp4", ".mp3", ".whl"}
+
+
+def _export_files(root: Path):
+    """(path, path inside the zip) for every file that belongs in an export."""
+    for entry in sorted(root.iterdir()):
+        if entry.is_file() and not entry.is_symlink() and not entry.name.endswith(".pyc"):
+            yield entry
+    for folder in EXPORT_FOLDERS:
+        top = root / folder
+        if not top.is_dir() or top.is_symlink():
+            continue
+        for dirpath, dirnames, filenames in os.walk(top):
+            # Symlinks are skipped, so a link can't pull files from outside the project.
+            dirnames[:] = sorted(d for d in dirnames if d.lower() not in EXPORT_SKIP_DIRS
+                                 and not os.path.islink(os.path.join(dirpath, d)))
+            for name in sorted(filenames):
+                path = Path(dirpath) / name
+                if not name.endswith(".pyc") and not path.is_symlink() and path.is_file():
+                    yield path
+
+
 @router.get("/{project_id}/zip")
 def download_project_zip(project_id: int, db: Session = Depends(get_db),
                          user: User = Depends(get_current_user)):
-    """The whole project folder as one .zip: code, scripts, data, dashboard, logs."""
+    """The project's own files as one .zip (see EXPORT_FOLDERS)."""
     project = get_project_or_404(project_id, db)
     if hidden_for(user, project):
         raise HTTPException(status_code=404, detail="Project not found")
@@ -377,19 +408,15 @@ def download_project_zip(project_id: int, db: Session = Depends(get_db),
     os.close(fd)
     dest = Path(tmp)
     try:
+        # The download is the slow part, not the zipping (11 MB of CSV deflates in
+        # 0.3 s), so text gets full compression and already-compressed files none.
         with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-            for dirpath, dirnames, filenames in os.walk(root):
-                # Symlinks are skipped, so a link can't pull files from outside the project.
-                dirnames[:] = sorted(d for d in dirnames if d not in ZIP_SKIP_DIRS
-                                     and not os.path.islink(os.path.join(dirpath, d)))
-                for name in sorted(filenames):
-                    path = Path(dirpath) / name
-                    if name.endswith(".pyc") or path.is_symlink() or not path.is_file():
-                        continue
-                    try:
-                        zf.write(path, Path(project.name) / path.relative_to(root))
-                    except OSError:      # unreadable, or removed while zipping
-                        continue
+            for path in _export_files(root):
+                kind = zipfile.ZIP_STORED if path.suffix.lower() in STORE_SUFFIXES else zipfile.ZIP_DEFLATED
+                try:
+                    zf.write(path, Path(project.name) / path.relative_to(root), compress_type=kind)
+                except OSError:      # unreadable, or removed while zipping
+                    continue
     except Exception:
         dest.unlink(missing_ok=True)
         raise
