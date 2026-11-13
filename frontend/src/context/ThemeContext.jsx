@@ -12,6 +12,9 @@ const ThemeContext = createContext(null)
 
 export const THEME_KEY = 'serverhub.theme'
 export const THEME_MODES = ['system', 'light', 'dark']
+// Surface style, independent of light/dark: <html data-style> (see styles.css).
+export const STYLE_KEY = 'serverhub.style'
+export const STYLES = ['bento', 'glass', 'neu']
 const META_COLOR = { dark: '#060E13', light: '#EEF3F1' }
 
 const media = typeof window !== 'undefined' && window.matchMedia
@@ -24,6 +27,15 @@ function readMode() {
     return THEME_MODES.includes(stored) ? stored : 'system'
   } catch {
     return 'system'
+  }
+}
+
+function readStyle() {
+  try {
+    const stored = localStorage.getItem(STYLE_KEY)
+    return STYLES.includes(stored) ? stored : 'bento'
+  } catch {
+    return 'bento'
   }
 }
 
@@ -42,6 +54,17 @@ function apply(theme) {
 export function ThemeProvider({ children }) {
   const [mode, setModeState] = useState(readMode)
   const [theme, setTheme] = useState(() => resolve(readMode()))
+  const [style, setStyleState] = useState(readStyle)
+
+  useEffect(() => {
+    document.documentElement.dataset.style = style
+  }, [style])
+
+  const setStyle = useCallback((next) => {
+    if (!STYLES.includes(next)) return
+    setStyleState(next)
+    try { localStorage.setItem(STYLE_KEY, next) } catch { /* private mode */ }
+  }, [])
 
   useEffect(() => {
     const next = resolve(mode)
@@ -64,7 +87,7 @@ export function ThemeProvider({ children }) {
     try { localStorage.setItem(THEME_KEY, next) } catch { /* private mode */ }
   }, [])
 
-  const value = useMemo(() => ({ mode, theme, setMode }), [mode, theme, setMode])
+  const value = useMemo(() => ({ mode, theme, setMode, style, setStyle }), [mode, theme, setMode, style, setStyle])
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }
 

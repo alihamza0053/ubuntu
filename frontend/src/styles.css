@@ -1,0 +1,217 @@
+/* Surface styles, chosen on the Appearance page and stored per browser.
+   <html data-style="bento | glass | neu">; bento is the base look in index.css,
+   so it needs nothing here. Plain CSS (no Tailwind) so nothing is purged, and
+   every colour still comes from theme.css, so each style works in light and dark.
+
+   The "surfaces" are the bento tiles and every container shaped like one. */
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Glassmorphism: frosted, translucent tiles over a colourful backdrop
+   ───────────────────────────────────────────────────────────────────────── */
+[data-style='glass'] {
+  --glass-fill: 0.48;
+  --glass-edge: 255 255 255 / 0.09;
+  --glass-shine: 255 255 255 / 0.07;
+}
+[data-style='glass'][data-theme='light'] {
+  --glass-fill: 0.58;
+  --glass-edge: 255 255 255 / 0.75;
+  --glass-shine: 255 255 255 / 0.85;
+}
+
+/* Glass needs colour behind it to frost. */
+[data-style='glass'] body::before {
+  opacity: 1;
+  background:
+    radial-gradient(42rem 32rem at 10% 6%, rgb(var(--mint-500) / 0.32), transparent 60%),
+    radial-gradient(40rem 30rem at 94% 18%, rgb(var(--aqua) / 0.30), transparent 62%),
+    radial-gradient(44rem 34rem at 72% 96%, rgb(var(--violet-500) / 0.24), transparent 62%),
+    radial-gradient(30rem 26rem at 4% 88%, rgb(var(--aqua) / 0.20), transparent 60%);
+}
+
+[data-style='glass'] :is(.card, .panel, .table-wrap, .tab-bar, .shell-tile) {
+  background-color: rgb(var(--panel-card) / var(--glass-fill));
+  border-color: rgb(var(--glass-edge));
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+  box-shadow: inset 0 1px 0 rgb(var(--glass-shine)), 0 14px 34px -20px rgb(0 0 0 / 0.55);
+}
+[data-style='glass'] .card-hover:hover {
+  border-color: rgb(var(--mint-400) / 0.45);
+  box-shadow: inset 0 1px 0 rgb(var(--glass-shine)), var(--shadow-lift);
+}
+
+/* A tile inside a tile: blurring twice costs the graphics card double and
+   looks muddy, so the inner one is just a lighter tint. */
+[data-style='glass'] :is(.card, .panel, .shell-tile) :is(.card, .panel) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background-color: rgb(var(--panel-card) / 0.30);
+}
+
+[data-style='glass'] :is(.input, .select, .textarea, .search-pill) {
+  background-color: rgb(var(--panel-bg) / 0.35);
+}
+[data-style='glass'] :is(.input, .select, .textarea):focus {
+  background-color: rgb(var(--panel-bg) / 0.55);
+}
+[data-style='glass'] .btn-secondary {
+  background-color: rgb(var(--panel-raise) / 0.45);
+  border-color: rgb(var(--glass-edge));
+}
+
+/* Devices set to "reduce transparency" get solid tiles. */
+@media (prefers-reduced-transparency: reduce) {
+  [data-style='glass'] :is(.card, .panel, .table-wrap, .tab-bar, .shell-tile) {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-color: rgb(var(--panel-card) / 0.96);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Neumorphism: tiles the same colour as the page, shaped by soft light and
+   shadow; controls pressed into the surface
+   ───────────────────────────────────────────────────────────────────────── */
+[data-style='neu'][data-theme='dark'] {
+  --panel-bg: 22 36 44;
+  --panel-card: 22 36 44;
+  --panel-rail: 22 36 44;
+  --panel-raise: 27 43 52;
+  --slate-500: 120 149 160;   /* muted text: AA on this surface */
+  --neu-hi: 255 255 255 / 0.045;
+  --neu-lo: 0 0 0 / 0.55;
+}
+[data-style='neu'][data-theme='light'] {
+  --panel-bg: 236 241 239;
+  --panel-card: 236 241 239;
+  --panel-rail: 236 241 239;
+  --panel-raise: 228 234 232;
+  --slate-500: 78 106 115;
+  --mint-400: 10 115 71;
+  --neu-hi: 255 255 255 / 0.95;
+  --neu-lo: 150 168 162 / 0.55;
+}
+
+[data-style='neu'] body::before {
+  opacity: 0;
+}
+
+/* Raised */
+[data-style='neu'] :is(.card, .panel, .table-wrap, .shell-tile) {
+  background-color: rgb(var(--panel-card));
+  border-color: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: -7px -7px 16px rgb(var(--neu-hi)), 8px 8px 18px rgb(var(--neu-lo));
+}
+[data-style='neu'] .card-hover:hover {
+  border-color: transparent;
+  box-shadow: -9px -9px 20px rgb(var(--neu-hi)), 11px 11px 24px rgb(var(--neu-lo));
+}
+/* A tile inside a tile sits flat, so the depth reads as one level. */
+[data-style='neu'] :is(.card, .panel, .shell-tile) :is(.card, .panel) {
+  box-shadow: -3px -3px 8px rgb(var(--neu-hi)), 4px 4px 9px rgb(var(--neu-lo));
+}
+[data-style='neu'] :is(.btn-secondary, .btn-ghost:hover, .btn-icon:hover) {
+  border-color: transparent;
+  background-color: rgb(var(--panel-card));
+  box-shadow: -3px -3px 7px rgb(var(--neu-hi)), 4px 4px 8px rgb(var(--neu-lo));
+}
+
+/* Pressed in */
+[data-style='neu'] :is(.input, .select, .textarea, .search-pill) {
+  border-color: transparent;
+  background-color: rgb(var(--panel-bg));
+  box-shadow: inset 3px 3px 7px rgb(var(--neu-lo)), inset -3px -3px 7px rgb(var(--neu-hi));
+}
+[data-style='neu'] :is(.input, .select, .textarea):focus,
+[data-style='neu'] .search-pill:focus-within {
+  box-shadow: inset 3px 3px 7px rgb(var(--neu-lo)), inset -3px -3px 7px rgb(var(--neu-hi)),
+              0 0 0 3px rgb(var(--mint-400) / 0.35);
+}
+[data-style='neu'] .tab-bar {
+  border-color: transparent;
+  background-color: rgb(var(--panel-bg));
+  box-shadow: inset 3px 3px 8px rgb(var(--neu-lo)), inset -3px -3px 8px rgb(var(--neu-hi));
+}
+[data-style='neu'] :is(.tab-active, .nav-item-active) {
+  background-color: rgb(var(--panel-card));
+  box-shadow: -3px -3px 7px rgb(var(--neu-hi)), 3px 3px 8px rgb(var(--neu-lo));
+}
+[data-style='neu'] .btn-secondary:active {
+  box-shadow: inset 3px 3px 6px rgb(var(--neu-lo)), inset -3px -3px 6px rgb(var(--neu-hi));
+}
+
+/* The keyboard focus ring is a box-shadow too: keep it visible on top of the
+   depth shadows above. */
+[data-style='neu'] :is(.btn-secondary, .btn-icon, .btn-ghost, .tab, .nav-item):focus-visible {
+  box-shadow: 0 0 0 2px rgb(var(--panel-bg)), 0 0 0 4px rgb(var(--mint-400) / 0.75);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Previews on the Appearance page: each shows its own style whatever the
+   current one is (not driven by data-style, so they never clash).
+   ───────────────────────────────────────────────────────────────────────── */
+.style-preview {
+  position: relative;
+  height: 7.5rem;
+  overflow: hidden;
+  border-radius: 1rem;
+  padding: 0.85rem;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 0.5rem;
+}
+.style-preview > span {
+  border-radius: 0.65rem;
+}
+.style-preview > span:first-child {
+  grid-row: span 2;
+}
+
+.style-preview-bento {
+  background: rgb(var(--panel-bg));
+}
+.style-preview-bento > span {
+  background: rgb(var(--panel-card));
+  border: 1px solid rgb(var(--panel-border));
+}
+.style-preview-bento > span:first-child {
+  background: linear-gradient(135deg, #3fe39b, #15b96c);
+  border: 0;
+}
+
+.style-preview-glass {
+  background:
+    radial-gradient(9rem 7rem at 15% 15%, rgb(var(--mint-500) / 0.55), transparent 70%),
+    radial-gradient(9rem 7rem at 95% 30%, rgb(var(--aqua) / 0.5), transparent 70%),
+    radial-gradient(9rem 7rem at 60% 110%, rgb(var(--violet-500) / 0.45), transparent 70%),
+    rgb(var(--panel-bg));
+}
+.style-preview-glass > span {
+  background: rgb(var(--panel-card) / 0.45);
+  border: 1px solid rgb(255 255 255 / 0.25);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.style-preview-neu {
+  --pv: 236 241 239;
+  --pv-hi: 255 255 255 / 0.95;
+  --pv-lo: 150 168 162 / 0.6;
+  background: rgb(var(--pv));
+}
+[data-theme='dark'] .style-preview-neu {
+  --pv: 22 36 44;
+  --pv-hi: 255 255 255 / 0.05;
+  --pv-lo: 0 0 0 / 0.6;
+}
+.style-preview-neu > span {
+  background: rgb(var(--pv));
+  box-shadow: -4px -4px 9px rgb(var(--pv-hi)), 5px 5px 10px rgb(var(--pv-lo));
+}
+.style-preview-neu > span:last-child {
+  box-shadow: inset 3px 3px 6px rgb(var(--pv-lo)), inset -3px -3px 6px rgb(var(--pv-hi));
+}

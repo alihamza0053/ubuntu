@@ -8,6 +8,7 @@ import { ThemeProvider } from './context/ThemeContext'
 import { mountCredit } from './credit'
 import './theme.css'
 import './index.css'
+import './styles.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

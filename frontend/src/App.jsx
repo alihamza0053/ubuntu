@@ -13,6 +13,7 @@ import ProjectDetail from './pages/ProjectDetail'
 import Projects from './pages/Projects'
 import RecycleBin from './pages/RecycleBin'
 import Settings from './pages/Settings'
+import Appearance from './pages/Appearance'
 import WebsiteDetail from './pages/WebsiteDetail'
 import Websites from './pages/Websites'
 
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="apps/:key" element={<Guard perm="apps"><AppDetail /></Guard>} />
         <Route path="code" element={<Guard perm="code"><Code /></Guard>} />
         <Route path="settings" element={<Guard perm="settings"><Settings /></Guard>} />
+        <Route path="appearance" element={<Appearance />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

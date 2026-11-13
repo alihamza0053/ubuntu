@@ -11,6 +11,7 @@ export const NAV = [
   { to: '/apps', label: 'Apps', icon: 'puzzle', perm: 'apps' },
   { to: '/code', label: 'Code', icon: 'terminal', perm: 'code' },
   { to: '/settings', label: 'Settings', icon: 'gear', perm: 'settings' },
+  { to: '/appearance', label: 'Appearance', icon: 'palette', perm: null },
 ]
 
 // First nav path a user is allowed to see (for redirects).

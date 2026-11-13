@@ -42,7 +42,7 @@ function Brand({ collapsed }) {
 function Sidebar({ items, collapsed, onToggle, onNavigate, user, isAdmin, onLogout, mobile = false }) {
   const initials = (user?.username || '?').slice(0, 2).toUpperCase()
   return (
-    <div className="flex h-full flex-col rounded-tile border border-panel-border/80 bg-panel-rail p-3 shadow-card">
+    <div className="shell-tile flex h-full flex-col rounded-tile border border-panel-border/80 bg-panel-rail p-3 shadow-card">
       <div className={`flex items-center ${collapsed ? 'flex-col gap-3' : 'justify-between'} pb-4 pt-1`}>
         <Brand collapsed={collapsed} />
         {!mobile && (
@@ -305,7 +305,7 @@ export default function Layout() {
 
       <div className={`transition-[padding] duration-200 ${collapsed ? 'lg:pl-[92px]' : 'lg:pl-[264px]'}`}>
         <header className="sticky top-0 z-20 px-3 pt-3">
-          <div className="flex h-16 items-center gap-3 rounded-tile border border-panel-border/80
+          <div className="shell-tile flex h-16 items-center gap-3 rounded-tile border border-panel-border/80
                           bg-panel-card/85 px-3 shadow-card backdrop-blur-xl sm:px-4">
             <button className="btn-icon lg:hidden" onClick={() => setDrawer(true)} aria-label="Open menu">
               <Icon name="menu" size={18} />

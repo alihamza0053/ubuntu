@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark" data-theme="dark">
+<html lang="en" class="dark" data-theme="dark" data-style="bento">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -22,6 +22,9 @@
         var root = document.documentElement
         root.dataset.theme = light ? 'light' : 'dark'
         root.classList.toggle('dark', !light)
+        var style = 'bento'
+        try { style = localStorage.getItem('serverhub.style') || 'bento' } catch (e) {}
+        root.dataset.style = /^(bento|glass|neu)$/.test(style) ? style : 'bento'
         var meta = document.querySelector('meta[name="theme-color"]')
         if (meta) meta.setAttribute('content', light ? '#EEF3F1' : '#060E13')
       })()
